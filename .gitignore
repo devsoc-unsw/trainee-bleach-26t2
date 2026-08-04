@@ -1,0 +1,25 @@
+# Node
+node_modules/
+dist/
+
+# Godot
+.godot/
+*.import
+*.translation
+
+# Godot web export build
+client/build/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+*.swp
+*.swo
+
+# Environment
+.env
+.env.local
+.env.*.local
