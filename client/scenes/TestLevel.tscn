@@ -1,0 +1,81 @@
+[gd_scene format=3 uid="uid://fhs3ei8nl5oh"]
+
+[ext_resource type="PackedScene" uid="uid://cbum0re6a8yc4" path="res://scenes/Ball.tscn" id="1_1fpmp"]
+[ext_resource type="PackedScene" uid="uid://bcd2w7jktuhxj" path="res://scenes/CameraRig.tscn" id="2_df0lk"]
+[ext_resource type="Script" uid="uid://dufdd7dpr65w3" path="res://scripts/AimController.gd" id="3_df0lk"]
+[ext_resource type="Script" uid="uid://djg5qiubtumt1" path="res://scripts/Cup.gd" id="4_i6x8u"]
+[ext_resource type="Script" uid="uid://d2qtmaorjsqpl" path="res://scripts/OutOfBounds.gd" id="5_8xg12"]
+
+[sub_resource type="PhysicsMaterial" id="PhysicsMaterial_2venv"]
+
+[sub_resource type="BoxMesh" id="BoxMesh_ujow2"]
+size = Vector3(6, 0.2, 67)
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_ihn87"]
+size = Vector3(6, 0.2, 67)
+
+[sub_resource type="Environment" id="Environment_8iasl"]
+
+[sub_resource type="SphereShape3D" id="SphereShape3D_ujow2"]
+radius = 0.3
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_ujow2"]
+size = Vector3(1000, 0.2, 1000)
+
+[sub_resource type="BoxMesh" id="BoxMesh_8iasl"]
+size = Vector3(5, 2, 0.1)
+
+[node name="TestLevel" type="Node3D" unique_id=1636690890]
+
+[node name="Ground" type="StaticBody3D" parent="." unique_id=1801611665]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.1, -33)
+physics_material_override = SubResource("PhysicsMaterial_2venv")
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="Ground" unique_id=2133051677]
+mesh = SubResource("BoxMesh_ujow2")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="Ground" unique_id=2132929693]
+shape = SubResource("BoxShape3D_ihn87")
+
+[node name="DirectionalLight3D" type="DirectionalLight3D" parent="." unique_id=960930001]
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="." unique_id=2141276519]
+environment = SubResource("Environment_8iasl")
+
+[node name="Ball" parent="." unique_id=922067448 instance=ExtResource("1_1fpmp")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 10, 0)
+can_sleep = false
+
+[node name="CameraRig" parent="." unique_id=1100201651 node_paths=PackedStringArray("target") instance=ExtResource("2_df0lk")]
+target = NodePath("../Ball")
+
+[node name="AimController" type="Node3D" parent="." unique_id=648704331 node_paths=PackedStringArray("ball", "camera_rig")]
+script = ExtResource("3_df0lk")
+ball = NodePath("../Ball")
+camera_rig = NodePath("../CameraRig")
+
+[node name="Cup" type="Area3D" parent="." unique_id=729051319]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.1, -63)
+script = ExtResource("4_i6x8u")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="Cup" unique_id=940950085]
+shape = SubResource("SphereShape3D_ujow2")
+
+[node name="OutOfBounds" type="Area3D" parent="." unique_id=1166695559]
+script = ExtResource("5_8xg12")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="OutOfBounds" unique_id=2081052111]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -10, 0)
+shape = SubResource("BoxShape3D_ujow2")
+
+[node name="Marker1" type="StaticBody3D" parent="." unique_id=276597421]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, -30)
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="Marker1" unique_id=151966216]
+mesh = SubResource("BoxMesh_8iasl")
+
+[node name="Marker2" type="StaticBody3D" parent="." unique_id=638488726]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, -60)
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="Marker2" unique_id=1873191416]
+mesh = SubResource("BoxMesh_8iasl")
