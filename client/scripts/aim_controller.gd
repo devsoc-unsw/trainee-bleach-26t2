@@ -102,8 +102,9 @@ func _update_trajectory_preview(mouse_pos: Vector2) -> void:
 # 
 func _release_shot(end_screen: Vector2) -> void:
 	var shot = _compute_shot(end_screen)
-	
 	var deviation_degrees = shot.power * shot.power * max_deviation_degrees
 	var direction = _apply_yaw_deviation(shot.direction, deviation_degrees)
 	
 	ball.hit(direction, shot.power)
+	var dir_2d = Vector2(direction.x, direction.z)
+	

@@ -1,9 +1,9 @@
 [gd_scene format=3 uid="uid://fhs3ei8nl5oh"]
 
-[ext_resource type="PackedScene" uid="uid://cbum0re6a8yc4" path="res://scenes/Ball.tscn" id="1_1fpmp"]
-[ext_resource type="PackedScene" uid="uid://bcd2w7jktuhxj" path="res://scenes/CameraRig.tscn" id="2_df0lk"]
-[ext_resource type="Script" uid="uid://dufdd7dpr65w3" path="res://scripts/AimController.gd" id="3_df0lk"]
-[ext_resource type="Script" uid="uid://djg5qiubtumt1" path="res://scripts/Cup.gd" id="4_i6x8u"]
+[ext_resource type="PackedScene" uid="uid://cbum0re6a8yc4" path="res://scenes/ball.tscn" id="1_1fpmp"]
+[ext_resource type="PackedScene" uid="uid://bcd2w7jktuhxj" path="res://scenes/camera_rig.tscn" id="2_df0lk"]
+[ext_resource type="Script" uid="uid://dufdd7dpr65w3" path="res://scripts/aim_controller.gd" id="3_df0lk"]
+[ext_resource type="Script" uid="uid://djg5qiubtumt1" path="res://scripts/cup.gd" id="4_i6x8u"]
 [ext_resource type="Script" uid="uid://d2qtmaorjsqpl" path="res://scripts/OutOfBounds.gd" id="5_8xg12"]
 
 [sub_resource type="PhysicsMaterial" id="PhysicsMaterial_2venv"]
