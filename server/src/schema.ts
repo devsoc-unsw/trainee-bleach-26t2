@@ -229,11 +229,6 @@ export const pongSchema = z
 });
 export type PongMessage = z.infer<typeof pongSchema>;
 
-// Discriminated union of every valid server->client message.
-// Not required by index.ts (server only needs to construct these,
-// not validate them), but useful if you build a mirrored client-side
-// schema check in Godot/GDScript tooling, or for shared type-checking
-// if the client ever consumes this package directly.
 export const serverMessageSchema = z.discriminatedUnion('t', [
   joinedSchema,
   lobbyStateSchema,

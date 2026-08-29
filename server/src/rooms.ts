@@ -1,73 +1,9 @@
 
 import type { WebSocket } from 'ws';
+import { GameState, Room, Player} from './interface.js';
 
 const CODE_CHARS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ123456789';
-
-export function generateRoomCode(existingCodes: Set<string>): string {
-  let code: string;
-  do {
-    code = '';
-    for (let i = 0; i < 4; i++) {
-      code += CODE_CHARS[Math.floor(Math.random() * CODE_CHARS.length)];
-    }
-  } while (existingCodes.has(code));
-  return code;
-}
-
-function generatePlayerId(): string {
-  return Math.random().toString(36).slice(2, 10);
-}
-
-// types
-
-export enum GameState {
-  LOBBY = 'LOBBY',
-  COUNTDOWN = 'COUNTDOWN',
-  HOLE_ACTIVE = 'HOLE_ACTIVE',
-  HOLE_SUMMARY = 'HOLE_SUMMARY',
-  MATCH_END = 'MATCH_END',
-}
-
-export interface Vec3 {
-  x: number;
-  y: number;
-  z: number;
-}
-
-export interface Player {
-  id: string;
-  ws: WebSocket;
-  name: string;
-  ready: boolean;
-  isHost: boolean;
-
-  // ball management
-  pos: Vec3;
-  vel: Vec3;
-  atRest: boolean;
-  strokes: number;
-  holedThisHole: boolean;
-  lastShotAt: number;
-}
-
-export interface HoleDetails {
-  index: number;
-  par: number;
-  spawn: Vec3;
-  cup: Vec3;
-  cupTolerance: number;
-}
-
-export interface Room {
-  code: string;
-  players: Map<string, Player>;
-  hostId: string | null;
-  state: GameState;
-  holes: HoleDetails[];
-  currentHoleIndex: number;
-  createdAt: number;
-  lastModified: number;
-}
+const TIMEOUT_MS = 30 * 60 * 1000;
 
 // room management
 
@@ -103,8 +39,8 @@ export function deleteRoom(code: string): void {
 export function addPlayer(room: Room, ws: WebSocket, name: string): Player {
   const player: Player = {
     id: generatePlayerId(),
-    ws,
-    name,
+    ws: ws,
+    name: name,
     ready: false,
     isHost: room.players.size === 0,
     pos: { x: 0, y: 0, z: 0 },
@@ -114,13 +50,14 @@ export function addPlayer(room: Room, ws: WebSocket, name: string): Player {
     holedThisHole: false,
     lastShotAt: 0,
   };
-
+  
   if (player.isHost) {
     room.hostId = player.id;
   }
-
+  
   room.players.set(player.id, player);
-  // TODO: room last modified now
+  updateRoomLastModified(room);
+
   return player;
 }
 
@@ -138,21 +75,45 @@ export function removePlayer(room: Room, playerId: string): void {
     }
   }
 
-  // TODO: room last modified now
-
+  updateRoomLastModified(room);
+  
   if (room.players.size === 0) {
     deleteRoom(room.code);
   }
 }
 
-
-// when and where is this called?
 export function deleteIdleRoom() {
-  // loop through all active rooms
-  // check the last time modified, compare it with the time now
+  const now = Date.now();
+  for (const roomCode in rooms.keys) {
+    let currRoom = rooms.get(roomCode);
+    if (!currRoom) return;
+    if (now - currRoom.lastModified >= TIMEOUT_MS) {
+      deleteRoom(roomCode);
+    }
+  }
 }
 
 
+// helpers:
+
+function updateRoomLastModified(room: Room) {
+  room.lastModified = Date.now();
+}
+
+export function generateRoomCode(existingCodes: Set<string>): string {
+  let code: string;
+  do {
+    code = '';
+    for (let i = 0; i < 4; i++) {
+      code += CODE_CHARS[Math.floor(Math.random() * CODE_CHARS.length)];
+    }
+  } while (existingCodes.has(code));
+  return code;
+}
+
+function generatePlayerId(): string {
+  return Math.random().toString(36).slice(2, 10);
+}
 
 // Broadcast helpers
 
