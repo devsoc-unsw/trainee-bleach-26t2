@@ -3,7 +3,7 @@ extends Node
 signal connection_status_changed(status: String)
 signal message_received(data: Dictionary)
 
-# TODO: add signals for game events:
+# IN_PROGRESS: add signals for game events:
 #   player_joined(player: Dictionary)
 #   player_left(player_id: String)
 #   lobby_updated(players: Array)
@@ -13,7 +13,6 @@ signal message_received(data: Dictionary)
 #   stroke_updated(player_id: String, strokes: int)
 #   hole_ended(results: Array)
 #   match_ended(placings: Array)
-
 
 
 
@@ -84,7 +83,7 @@ func _send_test_message() -> void:
 	var msg := JSON.stringify({ "t": "hello", "from": "godot" })
 	_socket.send_text(msg)
 
-# TODO: add send methods:
+# IN_PROGRESS: add send methods:
 #   send_join(name: String, code: String) -> join or create room
 #   send_ready()
 #   send_start_match() -> host only
