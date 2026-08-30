@@ -153,10 +153,8 @@ wss.on('connection', (ws: WebSocket) => {
       case 'join':
         doJoin(ws, result.data);
         break;
+      
     }
-
-    
-    ws.send(JSON.stringify(result.data));
   });
 
   ws.on('close', (code: number, reason: Buffer) => {
@@ -198,24 +196,22 @@ server.listen(PORT, HOST, () => {
 
 
 function doJoin(ws: WebSocket, data: JoinMessage) {
-  // if the room is non-existent, create the room
-  // code can be empty, this is when the room should be created
   const room = data.code ? getRoom(data.code) : createRoom();
   if (!room) {
     sendError(ws, 'ROOM_NOT_FOUND', "No room with that code");
-    return
+    return;
   }
-  
-  // add player to room, join as host if room is empty
   const player = addPlayer(room, ws, data.name);
-
+  if (!player) {
+    sendError(ws, 'ROOM_FULL', 'This room already has the maximum number of players');
+    return;
+  }
   sendTo(player, {
       t: 'joined',
       playerId: player.id,
       code: room.code,
       players: lobbySnapshot(room),
   });
-
   broadcast(room, {
     t: 'lobby_state',
     players: lobbySnapshot(room),

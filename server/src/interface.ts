@@ -54,4 +54,5 @@ export interface Room {
   currentHoleIndex: number;
   createdAt: number;
   lastModified: number;
+  availableColours: string[];
 }

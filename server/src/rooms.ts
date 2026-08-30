@@ -3,7 +3,12 @@ import type { WebSocket } from 'ws';
 import { GameState, Room, Player } from './interface.js';
 
 const CODE_CHARS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ123456789';
+const MAX_PLAYERS = 8;
 const TIMEOUT_MS = 30 * 60 * 1000;
+const PLAYER_COLOURS = [
+  '#ff0000', '#f6ff00', '#1bffe4', '#2601fa',
+  '#7600ba', '#FFB703', '#25cd00', '#ef47db',
+];
 
 // room management
 
@@ -20,6 +25,7 @@ export function createRoom(): Room {
     currentHoleIndex: 0,
     createdAt: Date.now(),
     lastModified: Date.now(),
+    availableColours: [...PLAYER_COLOURS],
   };
   rooms.set(code, room);
   return room;
@@ -43,15 +49,23 @@ export function deleteIdleRoom(): void {
   }
 }
 
-
-
 // Player management
 
-export function addPlayer(room: Room, ws: WebSocket, name: string): Player {
+export function addPlayer(room: Room, ws: WebSocket, name: string): Player | null {
+  if (room.players.size >= MAX_PLAYERS) {
+    return null;
+  }
+  
+  const colour = room.availableColours.shift();
+  if (!colour) {
+    return null;
+  }
+
   const player: Player = {
     id: generatePlayerId(),
     ws: ws,
     name: name,
+    colour: colour,
     ready: false,
     isHost: room.players.size === 0,
     pos: [0, 0, 0],
@@ -74,6 +88,9 @@ export function addPlayer(room: Room, ws: WebSocket, name: string): Player {
 }
 
 export function removePlayer(room: Room, playerId: string): void {
+  
+  const player = room.players.get(playerId);
+  if (player) room.availableColours.unshift(player.colour);
   room.players.delete(playerId);
 
   // reassign host if the host left and players remain
@@ -102,7 +119,6 @@ export function updatePlayerScore(room: Room, playerId: string) {
 
   return player.strokes;
 }
-
 
 
 // helpers:
