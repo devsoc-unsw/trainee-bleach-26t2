@@ -50,7 +50,7 @@ const wss = new WebSocketServer({
   },
 });
 
-// TODO: room management
+// IN_PROGRESS: room management
 //   - rooms: Map<string, Room> stored in memory
 //   - generate 4-letter room codes (no vowels, no ambiguous chars)
 //   - destroy room when last player disconnects
@@ -146,6 +146,8 @@ wss.on('connection', (ws: WebSocket) => {
     //   - holed position must be within tolerance of cup position
     //   - positions outside per-hole bounding box get ignored
     //   - par+3 cap: end hole for player at par+3 strokes
+
+    
     ws.send(JSON.stringify(result.data));
   });
 

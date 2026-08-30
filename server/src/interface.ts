@@ -25,9 +25,12 @@ export interface Player {
   pos: Vec3;
   vel: Vec3;
   atRest: boolean;
+
   strokes: number;
   holedThisHole: boolean;
   lastShotAt: number;
+
+  holeResults: HoleResult[];
 }
 
 export interface HoleDetails {
@@ -35,7 +38,12 @@ export interface HoleDetails {
   par: number;
   spawn: Vec3;
   cup: Vec3;
-  cupTolerance: number;
+}
+
+export interface HoleResult {
+  hole_index: number;
+  strokes: number;
+  par: number;
 }
 
 export interface Room {

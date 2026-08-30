@@ -1,6 +1,6 @@
 
 import type { WebSocket } from 'ws';
-import { GameState, Room, Player} from './interface.js';
+import { GameState, Room, Player } from './interface.js';
 
 const CODE_CHARS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ123456789';
 const TIMEOUT_MS = 30 * 60 * 1000;
@@ -33,6 +33,19 @@ export function deleteRoom(code: string): void {
   rooms.delete(code);
 }
 
+// need to call this periodically
+export function deleteIdleRoom(): void {
+  const now = Date.now();
+  for (const roomCode in rooms.keys) {
+    let currRoom = rooms.get(roomCode);
+    if (!currRoom) return;
+    if (now - currRoom.lastModified >= TIMEOUT_MS) {
+      deleteRoom(roomCode);
+    }
+  }
+}
+
+
 
 // Player management
 
@@ -49,6 +62,7 @@ export function addPlayer(room: Room, ws: WebSocket, name: string): Player {
     strokes: 0,
     holedThisHole: false,
     lastShotAt: 0,
+    holeResults: [],
   };
   
   if (player.isHost) {
@@ -82,21 +96,16 @@ export function removePlayer(room: Room, playerId: string): void {
   }
 }
 
-export function deleteIdleRoom() {
-  const now = Date.now();
-  for (const roomCode in rooms.keys) {
-    let currRoom = rooms.get(roomCode);
-    if (!currRoom) return;
-    if (now - currRoom.lastModified >= TIMEOUT_MS) {
-      deleteRoom(roomCode);
-    }
-  }
+export function updatePlayerScore(room: Room, playerId: string, holeIndex: number) {
+  // find player from rooms
+  // add 1 to current hole score
 }
+
 
 
 // helpers:
 
-function updateRoomLastModified(room: Room) {
+function updateRoomLastModified(room: Room): void {
   room.lastModified = Date.now();
 }
 
