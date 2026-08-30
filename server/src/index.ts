@@ -2,8 +2,9 @@ import http from 'node:http';
 import { WebSocketServer, WebSocket } from 'ws';
 import { clientMessageSchema, envelopeSchema, joinSchema } from './schema.js';
 import type { ClientMessage, ErrorResponse, JoinMessage, ReadyMessage } from './schema.js';
-import { addPlayer, broadcast, createRoom, getRoom, lobbySnapshot, removePlayer, sendTo, updatePlayerReady } from './rooms.js';
+import { addPlayer, broadcast, checkLobbyReady, createRoom, getRoom, lobbySnapshot, removePlayer, sendTo, updatePlayerReady } from './rooms.js';
 import { Player, Room } from './interface.js';
+import { COURSE, COURSE_ID } from './course.js';
 
 const PORT = parseInt(process.env['PORT'] ?? '8080', 10);
 const IS_PRODUCTION = process.env['NODE_ENV'] === 'production';
@@ -163,16 +164,16 @@ wss.on('connection', (ws: WebSocket) => {
       }
 
       case 'ready': {
-        if (!currentPlayer || !currentRoom) {
-          sendError(ws, 'NOT_JOINED', 'Must join a room before sending this message');
-          break;
-        }
-        doReady(currentPlayer, currentRoom);
+        const joined = requireJoined(ws, currentPlayer, currentRoom);
+        if (!joined) break;
+        doReady(joined.player, joined.room);
         break;
       }
 
       case 'start_match': {
-
+        const joined = requireJoined(ws, currentPlayer, currentRoom);
+        if (!joined) break;
+        doStartMatch(joined.player, joined.room);
         break;
       }
 
@@ -224,6 +225,18 @@ server.listen(PORT, HOST, () => {
   });
 });
 
+function requireJoined(
+  ws: WebSocket,
+  player: Player | null,
+  room: Room | null
+): { player: Player; room: Room } | null {
+  if (!player || !room) {
+    sendError(ws, 'NOT_JOINED', 'Must join a room before sending this message');
+    return null;
+  }
+  return { player, room };
+}
+
 
 function doJoin(ws: WebSocket, data: JoinMessage): { player: Player, room: Room } | null {
   const room = data.code ? getRoom(data.code) : createRoom();
@@ -253,7 +266,6 @@ function doJoin(ws: WebSocket, data: JoinMessage): { player: Player, room: Room 
   };
 }
 
-
 function doReady(player: Player, room: Room): void {
       //   'ready'       -> toggle ready, broadcast lobby_state
   updatePlayerReady(room, player.id, true);
@@ -262,4 +274,28 @@ function doReady(player: Player, room: Room): void {
     players: lobbySnapshot(room)
   });
   
+}
+
+function doStartMatch(player: Player, room: Room): void {
+  // (?) check player exists and in room
+  
+  // check player is host (in rooms.ts)
+  if (player.id !== room.hostId) {
+    sendError(player.ws, 'NOT_HOST', 'Only the host can start the match');
+    return;
+  }
+
+  // game state from lobby to countdown
+  if (!checkLobbyReady(room)) {
+    sendError(player.ws, 'NOT_READY', 'All players must be ready');
+    return;
+  }
+
+  // broadcast that the match is starting
+  broadcast(room, {
+    t: 'match_start',
+    courseId: COURSE_ID,
+    holes: COURSE.map((h) => ({ index: h.index, par: h.par, name: h.name }))
+  });
+
 }

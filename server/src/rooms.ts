@@ -133,6 +133,27 @@ export function checkLobbyReady(room: Room) {
   return [...room.players.values()].every((p) => p.ready);
 }
 
+export function finaliseHole(): void {
+
+  // for all active players in the room, push their current hole stats, then clear current hole stats for new hole
+
+
+  // holeIndex should be the room's currentHoleIndex
+  // par should be the current hole's HoleConfig
+
+  // if not successful hole:
+    // set their result to max(3 + current hole par, strokes)
+  // if holedThisHole:
+    // push a hole result object
+  
+  // clear stats
+    // involves resetting strokes, holedThisHole, lastShotAt
+    // increment room's currentHoleIndex
+
+  // updateRoomLastModified(room)
+
+}
+
 // helpers:
 
 function updateRoomLastModified(room: Room): void {
@@ -170,7 +191,7 @@ export function broadcast(room: Room, msg: unknown, exceptId?: string): void {
 
 export function lobbySnapshot(room: Room) {
   return [...room.players.values()].map((p) => ({
-    player_id: p.id,
+    id: p.id,
     name: p.name,
     colour: p.colour,
     ready: p.ready,

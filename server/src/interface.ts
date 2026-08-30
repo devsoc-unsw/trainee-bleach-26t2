@@ -37,6 +37,7 @@ export interface HoleConfig {
   spawn: Vec3;
   cup: Vec3;
   cupTolerance: number;
+  name: string;
 }
 
 export interface HoleResult {
