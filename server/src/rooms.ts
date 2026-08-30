@@ -2,7 +2,7 @@
 import type { WebSocket } from 'ws';
 import { GameState, Room, Player } from './interface.js';
 
-const CODE_CHARS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ123456789';
+const CODE_CHARS = 'BCDFGHJKMNPRSTVWXYZ23456789';
 const MAX_PLAYERS = 8;
 const TIMEOUT_MS = 30 * 60 * 1000;
 const PLAYER_COLOURS = [
@@ -49,7 +49,18 @@ export function deleteIdleRoom(): void {
   }
 }
 
-// Player management
+export function checkLobbyReady(room: Room) {
+  return [...room.players.values()].every((p) => p.ready);
+}
+
+export function updatePlayerReady(room: Room, playerId: string, ready: boolean): Player | null {
+  const player = room.players.get(playerId);
+  if (!player) return null;
+
+  player.ready = ready;
+  updateRoomLastModified(room);
+  return player;
+}
 
 export function addPlayer(room: Room, ws: WebSocket, name: string): Player | null {
   if (room.players.size >= MAX_PLAYERS) {
@@ -106,61 +117,13 @@ export function removePlayer(room: Room, playerId: string): void {
     deleteRoom(room.code);
   }
 }
-
-export function updatePlayerScore(room: Room, playerId: string) {
-  const player = room.players.get(playerId);
-  if (!player) {
-    return null;
-  }
-
-  player.strokes += 1;
-  player.lastShotAt = Date.now();
-  updateRoomLastModified(room);
-
-  return player.strokes;
-}
-
-export function updatePlayerReady(room: Room, playerId: string, ready: boolean): Player | null {
-  const player = room.players.get(playerId);
-  if (!player) return null;
-
-  player.ready = ready;
-  updateRoomLastModified(room);
-  return player;
-}
-
-export function checkLobbyReady(room: Room) {
-  return [...room.players.values()].every((p) => p.ready);
-}
-
-export function finaliseHole(): void {
-
-  // for all active players in the room, push their current hole stats, then clear current hole stats for new hole
-
-
-  // holeIndex should be the room's currentHoleIndex
-  // par should be the current hole's HoleConfig
-
-  // if not successful hole:
-    // set their result to max(3 + current hole par, strokes)
-  // if holedThisHole:
-    // push a hole result object
-  
-  // clear stats
-    // involves resetting strokes, holedThisHole, lastShotAt
-    // increment room's currentHoleIndex
-
-  // updateRoomLastModified(room)
-
-}
-
 // helpers:
 
-function updateRoomLastModified(room: Room): void {
+export function updateRoomLastModified(room: Room): void {
   room.lastModified = Date.now();
 }
 
-export function generateRoomCode(existingCodes: Set<string>): string {
+function generateRoomCode(existingCodes: Set<string>): string {
   let code: string;
   do {
     code = '';

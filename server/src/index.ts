@@ -3,8 +3,9 @@ import { WebSocketServer, WebSocket } from 'ws';
 import { clientMessageSchema, envelopeSchema, joinSchema } from './schema.js';
 import type { ClientMessage, ErrorResponse, JoinMessage, ReadyMessage } from './schema.js';
 import { addPlayer, broadcast, checkLobbyReady, createRoom, getRoom, lobbySnapshot, removePlayer, sendTo, updatePlayerReady } from './rooms.js';
-import { Player, Room } from './interface.js';
+import { Player, Room, Vec3 } from './interface.js';
 import { COURSE, COURSE_ID } from './course.js';
+import { updateBallState } from './player.js';
 
 const PORT = parseInt(process.env['PORT'] ?? '8080', 10);
 const IS_PRODUCTION = process.env['NODE_ENV'] === 'production';
@@ -137,10 +138,10 @@ wss.on('connection', (ws: WebSocket) => {
     // TODO: replace echo with message routing by result.data.t:
     //   DONE 'join'        -> create/join room, assign player id + colour, broadcast lobby_state
     //   DONE 'ready'       -> toggle ready, broadcast lobby_state
-    //   'start_match' -> host only, transition LOBBY -> COUNTDOWN
+    //   DONE 'start_match' -> host only, transition LOBBY -> COUNTDOWN
     //   'shot'        -> validate (rate limit 250ms, atRest gate, HOLE_ACTIVE only),
     //                    increment stroke count, broadcast stroke_update
-    //   'ball_state'  -> rebroadcast as part of snapshot (15Hz while balls moving)
+    //   DONE 'ball_state'  -> rebroadcast as part of snapshot (15Hz while balls moving)
     //   'holed'       -> validate position against cup, lock score, check if hole done
     //   'oob'         -> add penalty stroke, broadcast stroke_update
     //   'ping'        -> reply with pong
@@ -174,6 +175,15 @@ wss.on('connection', (ws: WebSocket) => {
         const joined = requireJoined(ws, currentPlayer, currentRoom);
         if (!joined) break;
         doStartMatch(joined.player, joined.room);
+        break;
+      }
+      
+      case 'ball_state': {
+        const joined = requireJoined(ws, currentPlayer, currentRoom);
+        if (!joined) break;
+        //update the velocity, pos and atRest
+        const res = result.data;
+        doUpdateBallState(joined.player, res.pos, res.vel, res.atRest);
         break;
       }
 
@@ -237,7 +247,6 @@ function requireJoined(
   return { player, room };
 }
 
-
 function doJoin(ws: WebSocket, data: JoinMessage): { player: Player, room: Room } | null {
   const room = data.code ? getRoom(data.code) : createRoom();
   if (!room) {
@@ -267,7 +276,6 @@ function doJoin(ws: WebSocket, data: JoinMessage): { player: Player, room: Room 
 }
 
 function doReady(player: Player, room: Room): void {
-      //   'ready'       -> toggle ready, broadcast lobby_state
   updatePlayerReady(room, player.id, true);
   broadcast(room, {
     t: 'lobby_state',
@@ -277,25 +285,24 @@ function doReady(player: Player, room: Room): void {
 }
 
 function doStartMatch(player: Player, room: Room): void {
-  // (?) check player exists and in room
-  
-  // check player is host (in rooms.ts)
   if (player.id !== room.hostId) {
     sendError(player.ws, 'NOT_HOST', 'Only the host can start the match');
     return;
   }
 
-  // game state from lobby to countdown
   if (!checkLobbyReady(room)) {
     sendError(player.ws, 'NOT_READY', 'All players must be ready');
     return;
   }
 
-  // broadcast that the match is starting
   broadcast(room, {
     t: 'match_start',
     courseId: COURSE_ID,
     holes: COURSE.map((h) => ({ index: h.index, par: h.par, name: h.name }))
   });
 
+}
+
+function doUpdateBallState(player: Player, pos: Vec3, vel: Vec3, atRest: boolean): void {
+  updateBallState(player, pos, vel, atRest);
 }

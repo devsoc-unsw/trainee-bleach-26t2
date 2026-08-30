@@ -8,7 +8,7 @@ export enum GameState {
   MATCH_END = 'MATCH_END',
 }
 
-type Vec3 = [number, number, number]
+export type Vec3 = [number, number, number]
 
 export interface Player {
   id: string;
