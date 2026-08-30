@@ -1,10 +1,10 @@
 [gd_scene format=3 uid="uid://fhs3ei8nl5oh"]
 
-[ext_resource type="PackedScene" uid="uid://dmrognn72tvm3" path="res://scenes/ball.tscn" id="1_1fpmp"]
+[ext_resource type="PackedScene" uid="uid://bdsbp3ln6bo13" path="res://scenes/ball.tscn" id="1_1fpmp"]
 [ext_resource type="PackedScene" uid="uid://bcd2w7jktuhxj" path="res://scenes/camera_rig.tscn" id="2_df0lk"]
 [ext_resource type="Script" uid="uid://dufdd7dpr65w3" path="res://scripts/aim_controller.gd" id="3_df0lk"]
 [ext_resource type="Script" uid="uid://dlluwip2c8qu2" path="res://scripts/cup.gd" id="4_i6x8u"]
-[ext_resource type="Script" uid="uid://d2qtmaorjsqpl" path="res://scripts/OutOfBounds.gd" id="5_8xg12"]
+[ext_resource type="Script" uid="uid://d2qtmaorjsqpl" path="res://scripts/out_of_bounds.gd" id="5_8xg12"]
 
 [sub_resource type="PhysicsMaterial" id="PhysicsMaterial_2venv"]
 

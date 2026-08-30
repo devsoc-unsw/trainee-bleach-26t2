@@ -44,6 +44,7 @@ export interface HoleResult {
   holeIndex: number;
   strokes: number;
   par: number;
+  completed: boolean;
 }
 
 export interface Room {
