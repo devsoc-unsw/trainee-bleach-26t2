@@ -120,6 +120,18 @@ export function updatePlayerScore(room: Room, playerId: string) {
   return player.strokes;
 }
 
+export function updatePlayerReady(room: Room, playerId: string, ready: boolean): Player | null {
+  const player = room.players.get(playerId);
+  if (!player) return null;
+
+  player.ready = ready;
+  updateRoomLastModified(room);
+  return player;
+}
+
+export function checkLobbyReady(room: Room) {
+  return [...room.players.values()].every((p) => p.ready);
+}
 
 // helpers:
 

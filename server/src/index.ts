@@ -1,8 +1,9 @@
 import http from 'node:http';
 import { WebSocketServer, WebSocket } from 'ws';
 import { clientMessageSchema, envelopeSchema, joinSchema } from './schema.js';
-import type { ClientMessage, ErrorResponse, JoinMessage } from './schema.js';
-import { addPlayer, broadcast, createRoom, getRoom, lobbySnapshot, sendTo } from './rooms.js';
+import type { ClientMessage, ErrorResponse, JoinMessage, ReadyMessage } from './schema.js';
+import { addPlayer, broadcast, createRoom, getRoom, lobbySnapshot, removePlayer, sendTo, updatePlayerReady } from './rooms.js';
+import { Player, Room } from './interface.js';
 
 const PORT = parseInt(process.env['PORT'] ?? '8080', 10);
 const IS_PRODUCTION = process.env['NODE_ENV'] === 'production';
@@ -68,6 +69,8 @@ let connectionCounter = 0;
 
 wss.on('connection', (ws: WebSocket) => {
   const connectionId = ++connectionCounter;
+  let currentPlayer: Player | null = null;
+  let currentRoom: Room | null = null;
 
   log({
     ts: new Date().toISOString(),
@@ -131,8 +134,8 @@ wss.on('connection', (ws: WebSocket) => {
     });
 
     // TODO: replace echo with message routing by result.data.t:
-    //   'join'        -> create/join room, assign player id + colour, broadcast lobby_state
-    //   'ready'       -> toggle ready, broadcast lobby_state
+    //   DONE 'join'        -> create/join room, assign player id + colour, broadcast lobby_state
+    //   DONE 'ready'       -> toggle ready, broadcast lobby_state
     //   'start_match' -> host only, transition LOBBY -> COUNTDOWN
     //   'shot'        -> validate (rate limit 250ms, atRest gate, HOLE_ACTIVE only),
     //                    increment stroke count, broadcast stroke_update
@@ -150,14 +153,41 @@ wss.on('connection', (ws: WebSocket) => {
 
     // result is an envelopeSchema
     switch (result.data.t) {
-      case 'join':
-        doJoin(ws, result.data);
+      case 'join': {
+        const joinResult = doJoin(ws, result.data);
+        if (joinResult) {
+          currentPlayer = joinResult.player;
+          currentRoom = joinResult.room;
+        }
         break;
-      
+      }
+
+      case 'ready': {
+        if (!currentPlayer || !currentRoom) {
+          sendError(ws, 'NOT_JOINED', 'Must join a room before sending this message');
+          break;
+        }
+        doReady(currentPlayer, currentRoom);
+        break;
+      }
+
+      case 'start_match': {
+
+        break;
+      }
+
     }
   });
 
   ws.on('close', (code: number, reason: Buffer) => {
+    if (currentPlayer && currentRoom) {
+      removePlayer(currentRoom, currentPlayer.id);
+      broadcast(currentRoom, {
+        t: 'player_left',
+        playerId: currentPlayer.id
+      });
+    }
+    
     log({
       ts: new Date().toISOString(),
       event: 'ws_close',
@@ -195,25 +225,41 @@ server.listen(PORT, HOST, () => {
 });
 
 
-function doJoin(ws: WebSocket, data: JoinMessage) {
+function doJoin(ws: WebSocket, data: JoinMessage): { player: Player, room: Room } | null {
   const room = data.code ? getRoom(data.code) : createRoom();
   if (!room) {
     sendError(ws, 'ROOM_NOT_FOUND', "No room with that code");
-    return;
+    return null;
   }
   const player = addPlayer(room, ws, data.name);
   if (!player) {
     sendError(ws, 'ROOM_FULL', 'This room already has the maximum number of players');
-    return;
+    return null;
   }
   sendTo(player, {
       t: 'joined',
       playerId: player.id,
       code: room.code,
-      players: lobbySnapshot(room),
+      players: lobbySnapshot(room)
   });
   broadcast(room, {
     t: 'lobby_state',
-    players: lobbySnapshot(room),
+    players: lobbySnapshot(room)
   });
+
+  return {
+    player,
+    room
+  };
+}
+
+
+function doReady(player: Player, room: Room): void {
+      //   'ready'       -> toggle ready, broadcast lobby_state
+  updatePlayerReady(room, player.id, true);
+  broadcast(room, {
+    t: 'lobby_state',
+    players: lobbySnapshot(room)
+  });
+  
 }
