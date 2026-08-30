@@ -3,9 +3,9 @@ import { WebSocketServer, WebSocket } from 'ws';
 import { clientMessageSchema, envelopeSchema, joinSchema } from './schema.js';
 import type { ClientMessage, ErrorResponse, JoinMessage, ReadyMessage } from './schema.js';
 import { addPlayer, broadcast, checkLobbyReady, createRoom, getRoom, lobbySnapshot, removePlayer, sendTo, updatePlayerReady } from './rooms.js';
-import { Player, Room, Vec3 } from './interface.js';
+import { GameState, Player, Room, Vec3 } from './interface.js';
 import { COURSE, COURSE_ID } from './course.js';
-import { updateBallState } from './player.js';
+import { canShoot, recordStroke, updateBallState } from './player.js';
 
 const PORT = parseInt(process.env['PORT'] ?? '8080', 10);
 const IS_PRODUCTION = process.env['NODE_ENV'] === 'production';
@@ -139,12 +139,12 @@ wss.on('connection', (ws: WebSocket) => {
     //   DONE 'join'        -> create/join room, assign player id + colour, broadcast lobby_state
     //   DONE 'ready'       -> toggle ready, broadcast lobby_state
     //   DONE 'start_match' -> host only, transition LOBBY -> COUNTDOWN
-    //   'shot'        -> validate (rate limit 250ms, atRest gate, HOLE_ACTIVE only),
+    //   DONE 'shot'        -> validate (rate limit 250ms, atRest gate, HOLE_ACTIVE only),
     //                    increment stroke count, broadcast stroke_update
     //   DONE 'ball_state'  -> rebroadcast as part of snapshot (15Hz while balls moving)
     //   'holed'       -> validate position against cup, lock score, check if hole done
     //   'oob'         -> add penalty stroke, broadcast stroke_update
-    //   'ping'        -> reply with pong
+    //   DONE 'ping'        -> reply with pong
     //
     // TODO: server validation:
     //   - shot rate limit (min 250ms between shots per player)
@@ -181,9 +181,24 @@ wss.on('connection', (ws: WebSocket) => {
       case 'ball_state': {
         const joined = requireJoined(ws, currentPlayer, currentRoom);
         if (!joined) break;
-        //update the velocity, pos and atRest
         const res = result.data;
-        doUpdateBallState(joined.player, res.pos, res.vel, res.atRest);
+        doUpdateBallState(joined.room, joined.player, res.pos, res.vel, res.atRest);
+        break;
+      }
+      
+      case 'shot': {
+        const joined = requireJoined(ws, currentPlayer, currentRoom);
+        if (!joined) break;
+        // shot and direction are unused
+        doShot(ws, joined.player, joined.room);
+        break;
+      }
+
+      case 'ping': {
+        sendRaw(ws, {
+          t: 'pong',
+          ts: result.data.ts
+        });
         break;
       }
 
@@ -235,6 +250,12 @@ server.listen(PORT, HOST, () => {
   });
 });
 
+// Helper functions:
+
+function sendRaw(ws: WebSocket, msg: unknown): void {
+  if (ws.readyState === ws.OPEN) ws.send(JSON.stringify(msg));
+}
+
 function requireJoined(
   ws: WebSocket,
   player: Player | null,
@@ -246,6 +267,8 @@ function requireJoined(
   }
   return { player, room };
 }
+
+// Wrapper functions:
 
 function doJoin(ws: WebSocket, data: JoinMessage): { player: Player, room: Room } | null {
   const room = data.code ? getRoom(data.code) : createRoom();
@@ -303,6 +326,27 @@ function doStartMatch(player: Player, room: Room): void {
 
 }
 
-function doUpdateBallState(player: Player, pos: Vec3, vel: Vec3, atRest: boolean): void {
-  updateBallState(player, pos, vel, atRest);
+function doUpdateBallState(room: Room, player: Player, pos: Vec3, vel: Vec3, atRest: boolean): void {
+  if (room.state === GameState.HOLE_ACTIVE) updateBallState(player, pos, vel, atRest);
+}
+
+function doShot(ws: WebSocket, player: Player, room: Room): void {
+  // check shot rate limit
+  const check = canShoot(player, room);
+    if (!check.ok) {
+      sendError(ws, check.code, check.message);
+      return;
+    }
+
+  // increment stroke count
+  const strokes = recordStroke(player);
+
+  // broadcast stroke update
+  broadcast(room, {
+    t: 'stroke_update',
+    playerId: player.id,
+    holeIndex: room.currentHoleIndex,
+    strokes: strokes,
+  });
+
 }
