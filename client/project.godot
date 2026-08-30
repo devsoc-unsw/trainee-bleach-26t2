@@ -10,13 +10,34 @@ config_version=5
 
 [application]
 
-config/name="New Game Project"
-config/features=PackedStringArray("4.6", "Forward Plus")
+config/name="unsw_putt_party"
+run/main_scene="uid://fhs3ei8nl5oh"
+config/features=PackedStringArray("4.7", "Forward Plus")
 config/icon="res://icon.svg"
+
+[display]
+
+window/stretch/mode="canvas_items"
+window/stretch/aspect="expand"
+
+[dotnet]
+
+project/assembly_name="unsw_putt_party"
+
+[input_devices]
+
+pointing/emulate_mouse_from_touch=false
+
+[layer_names]
+
+3d_physics/layer_1="Ground"
+3d_physics/layer_2="Walls"
+3d_physics/layer_3="Ball"
 
 [physics]
 
 3d/physics_engine="Jolt Physics"
+3d/default_gravity=20.0
 
 [rendering]
 
