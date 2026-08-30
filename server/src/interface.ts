@@ -30,7 +30,7 @@ export interface Player {
   holeResults: HoleResult[];
 }
 
-export interface HoleDetails {
+export interface HoleConfig {
   index: number;
   par: number;
   spawn: Vec3;
@@ -49,7 +49,7 @@ export interface Room {
   players: Map<string, Player>;
   hostId: string | null;
   state: GameState;
-  holes: HoleDetails[];
+  holes: HoleConfig[];
   currentHoleIndex: number;
   createdAt: number;
   lastModified: number;

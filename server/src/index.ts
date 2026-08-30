@@ -57,11 +57,11 @@ const wss = new WebSocketServer({
 //   - idle room timeout
 //
 // TODO: Room type needs:
-//   - players map, host tracking
-//   - game state machine: LOBBY -> COUNTDOWN -> HOLE_ACTIVE -> HOLE_SUMMARY -> MATCH_END
+//   - players map, host tracking [done]
+//   - game state machine: LOBBY -> COUNTDOWN -> HOLE_ACTIVE -> HOLE_SUMMARY -> MATCH_END [done]
 //   - per-hole timer (90s)
-//   - stroke counts (server-authoritative)
-//   - hole config (par, spawn position, cup position)
+//   - stroke counts (server-authoritative) [done; per player]
+//   - hole config (par, spawn position, cup position) [done]
 
 let connectionCounter = 0;
 

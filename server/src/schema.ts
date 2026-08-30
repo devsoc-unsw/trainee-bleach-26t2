@@ -66,7 +66,7 @@ const placingSchema = z
   place: z.number().int().min(1),
 });
 
-const holeDetailSchema = z.object({
+const holeConfigSchema = z.object({
   index: z.number(),
   par: z.number().int().min(0),
   name: z.string(),
@@ -177,7 +177,7 @@ export const matchStartSchema = z
 .object({
   t: z.literal('match_start'),
   courseId: z.string(),
-  holes: z.array(holeDetailSchema),
+  holes: z.array(holeConfigSchema),
 });
 export type MatchStartMessage = z.infer<typeof matchStartSchema>;
 
