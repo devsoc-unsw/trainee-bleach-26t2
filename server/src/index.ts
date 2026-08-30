@@ -1,8 +1,8 @@
 import http from 'node:http';
 import { WebSocketServer, WebSocket } from 'ws';
-import { clientMessageSchema, envelopeSchema, joinSchema } from './schema.js';
-import type { ClientMessage, ErrorResponse, JoinMessage, ReadyMessage } from './schema.js';
-import { addPlayer, broadcast, checkLobbyReady, createRoom, getRoom, lobbySnapshot, removePlayer, sendTo, updatePlayerReady } from './rooms.js';
+import { clientMessageSchema } from './schema.js';
+import type { ErrorResponse, JoinMessage } from './schema.js';
+import { addPlayer, broadcast, checkLobbyReady, createRoom, getRoom, lobbySnapshot, removePlayer, sendTo, updatePlayerReady, updateRoomLastModified } from './rooms.js';
 import { GameState, Player, Room, Vec3 } from './interface.js';
 import { COURSE, COURSE_ID, getHole } from './course.js';
 import { canShoot, markHoled, recordStroke, updateBallState } from './player.js';
@@ -338,7 +338,10 @@ function doStartMatch(player: Player, room: Room): void {
 }
 
 function doUpdateBallState(room: Room, player: Player, pos: Vec3, vel: Vec3, atRest: boolean): void {
-  if (room.state === GameState.HOLE_ACTIVE) updateBallState(player, pos, vel, atRest);
+  if (room.state === GameState.HOLE_ACTIVE) {
+    updateBallState(player, pos, vel, atRest);
+    updateRoomLastModified(room);
+  };
 }
 
 function doShot(ws: WebSocket, player: Player, room: Room): void {
@@ -349,17 +352,14 @@ function doShot(ws: WebSocket, player: Player, room: Room): void {
       return;
     }
 
-  // increment stroke count
   const strokes = recordStroke(player);
-
-  // broadcast stroke update
+  updateRoomLastModified(room);
   broadcast(room, {
     t: 'stroke_update',
     playerId: player.id,
     holeIndex: room.currentHoleIndex,
     strokes: strokes,
   });
-
 }
 
 function doHoled(ws: WebSocket, player: Player, room: Room, position: Vec3): void {
@@ -380,6 +380,7 @@ function doHoled(ws: WebSocket, player: Player, room: Room, position: Vec3): voi
   }
 
   markHoled(player);
+  updateRoomLastModified(room);
   broadcast(room, {
     t: 'stroke_update',
     playerId: player.id,

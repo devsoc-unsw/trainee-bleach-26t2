@@ -21,9 +21,9 @@ export function startCountdown(room: Room, holeIndex: number) {
     room.state = GameState.HOLE_ACTIVE;
     broadcast(room, {
       t: 'hole_start',
-      hole_index: holeIndex,
+      holeIndex: holeIndex,
       par: hole.par,
-      timerMs: 67, // still unimplemented
+      timerMs: 0, // still unimplemented
       spawn: hole.spawn,
     });
   }, COUNTDOWN_MS);
@@ -75,6 +75,8 @@ export function handleHoledBallAftermath(room: Room): void {
 
   const finishedHoleIndex = room.currentHoleIndex;
   const results = finaliseHole(room, finishedHoleIndex);
+  if (!results) return;
+
   broadcast(room, { t: 'hole_end', holeIndex: finishedHoleIndex, results });
 
   room.currentHoleIndex += 1;

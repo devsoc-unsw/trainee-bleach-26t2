@@ -21,7 +21,6 @@ export function createRoom(): Room {
     players: new Map(),
     hostId: null,
     state: GameState.LOBBY,
-    holes: [],
     currentHoleIndex: 0,
     createdAt: Date.now(),
     lastModified: Date.now(),

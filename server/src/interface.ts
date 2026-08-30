@@ -52,7 +52,6 @@ export interface Room {
   players: Map<string, Player>;
   hostId: string | null;
   state: GameState;
-  holes: HoleConfig[];
   currentHoleIndex: number;
   createdAt: number;
   lastModified: number;
