@@ -8,11 +8,7 @@ export enum GameState {
   MATCH_END = 'MATCH_END',
 }
 
-export interface Vec3 {
-  x: number;
-  y: number;
-  z: number;
-}
+type Vec3 = [number, number, number]
 
 export interface Player {
   id: string;
@@ -26,6 +22,7 @@ export interface Player {
   vel: Vec3;
   atRest: boolean;
 
+  // curr hole stat tracking
   strokes: number;
   holedThisHole: boolean;
   lastShotAt: number;
@@ -38,10 +35,11 @@ export interface HoleDetails {
   par: number;
   spawn: Vec3;
   cup: Vec3;
+  cupTolerance: number;
 }
 
 export interface HoleResult {
-  hole_index: number;
+  holeIndex: number;
   strokes: number;
   par: number;
 }

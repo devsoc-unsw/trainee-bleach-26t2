@@ -36,11 +36,9 @@ export function deleteRoom(code: string): void {
 // need to call this periodically
 export function deleteIdleRoom(): void {
   const now = Date.now();
-  for (const roomCode in rooms.keys) {
-    let currRoom = rooms.get(roomCode);
-    if (!currRoom) return;
-    if (now - currRoom.lastModified >= TIMEOUT_MS) {
-      deleteRoom(roomCode);
+  for (const [code, room] of rooms) {
+    if (now - room.lastModified >= TIMEOUT_MS) {
+      deleteRoom(code);
     }
   }
 }
@@ -56,8 +54,8 @@ export function addPlayer(room: Room, ws: WebSocket, name: string): Player {
     name: name,
     ready: false,
     isHost: room.players.size === 0,
-    pos: { x: 0, y: 0, z: 0 },
-    vel: { x: 0, y: 0, z: 0 },
+    pos: [0, 0, 0],
+    vel: [0, 0, 0],
     atRest: true,
     strokes: 0,
     holedThisHole: false,
@@ -81,24 +79,29 @@ export function removePlayer(room: Room, playerId: string): void {
   // reassign host if the host left and players remain
   if (room.hostId === playerId) {
     const next = room.players.values().next().value as Player | undefined;
-
     room.hostId = null;
     if (next) {
         room.hostId = next.id;
         next.isHost = true;
     }
   }
-
   updateRoomLastModified(room);
-  
   if (room.players.size === 0) {
     deleteRoom(room.code);
   }
 }
 
-export function updatePlayerScore(room: Room, playerId: string, holeIndex: number) {
-  // find player from rooms
-  // add 1 to current hole score
+export function updatePlayerScore(room: Room, playerId: string) {
+  const player = room.players.get(playerId);
+  if (!player) {
+    return null;
+  }
+
+  player.strokes += 1;
+  player.lastShotAt = Date.now();
+  updateRoomLastModified(room);
+
+  return player.strokes;
 }
 
 
