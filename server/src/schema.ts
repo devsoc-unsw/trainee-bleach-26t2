@@ -15,8 +15,6 @@ export interface ErrorResponse {
 }
 
 // HELPER SCHEMAS:
-
-
 const vec2Schema = z.tuple([
   z.number(),
   z.number()
@@ -155,14 +153,14 @@ export type ClientMessage = z.infer<typeof clientMessageSchema>;
 
 // TODO: add per-message schemas for server -> client:
 
-export const joinedSchema = z
+export const playerJoinedSchema = z
 .object({
   t: z.literal('joined'),
   playerId: z.string(),
   code: z.string(),
   players: z.array(lobbyPlayerSchema),
 });
-export type JoinedMessage = z.infer<typeof joinedSchema>;
+export type PlayerJoinedMessage = z.infer<typeof playerJoinedSchema>;
 
 
 export const lobbyStateSchema = z
@@ -259,7 +257,7 @@ export const pongSchema = z
 export type PongMessage = z.infer<typeof pongSchema>;
 
 export const serverMessageSchema = z.discriminatedUnion('t', [
-  joinedSchema,
+  playerJoinedSchema,
   lobbyStateSchema,
   playerLeftSchema,
   matchStartSchema,

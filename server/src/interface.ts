@@ -14,6 +14,7 @@ export interface Player {
   id: string;
   ws: WebSocket;
   name: string;
+  colour: string;
   ready: boolean;
   isHost: boolean;
 

@@ -79,7 +79,6 @@ export function removePlayer(room: Room, playerId: string): void {
   // reassign host if the host left and players remain
   if (room.hostId === playerId) {
     const next = room.players.values().next().value as Player | undefined;
-    room.hostId = null;
     if (next) {
         room.hostId = next.id;
         next.isHost = true;
@@ -145,6 +144,7 @@ export function lobbySnapshot(room: Room) {
   return [...room.players.values()].map((p) => ({
     player_id: p.id,
     name: p.name,
+    colour: p.colour,
     ready: p.ready,
   }));
 }

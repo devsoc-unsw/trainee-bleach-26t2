@@ -1,7 +1,8 @@
 import http from 'node:http';
 import { WebSocketServer, WebSocket } from 'ws';
-import { envelopeSchema } from './schema.js';
-import type { ErrorResponse } from './schema.js';
+import { clientMessageSchema, envelopeSchema, joinSchema } from './schema.js';
+import type { ClientMessage, ErrorResponse, JoinMessage } from './schema.js';
+import { addPlayer, broadcast, createRoom, getRoom, lobbySnapshot, sendTo } from './rooms.js';
 
 const PORT = parseInt(process.env['PORT'] ?? '8080', 10);
 const IS_PRODUCTION = process.env['NODE_ENV'] === 'production';
@@ -108,7 +109,7 @@ wss.on('connection', (ws: WebSocket) => {
       return;
     }
 
-    const result = envelopeSchema.safeParse(parsed);
+    const result = clientMessageSchema.safeParse(parsed);
 
     if (!result.success) {
       const issues = result.error.issues.map((i) => i.message).join('; ');
@@ -146,6 +147,13 @@ wss.on('connection', (ws: WebSocket) => {
     //   - holed position must be within tolerance of cup position
     //   - positions outside per-hole bounding box get ignored
     //   - par+3 cap: end hole for player at par+3 strokes
+
+    // result is an envelopeSchema
+    switch (result.data.t) {
+      case 'join':
+        doJoin(ws, result.data);
+        break;
+    }
 
     
     ws.send(JSON.stringify(result.data));
@@ -187,3 +195,29 @@ server.listen(PORT, HOST, () => {
     env: IS_PRODUCTION ? 'production' : 'development',
   });
 });
+
+
+function doJoin(ws: WebSocket, data: JoinMessage) {
+  // if the room is non-existent, create the room
+  // code can be empty, this is when the room should be created
+  const room = data.code ? getRoom(data.code) : createRoom();
+  if (!room) {
+    sendError(ws, 'ROOM_NOT_FOUND', "No room with that code");
+    return
+  }
+  
+  // add player to room, join as host if room is empty
+  const player = addPlayer(room, ws, data.name);
+
+  sendTo(player, {
+      t: 'joined',
+      playerId: player.id,
+      code: room.code,
+      players: lobbySnapshot(room),
+  });
+
+  broadcast(room, {
+    t: 'lobby_state',
+    players: lobbySnapshot(room),
+  });
+}
