@@ -32,6 +32,7 @@ var _socket: WebSocketPeer = WebSocketPeer.new()
 var _connected: bool = false
 var _was_connected: bool = false
 var current_state: GameState = GameState.LOBBY
+var my_player_id: String = ""
 
 
 func _get_server_url() -> String:
@@ -97,6 +98,7 @@ func _route_message(data: Dictionary) -> void:
 	message_received.emit(data)
 	match data.get("t"):
 		"joined":
+			my_player_id = data["playerId"]
 			player_joined.emit(data)
 		"lobby_state":
 			lobby_updated.emit(data["players"])
@@ -175,14 +177,6 @@ func send_ball_state(pos: Vector3, vel: Vector3, at_rest: bool) -> void:
 func send_holed(pos: Vector3) -> void:
 	var msg:= { "t": "holed", "pos": [pos.x, pos.y, pos.z] }
 	_send(msg)
-
-#
-# TODO: add message routing in _process:
-#   parse data["t"] and emit the right signal with the payload
-#   e.g. "lobby_state" -> lobby_updated.emit(data["players"])
-#        "hole_start"  -> hole_started.emit(data["holeIndex"], data["par"], ...)
-#        "snapshot"    -> snapshot_received.emit(data["balls"])
-
 
 func _emit_status(status: String) -> void:
 	connection_status_changed.emit(status)

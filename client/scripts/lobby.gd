@@ -12,8 +12,6 @@ extends Control
 @onready var ready_button: Button = $LobbyPanel/ReadyButton
 @onready var start_button: Button = $LobbyPanel/StartButton
 
-var my_player_id: String = ""
-
 func _ready() -> void:
 	NetworkClient.connection_status_changed.connect(_on_status_changed)
 	NetworkClient.player_joined.connect(_on_player_joined)
@@ -39,13 +37,13 @@ func _on_join_pressed() -> void:
 	NetworkClient.send_join(player_name, code)
 
 func _on_player_joined(player: Dictionary) -> void:
-	my_player_id = player["playerId"]
 	room_code_label.text = "Room code: " + player["code"]
 	name_entry_panel.visible = false
 	lobby_panel.visible = true
 	_render_player_list(player["players"])
 
 func _on_lobby_updated(players: Array) -> void:
+	status_label.text = "Status: Connected"
 	_render_player_list(players)
 
 func _render_player_list(players: Array) -> void:
@@ -54,17 +52,18 @@ func _render_player_list(players: Array) -> void:
 
 	var am_host := false
 	for p in players:
-		if p["id"] == my_player_id and p["isHost"]:
+		if p["id"] == NetworkClient.my_player_id and p["isHost"]:
 			am_host = true
 		var row := Label.new()
 		var ready_marker := "✓" if p["ready"] else "…"
 		row.text = "%s  %s" % [p["name"], ready_marker]
+		row.add_theme_color_override("font_color", Color(p["colour"]))
 		player_list_container.add_child(row)
 
 	start_button.visible = am_host
 
 	for p in players:
-		if p["id"] == my_player_id:
+		if p["id"] == NetworkClient.my_player_id:
 			ready_button.text = "Unready" if p["ready"] else "Ready"
 			break
 

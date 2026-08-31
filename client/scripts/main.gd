@@ -1,31 +1,33 @@
-extends Control
+extends Node
 
-@onready var status_label: Label = $StatusLabel
+@onready var current_screen: Node = null
+
+const LOBBY_SCENE := preload("res://scenes/lobby.tscn")
+const COURSE_SCENE := preload("res://scenes/course.tscn")
 
 func _ready() -> void:
-	NetworkClient.connection_status_changed.connect(_on_status_changed)
-	NetworkClient.message_received.connect(_on_message_received)
-	status_label.text = "Initialising..."
+	NetworkClient.state_changed.connect(_on_state_changed)
+	_swap_screen(LOBBY_SCENE)
 
 
-func _on_status_changed(status: String) -> void:
-	status_label.text = "Status: " + status
-	if status == "Connected":
-		NetworkClient.send_join("some name")
-		NetworkClient.send_ready()
-		NetworkClient.send_start_match()
+func _on_state_changed(new_state: NetworkClient.GameState) -> void:
+	match new_state:
+		NetworkClient.GameState.LOBBY, NetworkClient.GameState.COUNTDOWN:
+			if not (current_screen and current_screen.scene_file_path == LOBBY_SCENE.resource_path):
+				_swap_screen(LOBBY_SCENE)
+		NetworkClient.GameState.HOLE_ACTIVE, NetworkClient.GameState.HOLE_SUMMARY:
+			if not (current_screen and current_screen.scene_file_path == COURSE_SCENE.resource_path):
+				_swap_screen(COURSE_SCENE)
+			pass
+		NetworkClient.GameState.MATCH_END:
+			pass # TODO: swap to scoreboard.tscn
 
+func _swap_screen(scene: PackedScene) -> void:
+	if current_screen:
+		current_screen.queue_free()
+	current_screen = scene.instantiate()
+	add_child(current_screen)
 
-func _on_message_received(data: Dictionary) -> void:
-	var reply_text := JSON.stringify(data)
-	status_label.text = status_label.text + "\n\nServer echoed:\n" + reply_text
-
-
-func _input(event: InputEvent) -> void:
-	if event is InputEventMouseButton:
-		var mouse_event := event as InputEventMouseButton
-		if mouse_event.button_index == MOUSE_BUTTON_RIGHT:
-			get_viewport().set_input_as_handled()
 
 # TODO: replace this scene with actual game scenes:
 #   scenes/lobby.tscn       - name entry, room code, player list, start button

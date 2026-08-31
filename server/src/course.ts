@@ -7,7 +7,7 @@ export const COURSE: HoleConfig[] = [
     index: 0,
     par: 3,
     spawn: [0, 1, 0],
-    cup: [0, 0, 10],
+    cup: [0, 0.1, -63],
     cupTolerance: 0.5,
     name: 'Test Hole',
   },

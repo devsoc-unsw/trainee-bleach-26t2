@@ -363,8 +363,11 @@ function doHoled(ws: WebSocket, player: Player, room: Room, position: Vec3): voi
     return;
   }
 
-  if (distance(position, hole.cup) > hole.cupTolerance) {
-    sendError(ws, 'NOT_IN_CUP', 'Reported position is outside cup tolerance');
+  const dist = distance(position, hole.cup);
+  if (dist > hole.cupTolerance) {
+    sendError(ws, 'NOT_IN_CUP', 'Reported position is outside cup tolerance; Ball is at' + position + ' while cup is at ' + hole.cup + '. Distance is ' +
+      dist + ' while tolerance is ' + hole.cupTolerance
+    );
     return;
   }
 
