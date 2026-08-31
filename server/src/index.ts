@@ -2,7 +2,7 @@ import http from 'node:http';
 import { WebSocketServer, WebSocket } from 'ws';
 import { clientMessageSchema } from './schema.js';
 import type { ErrorResponse, JoinMessage } from './schema.js';
-import { addPlayer, broadcast, checkLobbyReady, createRoom, getRoom, lobbySnapshot, removePlayer, sendTo, updatePlayerReady, updateRoomLastModified } from './rooms.js';
+import { addPlayer, broadcast, checkLobbyReady, createRoom, getRoom, lobbySnapshot, removePlayer, sendTo, togglePlayerReady, updateRoomLastModified } from './rooms.js';
 import { GameState, Player, Room, Vec3 } from './interface.js';
 import { COURSE, COURSE_ID, getHole } from './course.js';
 import { canShoot, markHoled, recordStroke, updateBallState } from './player.js';
@@ -297,7 +297,7 @@ function doJoin(ws: WebSocket, data: JoinMessage): { player: Player, room: Room 
 }
 
 function doReady(player: Player, room: Room): void {
-  updatePlayerReady(room, player.id, true);
+  togglePlayerReady(room, player.id);
   broadcast(room, {
     t: 'lobby_state',
     players: lobbySnapshot(room)

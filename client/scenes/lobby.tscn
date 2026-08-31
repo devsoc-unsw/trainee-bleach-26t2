@@ -1,0 +1,85 @@
+[gd_scene format=3 uid="uid://d3x1wds437cg5"]
+
+[ext_resource type="Script" uid="uid://ble3fi7u1hq6" path="res://scripts/lobby.gd" id="1_o1atq"]
+
+[node name="Lobby" type="Control" unique_id=1156103082]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("1_o1atq")
+
+[node name="StatusLabel" type="Label" parent="." unique_id=1329451348]
+layout_mode = 0
+offset_right = 40.0
+offset_bottom = 23.0
+
+[node name="NameEntryPanel" type="VBoxContainer" parent="." unique_id=702980726]
+custom_minimum_size = Vector2(320, 260)
+layout_mode = 1
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -160.0
+offset_top = -130.0
+offset_right = 160.0
+offset_bottom = 130.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_constants/separation = 10
+
+[node name="NameLineEdit" type="LineEdit" parent="NameEntryPanel" unique_id=235977850]
+custom_minimum_size = Vector2(280, 40)
+layout_mode = 2
+size_flags_horizontal = 4
+size_flags_vertical = 0
+placeholder_text = "Name"
+
+[node name="CodeLineEdit" type="LineEdit" parent="NameEntryPanel" unique_id=92075666]
+custom_minimum_size = Vector2(280, 40)
+layout_mode = 2
+size_flags_horizontal = 4
+size_flags_vertical = 0
+placeholder_text = "Code"
+
+[node name="JoinButton" type="Button" parent="NameEntryPanel" unique_id=1167529282]
+custom_minimum_size = Vector2(280, 40)
+layout_mode = 2
+size_flags_horizontal = 4
+size_flags_vertical = 0
+text = "Join"
+
+[node name="LobbyPanel" type="VBoxContainer" parent="." unique_id=67570026]
+visible = false
+custom_minimum_size = Vector2(320, 260)
+layout_mode = 1
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -160.0
+offset_top = -130.0
+offset_right = 160.0
+offset_bottom = 130.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_constants/separation = 10
+
+[node name="ReadyButton" type="Button" parent="LobbyPanel" unique_id=235425537]
+custom_minimum_size = Vector2(280, 40)
+layout_mode = 2
+
+[node name="StartButton" type="Button" parent="LobbyPanel" unique_id=1980048867]
+custom_minimum_size = Vector2(280, 40)
+layout_mode = 2
+
+[node name="RoomCodeLabel" type="Label" parent="LobbyPanel" unique_id=518572218]
+layout_mode = 2
+
+[node name="PlayerListContainer" type="VBoxContainer" parent="LobbyPanel" unique_id=854527753]
+layout_mode = 2

@@ -31,6 +31,7 @@ const lobbyPlayerSchema = z
   id: z.string(),
   name: z.string(),
   colour: z.string(), // valid hex (?)
+  isHost: z.boolean(),
   ready: z.boolean(),
 });
 

@@ -52,11 +52,10 @@ export function checkLobbyReady(room: Room) {
   return [...room.players.values()].every((p) => p.ready);
 }
 
-export function updatePlayerReady(room: Room, playerId: string, ready: boolean): Player | null {
+export function togglePlayerReady(room: Room, playerId: string): Player | null {
   const player = room.players.get(playerId);
   if (!player) return null;
-
-  player.ready = ready;
+  player.ready = !player.ready;
   updateRoomLastModified(room);
   return player;
 }
@@ -157,6 +156,7 @@ export function lobbySnapshot(room: Room) {
     id: p.id,
     name: p.name,
     colour: p.colour,
+    isHost: p.isHost,
     ready: p.ready,
   }));
 }

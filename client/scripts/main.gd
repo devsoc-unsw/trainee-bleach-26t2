@@ -35,7 +35,7 @@ func _input(event: InputEvent) -> void:
 # TODO: scripts to create:
 #   scripts/ball.gd          - RigidBody3D, shot input, power-scaled inaccuracy (done)
 #   scripts/camera.gd        - orbit camera with SpringArm3D, free-look (done)
-#   scripts/ghost_ball.gd    - non-colliding visual for other players, interpolated
 #   scripts/shot_input.gd    - pull-back drag, power calc, arrow preview with jitter (done)
+#   scripts/ghost_ball.gd    - non-colliding visual for other players, interpolated
 #   scripts/hole_manager.gd  - loads hole scenes, handles OOB/water/cup areas
 #   scripts/hud.gd           - stroke counter, timer, toasts
