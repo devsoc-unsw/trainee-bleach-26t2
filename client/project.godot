@@ -11,7 +11,7 @@ config_version=5
 [application]
 
 config/name="unsw_putt_party"
-run/main_scene="uid://fhs3ei8nl5oh"
+run/main_scene="uid://b4mosfk8f7n60"
 config/features=PackedStringArray("4.7", "Forward Plus")
 config/icon="res://icon.svg"
 

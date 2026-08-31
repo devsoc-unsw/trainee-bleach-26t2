@@ -12,6 +12,7 @@ var last_safe_position: Vector3
 
 func _ready() -> void:
 	print("Ball is ready")
+	
 
 func hit(direction: Vector3, power: float) -> void:
 	if is_moving:

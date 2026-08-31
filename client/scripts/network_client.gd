@@ -2,17 +2,17 @@ extends Node
 
 signal connection_status_changed(status: String)
 signal message_received(data: Dictionary)
-
-# IN_PROGRESS: add signals for game events:
-#   player_joined(player: Dictionary)
-#   player_left(player_id: String)
-#   lobby_updated(players: Array)
-#   match_started(holes: Array)
-#   hole_started(hole_index: int, par: int, spawn: Vector3)
-#   snapshot_received(balls: Array)
-#   stroke_updated(player_id: String, strokes: int)
-#   hole_ended(results: Array)
-#   match_ended(placings: Array)
+signal state_changed(new_state: GameState)
+signal player_joined(player: Dictionary)
+signal player_left(player_id: String)
+signal lobby_updated(players: Array)
+signal match_started(course_id: String, holes: Array)
+signal hole_started(hole_index: int, par: int, timer_ms: float, spawn: Vector3)
+signal snapshot_received(tick: int, balls: Array)
+signal stroke_updated(player_id: String, hole_index: int, strokes: int)
+signal hole_ended(hole_index: int, results: Array)
+signal match_ended(placings: Array)
+signal server_error(code: String, message: String)
 
 
 
@@ -20,9 +20,19 @@ signal message_received(data: Dictionary)
 # Uses ws:// for localhost, wss:// for everything else.
 const SERVER_HOST: String = "localhost:8080"
 
+enum GameState {
+	LOBBY,
+	COUNTDOWN,
+	HOLE_ACTIVE,
+	HOLE_SUMMARY,
+	MATCH_END,
+}
+
 var _socket: WebSocketPeer = WebSocketPeer.new()
 var _connected: bool = false
 var _was_connected: bool = false
+var current_state: GameState = GameState.LOBBY
+
 
 func _get_server_url() -> String:
 	if SERVER_HOST.begins_with("localhost") or SERVER_HOST.begins_with("127.0.0.1"):
@@ -32,6 +42,8 @@ func _get_server_url() -> String:
 
 
 func _ready() -> void:
+	connection_status_changed.connect(func(status): print("[NetworkClient] ", status))
+	message_received.connect(func(data): print("[NetworkClient] received: ", data))
 	var url := _get_server_url()
 	_emit_status("Connecting to " + url + "...")
 
@@ -43,23 +55,21 @@ func _ready() -> void:
 
 func _process(_delta: float) -> void:
 	_socket.poll()
-
 	var state := _socket.get_ready_state()
-
 	match state:
 		WebSocketPeer.STATE_OPEN:
 			if not _connected:
 				_connected = true
 				_was_connected = true
 				_emit_status("Connected")
-				_send_test_message()
+				# _send_test_message()
 
 			while _socket.get_available_packet_count() > 0:
 				var packet := _socket.get_packet()
 				var text := packet.get_string_from_utf8()
 				var parsed: Variant = JSON.parse_string(text)
 				if parsed is Dictionary:
-					message_received.emit(parsed as Dictionary)
+					_route_message(parsed as Dictionary)
 				else:
 					push_warning("NetworkClient: received non-dictionary message")
 
@@ -79,9 +89,48 @@ func _process(_delta: float) -> void:
 			pass
 
 
-func _send_test_message() -> void:
-	var msg := JSON.stringify({ "t": "hello", "from": "godot" })
-	_socket.send_text(msg)
+#func _send_test_message() -> void:
+	#var msg := JSON.stringify({ "t": "hello", "from": "godot" })
+	#_socket.send_text(msg)
+	
+func _route_message(data: Dictionary) -> void:
+	message_received.emit(data)
+	match data.get("t"):
+		"joined":
+			player_joined.emit(data)
+		"lobby_state":
+			lobby_updated.emit(data["players"])
+		"match_start":
+			_set_state(GameState.COUNTDOWN)
+			match_started.emit(data["courseId"], data["holes"])
+		"hole_start":
+			_set_state(GameState.HOLE_ACTIVE)
+			var spawn_arr: Array = data["spawn"]
+			var spawn := Vector3(spawn_arr[0], spawn_arr[1], spawn_arr[2])
+			hole_started.emit(data["holeIndex"], data["par"], data["timerMs"], spawn)
+		"snapshot":
+			snapshot_received.emit(data["tick"], data["balls"])
+		"stroke_update":
+			stroke_updated.emit(data["playerId"], data["holeIndex"], data["strokes"])
+		"hole_end":
+			_set_state(GameState.HOLE_SUMMARY)
+			hole_ended.emit(data["holeIndex"], data["results"])
+		"match_end":
+			_set_state(GameState.MATCH_END)
+			match_ended.emit(data["placings"])
+		"player_left":
+			player_left.emit(data["playerId"])
+		"error":
+			server_error.emit(data["code"], data["message"])
+		_:
+			pass
+
+
+func _set_state(new_state: GameState) -> void:
+	if new_state == current_state:
+		return
+	current_state = new_state
+	state_changed.emit(new_state)
 
 
 func _send(msg: Dictionary) -> void:
@@ -89,7 +138,7 @@ func _send(msg: Dictionary) -> void:
 		return
 	_socket.send_text(JSON.stringify(msg))
 
-# IN_PROGRESS: add send methods:
+
 #   send_join(name: String, code: String) -> join or create room
 func send_join(player_name: String, code: String = "") -> void:
 	var msg:= { "t": "join", "name": player_name }

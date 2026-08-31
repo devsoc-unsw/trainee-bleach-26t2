@@ -203,7 +203,7 @@ export const strokeUpdateSchema = z
 .object({
   t: z.literal('stroke_update'),
   playerId: z.string(),
-  holeIndex: z.number(), // max 6 holes
+  holeIndex: z.number(), 
   strokes: z.number().int().min(0),
 });
 export type StrokeUpdateMessage = z.infer<typeof strokeUpdateSchema>;
