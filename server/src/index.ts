@@ -154,7 +154,6 @@ wss.on('connection', (ws: WebSocket) => {
     //   - positions outside per-hole bounding box get ignored
     //   - par+3 cap: end hole for player at par+3 strokes
 
-    // result is an envelopeSchema
     switch (result.data.t) {
       case 'join': {
         const joinResult = doJoin(ws, result.data);

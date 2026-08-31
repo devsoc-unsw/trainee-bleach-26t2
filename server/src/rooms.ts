@@ -112,6 +112,7 @@ export function removePlayer(room: Room, playerId: string): void {
     }
   }
   updateRoomLastModified(room);
+  // freeze ghost ball, dont wait on them for hole completion
   if (room.players.size === 0) {
     deleteRoom(room.code);
   }

@@ -1,8 +1,8 @@
-import { getHole } from "./course.js";
-import { GameState, HoleResult, Player, Room, Vec3 } from "./interface.js";
-import { updateRoomLastModified } from "./rooms.js";
+
+import { GameState, Player, Room, Vec3 } from "./interface.js";
 
 const SHOT_RATE_LIMIT_MS = 250;
+const MAX_SHOTS = 10;
 
 
 export function updateBallState(
@@ -32,7 +32,7 @@ export function canShoot(player: Player, room: Room): { ok: true } | { ok: false
 
 
 export function recordStroke(player: Player): number {
-  player.strokes += 1;
+  if (player.strokes < MAX_SHOTS) player.strokes += 1;
   player.lastShotAt = Date.now();
   player.atRest = false;
   return player.strokes;
