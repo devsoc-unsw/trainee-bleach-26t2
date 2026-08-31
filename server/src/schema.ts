@@ -124,11 +124,11 @@ export const holedSchema = z
 export type HoledMessage = z.infer<typeof holedSchema>;
 
 // oob
-export const oobSchema = z
-.object({
-  t: z.literal('oob'),
-});
-export type OobMessage = z.infer<typeof oobSchema>;
+// export const oobSchema = z
+// .object({
+//   t: z.literal('oob'),
+// });
+// export type OobMessage = z.infer<typeof oobSchema>;
 
 
 export const pingSchema = z.object({
@@ -145,7 +145,6 @@ export const clientMessageSchema = z.discriminatedUnion('t', [
   startMatchSchema,
   ballStateSchema,
   holedSchema,
-  oobSchema,
   pingSchema,
 ]);
 export type ClientMessage = z.infer<typeof clientMessageSchema>;

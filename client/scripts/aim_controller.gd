@@ -107,4 +107,4 @@ func _release_shot(end_screen: Vector2) -> void:
 	
 	ball.hit(direction, shot.power)
 	var dir_2d = Vector2(direction.x, direction.z)
-	
+	NetworkClient.send_shot(dir_2d, shot.power)

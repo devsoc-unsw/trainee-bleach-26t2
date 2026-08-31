@@ -83,14 +83,50 @@ func _send_test_message() -> void:
 	var msg := JSON.stringify({ "t": "hello", "from": "godot" })
 	_socket.send_text(msg)
 
+
+func _send(msg: Dictionary) -> void:
+	if _socket.get_ready_state() != WebSocketPeer.STATE_OPEN:
+		return
+	_socket.send_text(JSON.stringify(msg))
+
 # IN_PROGRESS: add send methods:
 #   send_join(name: String, code: String) -> join or create room
+func send_join(player_name: String, code: String = "") -> void:
+	var msg:= { "t": "join", "name": player_name }
+	if code != "":
+		msg["code"] = code
+	_send(msg)
+
 #   send_ready()
+func send_ready() -> void:
+	var msg:= { "t": "ready" }
+	_send(msg)
+
 #   send_start_match() -> host only
+func send_start_match() -> void:
+	var msg:= { "t": "start_match" }
+	_send(msg)
+
 #   send_shot(dir: Vector2, power: float)
+func send_shot(dir: Vector2, power: float) -> void:
+	var msg:= { "t": "shot", "dir": [dir.x, dir.y], "power": power }
+	_send(msg)
+
 #   send_ball_state(pos: Vector3, vel: Vector3, at_rest: bool) -> call at 15Hz while moving
+func send_ball_state(pos: Vector3, vel: Vector3, at_rest: bool) -> void:
+	var msg:= {
+		"t": "ball_state",
+		"pos": [pos.x, pos.y, pos.z],
+		"vel": [vel.x, vel.y, vel.z],
+		"atRest": at_rest
+	}
+	_send(msg)
+
 #   send_holed(pos: Vector3)
-#   send_oob()
+func send_holed(pos: Vector3) -> void:
+	var msg:= { "t": "holed", "pos": [pos.x, pos.y, pos.z] }
+	_send(msg)
+
 #
 # TODO: add message routing in _process:
 #   parse data["t"] and emit the right signal with the payload

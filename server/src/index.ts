@@ -136,17 +136,7 @@ wss.on('connection', (ws: WebSocket) => {
       type: result.data.t,
     });
 
-    // TODO: replace echo with message routing by result.data.t:
-    //   DONE 'join'        -> create/join room, assign player id + colour, broadcast lobby_state
-    //   DONE 'ready'       -> toggle ready, broadcast lobby_state
-    //   DONE 'start_match' -> host only, transition LOBBY -> COUNTDOWN
-    //   DONE 'shot'        -> validate (rate limit 250ms, atRest gate, HOLE_ACTIVE only),
-    //                    increment stroke count, broadcast stroke_update
-    //   DONE 'ball_state'  -> rebroadcast as part of snapshot (15Hz while balls moving)
-    //   DONE 'holed'       -> validate position against cup, lock score, check if hole done
-    //   DECIDED TO REMOVE 'oob'         -> add penalty stroke, broadcast stroke_update
-    //   DONE 'ping'        -> reply with pong
-    //
+
     // TODO: server validation:
     //   - shot rate limit (min 250ms between shots per player)
     //   - shot only accepted if client reported atRest and during HOLE_ACTIVE
