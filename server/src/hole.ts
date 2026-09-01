@@ -2,7 +2,7 @@ import { GameState, Player, Room, Vec3 } from './interface.js';
 import { COURSE, getHole } from './course.js';
 import { broadcast } from './rooms.js';
 
-const COUNTDOWN_MS = 3 * 1000;
+const COUNTDOWN_MS = 5 * 1000;
 
 interface HoleEndResult {
   playerId: string;
@@ -71,7 +71,7 @@ function computePlacings(room: Room): { playerId: string; total: number; place: 
   return placings;
 }
 
-export function handleHoledBallAftermath(room: Room): void {
+export function handleHoleTransition(room: Room): void {
 
   const finishedHoleIndex = room.currentHoleIndex;
   const results = finaliseHole(room, finishedHoleIndex);
@@ -87,4 +87,8 @@ export function handleHoledBallAftermath(room: Room): void {
   } else {
     startCountdown(room, room.currentHoleIndex);
   }
+}
+
+export function checkAllHoled(room: Room): void {
+    if ([...room.players.values()].every((p) => p.holedThisHole)) handleHoleTransition(room);
 }

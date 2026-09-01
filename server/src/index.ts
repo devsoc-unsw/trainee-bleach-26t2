@@ -6,7 +6,7 @@ import { addPlayer, broadcast, checkLobbyReady, createRoom, getRoom, lobbySnapsh
 import { GameState, Player, Room, Vec3 } from './interface.js';
 import { COURSE, COURSE_ID, getHole } from './course.js';
 import { canShoot, markHoled, recordStroke, updateBallState } from './player.js';
-import { distance, handleHoledBallAftermath, startCountdown } from './hole.js';
+import { checkAllHoled, distance, handleHoleTransition, startCountdown } from './hole.js';
 
 const PORT = parseInt(process.env['PORT'] ?? '8080', 10);
 const IS_PRODUCTION = process.env['NODE_ENV'] === 'production';
@@ -206,6 +206,7 @@ wss.on('connection', (ws: WebSocket) => {
   ws.on('close', (code: number, reason: Buffer) => {
     if (currentPlayer && currentRoom) {
       removePlayer(currentRoom, currentPlayer.id);
+      if (currentRoom.state == GameState.HOLE_ACTIVE) checkAllHoled(currentRoom);
       broadcast(currentRoom, {
         t: 'player_left',
         playerId: currentPlayer.id
@@ -380,5 +381,5 @@ function doHoled(ws: WebSocket, player: Player, room: Room, position: Vec3): voi
     strokes: player.strokes,
   });
 
-  if ([...room.players.values()].every((p) => p.holedThisHole)) handleHoledBallAftermath(room);
+  checkAllHoled(room); // bug: if the last player to hole it leaves, stuck on this state; have to check if everybody holed the current hole intermittently
 }

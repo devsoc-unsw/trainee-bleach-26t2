@@ -4,6 +4,7 @@ extends Node
 
 const LOBBY_SCENE := preload("res://scenes/lobby.tscn")
 const COURSE_SCENE := preload("res://scenes/course.tscn")
+const SCOREBOARD_SCENE := preload("res://scenes/scoreboard.tscn")
 
 func _ready() -> void:
 	NetworkClient.state_changed.connect(_on_state_changed)
@@ -18,9 +19,11 @@ func _on_state_changed(new_state: NetworkClient.GameState) -> void:
 		NetworkClient.GameState.HOLE_ACTIVE, NetworkClient.GameState.HOLE_SUMMARY:
 			if not (current_screen and current_screen.scene_file_path == COURSE_SCENE.resource_path):
 				_swap_screen(COURSE_SCENE)
-			pass
 		NetworkClient.GameState.MATCH_END:
-			pass # TODO: swap to scoreboard.tscn
+			if not (current_screen and current_screen.scene_file_path == SCOREBOARD_SCENE.resource_path):
+				_swap_screen(SCOREBOARD_SCENE)
+			# pass # TODO: swap to scoreboard.tscn
+			
 
 func _swap_screen(scene: PackedScene) -> void:
 	if current_screen:

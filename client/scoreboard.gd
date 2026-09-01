@@ -11,5 +11,6 @@ func _on_match_ended(placings: Array) -> void:
 
 	for p in placings:
 		var row := Label.new()
-		row.text = "#%d  %s  (%d)" % [p["place"], p["playerId"], p["total"]]
+		row.text = "#%d  %s  (%d)" % [p["place"], p["name"], p["total"]]
+		row.add_theme_color_override("font_color", Color(p["colour"]))
 		placings_container.add_child(row)
