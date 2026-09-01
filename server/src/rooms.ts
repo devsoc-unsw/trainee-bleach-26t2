@@ -22,6 +22,7 @@ export function createRoom(): Room {
     hostId: null,
     state: GameState.LOBBY,
     currentHoleIndex: 0,
+    holeTimerHandle: null,
     createdAt: Date.now(),
     lastModified: Date.now(),
     availableColours: [...PLAYER_COLOURS],

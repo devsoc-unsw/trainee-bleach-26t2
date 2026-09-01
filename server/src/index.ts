@@ -324,7 +324,6 @@ function doStartMatch(player: Player, room: Room): void {
   });
   
   startCountdown(room, 0);
-
 }
 
 function doUpdateBallState(room: Room, player: Player, pos: Vec3, vel: Vec3, atRest: boolean): void {
@@ -381,5 +380,5 @@ function doHoled(ws: WebSocket, player: Player, room: Room, position: Vec3): voi
     strokes: player.strokes,
   });
 
-  checkAllHoled(room); // bug: if the last player to hole it leaves, stuck on this state; have to check if everybody holed the current hole intermittently
+  checkAllHoled(room); // (partially fixed) bug: if the last player to hole it leaves, stuck on this state; have to check if everybody holed the current hole intermittently
 }

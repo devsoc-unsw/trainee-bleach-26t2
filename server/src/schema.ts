@@ -47,6 +47,8 @@ const snapshotBallSchema = z
 const holeResultSchema = z
 .object({
   playerId: z.string(),
+  name: z.string(),
+  colour: z.string(),
   strokes: z.number().int().min(0),
   relToPar: z.number().int(),
 });

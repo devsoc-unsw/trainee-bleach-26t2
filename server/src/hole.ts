@@ -3,9 +3,14 @@ import { COURSE, getHole } from './course.js';
 import { broadcast } from './rooms.js';
 
 const COUNTDOWN_MS = 5 * 1000;
+const HOLE_TIMER_MS = 90 * 1000;
+const HOLE_SUMMARY_PAUSE_MS = 5 * 1000;
+const MAX_STROKES = 10;
 
 interface HoleEndResult {
   playerId: string;
+  name: string;
+  colour: string;
   strokes: number;
   relToPar: number;
 }
@@ -23,12 +28,22 @@ export function startCountdown(room: Room, holeIndex: number) {
       t: 'hole_start',
       holeIndex: holeIndex,
       par: hole.par,
-      timerMs: 0, // still unimplemented
+      timerMs: HOLE_TIMER_MS, // still unimplemented
       spawn: hole.spawn,
     });
+
+    startHoleTimer(room, holeIndex, HOLE_TIMER_MS);
   }, COUNTDOWN_MS);
 }
 
+
+export function startHoleTimer(room: Room, holeIndex: number, timerMs: number): void {
+  if (room.holeTimerHandle) clearTimeout(room.holeTimerHandle);
+  room.holeTimerHandle = setTimeout(() => {
+    if (room.currentHoleIndex !== holeIndex) return; // stale timer, already advanced
+    handleHoleTransition(room);
+  }, timerMs);
+}
 
 export function distance(a: Vec3, b: Vec3): number {
   const dx = a[0] - b[0], dy = a[1] - b[1], dz = a[2] - b[2];
@@ -41,8 +56,9 @@ function finaliseHole(room: Room, holeIndex: number): HoleEndResult[] | null {
 
   const results: HoleEndResult[] = [];
   for (const p of room.players.values()) {
-    p.holeResults.push({ holeIndex, strokes: p.strokes, par: hole.par, completed: true });
-    results.push({ playerId: p.id, strokes: p.strokes, relToPar: p.strokes - hole.par });
+    if (!p.holedThisHole) p.strokes = Math.max(p.strokes, MAX_STROKES);
+    p.holeResults.push({ holeIndex, strokes: p.strokes, par: hole.par, completed: p.holedThisHole });
+    results.push({ playerId: p.id, name: p.name, colour: p.colour, strokes: p.strokes, relToPar: p.strokes - hole.par });
     p.strokes = 0;
     p.holedThisHole = false;
   }
@@ -73,22 +89,33 @@ function computePlacings(room: Room): { playerId: string; total: number; place: 
 
 export function handleHoleTransition(room: Room): void {
 
+  if (room.holeTimerHandle) {
+    clearTimeout(room.holeTimerHandle);
+    room.holeTimerHandle = null;
+  }
   const finishedHoleIndex = room.currentHoleIndex;
   const results = finaliseHole(room, finishedHoleIndex);
   if (!results) return;
 
-  broadcast(room, { t: 'hole_end', holeIndex: finishedHoleIndex, results });
+  broadcast(room, { t: 'hole_end', holeIndex: finishedHoleIndex, results }); // from now, show the scoreboard
 
-  room.currentHoleIndex += 1;
+  
+  // pause for 8 or so seconds here: should call a function that displays the scoreboard for this current hole
+  setTimeout(() => {
+    if (room.currentHoleIndex !== finishedHoleIndex) return; // safety check
+      
+    room.currentHoleIndex += 1;
 
-  if (room.currentHoleIndex >= COURSE.length) {
-    room.state = GameState.MATCH_END;
-    broadcast(room, { t: 'match_end', placings: computePlacings(room) });
-  } else {
-    startCountdown(room, room.currentHoleIndex);
-  }
+    if (room.currentHoleIndex >= COURSE.length) {
+      room.state = GameState.MATCH_END;
+      broadcast(room, { t: 'match_end', placings: computePlacings(room) });
+    } else {
+      startCountdown(room, room.currentHoleIndex);
+    }
+  }, HOLE_SUMMARY_PAUSE_MS);
 }
 
 export function checkAllHoled(room: Room): void {
+    if (room.players.size == 0) return;
     if ([...room.players.values()].every((p) => p.holedThisHole)) handleHoleTransition(room);
 }

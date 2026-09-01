@@ -53,6 +53,7 @@ export interface Room {
   hostId: string | null;
   state: GameState;
   currentHoleIndex: number;
+  holeTimerHandle: NodeJS.Timeout | null;
   createdAt: number;
   lastModified: number;
   availableColours: string[];
