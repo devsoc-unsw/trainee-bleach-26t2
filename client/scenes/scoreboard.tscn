@@ -1,0 +1,20 @@
+[gd_scene format=3 uid="uid://c3inlmajjl8fi"]
+
+[ext_resource type="Script" uid="uid://bxpvydoblu8tq" path="res://scoreboard.gd" id="1_5p55f"]
+
+[node name="Control" type="Control" unique_id=2046631809]
+layout_mode = 3
+anchors_preset = 0
+offset_right = 40.0
+offset_bottom = 40.0
+script = ExtResource("1_5p55f")
+
+[node name="TitleLabel" type="Label" parent="." unique_id=1533291781]
+layout_mode = 0
+offset_right = 40.0
+offset_bottom = 23.0
+
+[node name="PlacingsContainer" type="VBoxContainer" parent="." unique_id=750859115]
+layout_mode = 0
+offset_right = 40.0
+offset_bottom = 40.0

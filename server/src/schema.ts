@@ -61,6 +61,8 @@ const ongoingResultSchema = z
 const placingSchema = z
 .object({
   playerId: z.string(),
+  name: z.string(),
+  colour: z.string(),
   total: z.number().int().min(0),
   place: z.number().int().min(1),
 });

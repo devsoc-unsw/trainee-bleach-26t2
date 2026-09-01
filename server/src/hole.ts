@@ -52,12 +52,12 @@ function finaliseHole(room: Room, holeIndex: number): HoleEndResult[] | null {
 function computePlacings(room: Room): { playerId: string; total: number; place: number }[] {
   const totals = [...room.players.values()].map((p) => {
     const playerTotal = p.holeResults.reduce((sum, r) => sum + r.strokes, 0);
-    return { playerId: p.id, total: playerTotal };
+    return { playerId: p.id, name: p.name, colour: p.colour, total: playerTotal };
   });
 
   totals.sort((a, b) => a.total - b.total);
 
-  const placings: { playerId: string; total: number; place: number }[] = [];
+  const placings: { playerId: string; name: string, colour: string, total: number; place: number }[] = [];
   let place = 1;
   let prevTotal: number | null = null;
 

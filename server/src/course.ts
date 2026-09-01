@@ -11,7 +11,14 @@ export const COURSE: HoleConfig[] = [
     cupTolerance: 0.5,
     name: 'Test Hole',
   },
-
+  {
+    index: 0,
+    par: 3,
+    spawn: [0, 1, 0],
+    cup: [0, 0.1, -63],
+    cupTolerance: 0.5,
+    name: '2nd Test Hole',
+  },
 ];
 
 export function getHole(index: number): HoleConfig | undefined {
