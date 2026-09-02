@@ -298,6 +298,11 @@ function doJoin(ws: WebSocket, data: JoinMessage): { player: Player, room: Room 
 }
 
 function doReady(player: Player, room: Room): void {
+  if (!player.isHost && room.state !== GameState.LOBBY) {
+    sendError(player.ws, 'NOT_IN_LOBBY', 'Cannot change ready state after the match has started');
+    return;
+  }
+
   togglePlayerReady(room, player.id);
   broadcast(room, {
     t: 'lobby_state',
@@ -307,8 +312,13 @@ function doReady(player: Player, room: Room): void {
 }
 
 function doStartMatch(player: Player, room: Room): void {
-  if (player.id !== room.hostId) {
+  if (!player.isHost) {
     sendError(player.ws, 'NOT_HOST', 'Only the host can start the match');
+    return;
+  }
+
+  if (room.state !== GameState.LOBBY) {
+    sendError(player.ws, 'ALREADY_STARTED', 'Match has already started');
     return;
   }
 
@@ -365,9 +375,7 @@ function doHoled(ws: WebSocket, player: Player, room: Room, position: Vec3): voi
 
   const dist = distance(position, hole.cup);
   if (dist > hole.cupTolerance) {
-    sendError(ws, 'NOT_IN_CUP', 'Reported position is outside cup tolerance; Ball is at' + position + ' while cup is at ' + hole.cup + '. Distance is ' +
-      dist + ' while tolerance is ' + hole.cupTolerance
-    );
+    sendError(ws, 'NOT_IN_CUP', 'Reported position is outside cup tolerance');
     return;
   }
 
@@ -380,5 +388,5 @@ function doHoled(ws: WebSocket, player: Player, room: Room, position: Vec3): voi
     strokes: player.strokes,
   });
 
-  checkAllHoled(room); // (partially fixed) bug: if the last player to hole it leaves, stuck on this state; have to check if everybody holed the current hole intermittently
+  checkAllHoled(room);
 }

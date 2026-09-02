@@ -1,6 +1,7 @@
 [gd_scene format=3 uid="uid://d3x1wds437cg5"]
 
 [ext_resource type="Script" uid="uid://ble3fi7u1hq6" path="res://scripts/lobby.gd" id="1_o1atq"]
+[ext_resource type="Texture2D" uid="uid://8istg4dn1p0l" path="res://unswputtparty_loading.png" id="2_5gu6x"]
 
 [node name="Lobby" type="Control" unique_id=1156103082]
 layout_mode = 3
@@ -83,3 +84,32 @@ layout_mode = 2
 
 [node name="PlayerListContainer" type="VBoxContainer" parent="LobbyPanel" unique_id=854527753]
 layout_mode = 2
+
+[node name="CountdownPanel" type="Control" parent="." unique_id=1557521428]
+visible = false
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="VBoxContainer" type="VBoxContainer" parent="CountdownPanel" unique_id=58067330]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+alignment = 1
+
+[node name="LogoTexture" type="TextureRect" parent="CountdownPanel" unique_id=1047224912]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+expand_mode = 3
+stretch_mode = 5
+texture = ExtResource("2_5gu6x")

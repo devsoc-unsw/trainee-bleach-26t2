@@ -54,6 +54,6 @@ func reset_to(position: Vector3) -> void:
 	global_position = position
 	linear_velocity = Vector3.ZERO
 	angular_velocity = Vector3.ZERO
-	is_moving = false
+	is_moving = true
 	stop_timer = 0.0
 	sleeping = false

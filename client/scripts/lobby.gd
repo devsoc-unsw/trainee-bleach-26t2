@@ -12,17 +12,21 @@ extends Control
 @onready var ready_button: Button = $LobbyPanel/ReadyButton
 @onready var start_button: Button = $LobbyPanel/StartButton
 
+@onready var countdown_panel: Control = $CountdownPanel
+
 func _ready() -> void:
 	NetworkClient.connection_status_changed.connect(_on_status_changed)
 	NetworkClient.player_joined.connect(_on_player_joined)
 	NetworkClient.lobby_updated.connect(_on_lobby_updated)
 	NetworkClient.server_error.connect(_on_server_error)
+	NetworkClient.match_started.connect(_on_match_started)
 
 	join_button.pressed.connect(_on_join_pressed)
 	ready_button.pressed.connect(_on_ready_pressed)
 	start_button.pressed.connect(_on_start_pressed)
 
 	lobby_panel.visible = false
+	countdown_panel.visible = false
 	status_label.text = "Initialising..."
 
 func _on_status_changed(status: String) -> void:
@@ -71,7 +75,14 @@ func _on_ready_pressed() -> void:
 	NetworkClient.send_ready()
 
 func _on_start_pressed() -> void:
+	start_button.disabled = true
 	NetworkClient.send_start_match()
+	
+func _on_match_started(_course_id: String, _holes: Array) -> void:
+	name_entry_panel.visible = false
+	lobby_panel.visible = false
+	countdown_panel.visible = true
 
 func _on_server_error(code: String, message: String) -> void:
 	status_label.text = "Error: " + message
+	start_button.disabled = false

@@ -75,3 +75,51 @@ shape = SubResource("BoxShape3D_ujow2")
 [node name="MeshInstance3D" type="MeshInstance3D" parent="." unique_id=1815304359]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.1, -63)
 mesh = SubResource("RibbonTrailMesh_ujow2")
+
+[node name="UILayer" type="CanvasLayer" parent="." unique_id=247094582]
+
+[node name="HoleSummaryPanel" type="Control" parent="UILayer" unique_id=1497905543]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="Panel" type="Panel" parent="UILayer/HoleSummaryPanel" unique_id=1200000002]
+layout_mode = 1
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -200.0
+offset_top = -180.0
+offset_right = 200.0
+offset_bottom = 180.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="TitleLabel" type="Label" parent="UILayer/HoleSummaryPanel/Panel" unique_id=507170082]
+layout_mode = 1
+anchors_preset = 10
+anchor_right = 1.0
+offset_top = 16.0
+offset_bottom = 50.0
+grow_horizontal = 2
+theme_override_font_sizes/font_size = 24
+text = "Hole Complete"
+horizontal_alignment = 1
+
+[node name="ResultsContainer" type="VBoxContainer" parent="UILayer/HoleSummaryPanel/Panel" unique_id=938229685]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 20.0
+offset_top = 60.0
+offset_right = -20.0
+offset_bottom = -20.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_constants/separation = 10

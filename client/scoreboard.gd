@@ -1,6 +1,6 @@
 extends Control
 
-@onready var placings_container: VBoxContainer = $PlacingsContainer
+@onready var placings_container: VBoxContainer = $PlacingsPanel/PlacingsContainer
 
 func _ready() -> void:
 	NetworkClient.match_ended.connect(_on_match_ended)

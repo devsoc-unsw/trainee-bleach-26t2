@@ -2,7 +2,7 @@ import { GameState, Player, Room, Vec3 } from './interface.js';
 import { COURSE, getHole } from './course.js';
 import { broadcast } from './rooms.js';
 
-const COUNTDOWN_MS = 5 * 1000;
+const COUNTDOWN_MS = 3 * 1000;
 const HOLE_TIMER_MS = 90 * 1000;
 const HOLE_SUMMARY_PAUSE_MS = 5 * 1000;
 const MAX_STROKES = 10;
@@ -17,7 +17,7 @@ interface HoleEndResult {
 
 export function startCountdown(room: Room, holeIndex: number) {
   room.state = GameState.COUNTDOWN;
-
+ 
   setTimeout(() => {
     if (room.currentHoleIndex !== holeIndex) return;
     const hole = getHole(holeIndex);
@@ -117,5 +117,5 @@ export function handleHoleTransition(room: Room): void {
 
 export function checkAllHoled(room: Room): void {
     if (room.players.size == 0) return;
-    if ([...room.players.values()].every((p) => p.holedThisHole)) handleHoleTransition(room);
+    if ([...room.players.values()].every((p) => p.holedThisHole)) handleHoleTransition(room); // Should briefly pause after the final player has holed
 }
