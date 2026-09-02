@@ -1,27 +1,36 @@
-extends Control
+extends Node
 
-@onready var status_label: Label = $StatusLabel
+@onready var current_screen: Node = null
+
+const LOBBY_SCENE := preload("res://scenes/lobby.tscn")
+const COURSE_SCENE := preload("res://scenes/course.tscn")
+const SCOREBOARD_SCENE := preload("res://scenes/scoreboard.tscn")
 
 func _ready() -> void:
-	NetworkClient.connection_status_changed.connect(_on_status_changed)
-	NetworkClient.message_received.connect(_on_message_received)
-	status_label.text = "Initialising..."
+	NetworkClient.state_changed.connect(_on_state_changed)
+	_swap_screen(LOBBY_SCENE)
 
 
-func _on_status_changed(status: String) -> void:
-	status_label.text = "Status: " + status
+func _on_state_changed(new_state: NetworkClient.GameState) -> void:
+	match new_state:
+		NetworkClient.GameState.LOBBY, NetworkClient.GameState.COUNTDOWN:
+			if not (current_screen and current_screen.scene_file_path == LOBBY_SCENE.resource_path):
+				_swap_screen(LOBBY_SCENE)
+		NetworkClient.GameState.HOLE_ACTIVE, NetworkClient.GameState.HOLE_SUMMARY:
+			if not (current_screen and current_screen.scene_file_path == COURSE_SCENE.resource_path):
+				_swap_screen(COURSE_SCENE)
+		NetworkClient.GameState.MATCH_END:
+			if not (current_screen and current_screen.scene_file_path == SCOREBOARD_SCENE.resource_path):
+				_swap_screen(SCOREBOARD_SCENE)
+			# pass # TODO: swap to scoreboard.tscn
+			
 
+func _swap_screen(scene: PackedScene) -> void:
+	if current_screen:
+		current_screen.queue_free()
+	current_screen = scene.instantiate()
+	add_child(current_screen)
 
-func _on_message_received(data: Dictionary) -> void:
-	var reply_text := JSON.stringify(data)
-	status_label.text = status_label.text + "\n\nServer echoed:\n" + reply_text
-
-
-func _input(event: InputEvent) -> void:
-	if event is InputEventMouseButton:
-		var mouse_event := event as InputEventMouseButton
-		if mouse_event.button_index == MOUSE_BUTTON_RIGHT:
-			get_viewport().set_input_as_handled()
 
 # TODO: replace this scene with actual game scenes:
 #   scenes/lobby.tscn       - name entry, room code, player list, start button
@@ -29,10 +38,9 @@ func _input(event: InputEvent) -> void:
 #   scenes/scoreboard.tscn  - live scores, hole summary, final results
 #
 # TODO: scripts to create:
-#   scripts/ball.gd          - RigidBody3D, shot input, power-scaled inaccuracy
-#   scripts/camera.gd        - orbit camera with SpringArm3D, free-look
+#   scripts/ball.gd          - RigidBody3D, shot input, power-scaled inaccuracy (done)
+#   scripts/camera.gd        - orbit camera with SpringArm3D, free-look (done)
+#   scripts/shot_input.gd    - pull-back drag, power calc, arrow preview with jitter (done)
 #   scripts/ghost_ball.gd    - non-colliding visual for other players, interpolated
-#   scripts/shot_input.gd    - pull-back drag, power calc, arrow preview with jitter
 #   scripts/hole_manager.gd  - loads hole scenes, handles OOB/water/cup areas
 #   scripts/hud.gd           - stroke counter, timer, toasts
-

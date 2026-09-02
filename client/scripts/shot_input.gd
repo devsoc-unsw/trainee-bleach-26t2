@@ -28,16 +28,20 @@ func _ready() -> void:
 
 
 func _input(event: InputEvent) -> void:
+	var is_active := NetworkClient.current_state == NetworkClient.GameState.HOLE_ACTIVE
+		
 	if event is InputEventMouseButton:
 		if event.button_index == MOUSE_BUTTON_LEFT:
-			if event.pressed:
-				aiming = true
-				drag_start_screen = event.position
+			if event.pressed: 
+				if is_active:
+					aiming = true
+					drag_start_screen = event.position
 			else: # release
 				if aiming:
 					aiming = false
 					immediate_mesh.clear_surfaces() # successful shot removes arrow
-					_release_shot(event.position)
+					if is_active:
+						_release_shot(event.position)
 					
 		elif event.button_index == MOUSE_BUTTON_RIGHT:
 			if aiming:
@@ -107,4 +111,4 @@ func _release_shot(end_screen: Vector2) -> void:
 	
 	ball.hit(direction, shot.power)
 	var dir_2d = Vector2(direction.x, direction.z)
-	
+	NetworkClient.send_shot(dir_2d, shot.power)

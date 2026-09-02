@@ -1,0 +1,125 @@
+[gd_scene format=3 uid="uid://dkfscurwwv2q8"]
+
+[ext_resource type="Script" uid="uid://c8e36dwcqqq7y" path="res://scripts/course.gd" id="1_07v2j"]
+[ext_resource type="PackedScene" uid="uid://bdsbp3ln6bo13" path="res://scenes/ball.tscn" id="1_r5a4e"]
+[ext_resource type="PackedScene" uid="uid://bcd2w7jktuhxj" path="res://scenes/camera.tscn" id="2_07v2j"]
+[ext_resource type="Script" uid="uid://dufdd7dpr65w3" path="res://scripts/shot_input.gd" id="3_43ab4"]
+[ext_resource type="Script" uid="uid://dlluwip2c8qu2" path="res://scripts/cup.gd" id="4_giilg"]
+[ext_resource type="Script" uid="uid://d2qtmaorjsqpl" path="res://scripts/out_of_bounds.gd" id="5_4urdw"]
+
+[sub_resource type="PhysicsMaterial" id="PhysicsMaterial_2venv"]
+friction = 0.4
+
+[sub_resource type="BoxMesh" id="BoxMesh_ujow2"]
+size = Vector3(6, 0.2, 67)
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_ihn87"]
+size = Vector3(6, 0.2, 67)
+
+[sub_resource type="Environment" id="Environment_8iasl"]
+
+[sub_resource type="SphereShape3D" id="SphereShape3D_ujow2"]
+radius = 0.3
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_ujow2"]
+size = Vector3(1000, 0.2, 1000)
+
+[sub_resource type="RibbonTrailMesh" id="RibbonTrailMesh_ujow2"]
+
+[node name="Course" type="Node3D" unique_id=1636690890 node_paths=PackedStringArray("ball", "cup")]
+script = ExtResource("1_07v2j")
+ball = NodePath("Ball")
+cup = NodePath("Cup")
+
+[node name="Ground" type="StaticBody3D" parent="." unique_id=1801611665]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.1, -33)
+physics_material_override = SubResource("PhysicsMaterial_2venv")
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="Ground" unique_id=2133051677]
+mesh = SubResource("BoxMesh_ujow2")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="Ground" unique_id=2132929693]
+shape = SubResource("BoxShape3D_ihn87")
+
+[node name="DirectionalLight3D" type="DirectionalLight3D" parent="." unique_id=960930001]
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="." unique_id=2141276519]
+environment = SubResource("Environment_8iasl")
+
+[node name="Ball" parent="." unique_id=922067448 instance=ExtResource("1_r5a4e")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1, 0)
+can_sleep = false
+
+[node name="CameraRig" parent="." unique_id=1100201651 node_paths=PackedStringArray("target") instance=ExtResource("2_07v2j")]
+target = NodePath("../Ball")
+
+[node name="AimController" type="Node3D" parent="." unique_id=648704331 node_paths=PackedStringArray("ball", "camera_rig")]
+script = ExtResource("3_43ab4")
+ball = NodePath("../Ball")
+camera_rig = NodePath("../CameraRig")
+
+[node name="Cup" type="Area3D" parent="." unique_id=729051319]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.1, -63)
+script = ExtResource("4_giilg")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="Cup" unique_id=940950085]
+shape = SubResource("SphereShape3D_ujow2")
+
+[node name="OutOfBounds" type="Area3D" parent="." unique_id=1166695559]
+script = ExtResource("5_4urdw")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="OutOfBounds" unique_id=2081052111]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -10, 0)
+shape = SubResource("BoxShape3D_ujow2")
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="." unique_id=1815304359]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.1, -63)
+mesh = SubResource("RibbonTrailMesh_ujow2")
+
+[node name="UILayer" type="CanvasLayer" parent="." unique_id=247094582]
+
+[node name="HoleSummaryPanel" type="Control" parent="UILayer" unique_id=1497905543]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="Panel" type="Panel" parent="UILayer/HoleSummaryPanel" unique_id=1200000002]
+layout_mode = 1
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -200.0
+offset_top = -180.0
+offset_right = 200.0
+offset_bottom = 180.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="TitleLabel" type="Label" parent="UILayer/HoleSummaryPanel/Panel" unique_id=507170082]
+layout_mode = 1
+anchors_preset = 10
+anchor_right = 1.0
+offset_top = 16.0
+offset_bottom = 50.0
+grow_horizontal = 2
+theme_override_font_sizes/font_size = 24
+text = "Hole Complete"
+horizontal_alignment = 1
+
+[node name="ResultsContainer" type="VBoxContainer" parent="UILayer/HoleSummaryPanel/Panel" unique_id=938229685]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 20.0
+offset_top = 60.0
+offset_right = -20.0
+offset_bottom = -20.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_constants/separation = 10

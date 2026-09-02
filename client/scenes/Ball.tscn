@@ -1,6 +1,6 @@
-[gd_scene format=3 uid="uid://cbum0re6a8yc4"]
+[gd_scene format=3 uid="uid://bdsbp3ln6bo13"]
 
-[ext_resource type="Script" uid="uid://crnigxuj7hrwi" path="res://scripts/ball.gd" id="1_d73vv"]
+[ext_resource type="Script" uid="uid://d6xq7hhd1k8r" path="res://scripts/ball.gd" id="1_d73vv"]
 
 [sub_resource type="PhysicsMaterial" id="PhysicsMaterial_8iasl"]
 friction = 0.4
@@ -11,6 +11,7 @@ radius = 0.06
 height = 0.12
 
 [sub_resource type="SphereShape3D" id="SphereShape3D_ujow2"]
+radius = 0.06
 
 [node name="Ball" type="RigidBody3D" unique_id=922067448]
 mass = 0.05

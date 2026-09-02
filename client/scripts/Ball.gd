@@ -1,9 +1,9 @@
 extends RigidBody3D
 
-@export var stop_velocity_threshold: float = 0.05
-@export var stop_duration_required: float = 0.10
+@export var stop_velocity_threshold: float = 0.15
+@export var stop_duration_required: float = 0.20
 @export var min_speed: float = 2.0
-@export var max_speed: float = 30.0
+@export var max_speed: float = 40.0
 
 var is_moving: bool = false
 var stop_timer: float = 0.0
@@ -12,6 +12,7 @@ var last_safe_position: Vector3
 
 func _ready() -> void:
 	print("Ball is ready")
+	
 
 func hit(direction: Vector3, power: float) -> void:
 	if is_moving:
@@ -41,6 +42,7 @@ func _physics_process(delta: float) -> void:
 				linear_velocity = Vector3.ZERO
 				angular_velocity = Vector3.ZERO
 				is_moving = false
+				sleeping = true
 				stop_timer = 0.0
 				last_safe_position = global_position
 				var distance = start_position.distance_to(global_position)
@@ -52,6 +54,6 @@ func reset_to(position: Vector3) -> void:
 	global_position = position
 	linear_velocity = Vector3.ZERO
 	angular_velocity = Vector3.ZERO
-	is_moving = false
+	is_moving = true
 	stop_timer = 0.0
 	sleeping = false
