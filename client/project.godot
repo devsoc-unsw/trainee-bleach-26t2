@@ -11,9 +11,14 @@ config_version=5
 [application]
 
 config/name="unsw_putt_party"
-run/main_scene="uid://fhs3ei8nl5oh"
+run/main_scene="res://scenes/title.tscn"
 config/features=PackedStringArray("4.7", "Forward Plus")
 config/icon="res://icon.svg"
+
+[autoload]
+
+GameSession="*res://scripts/game_session.gd"
+NetworkClient="*res://scripts/network_client.gd"
 
 [display]
 

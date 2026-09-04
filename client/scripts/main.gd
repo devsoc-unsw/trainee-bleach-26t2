@@ -4,17 +4,12 @@ extends Control
 
 func _ready() -> void:
 	NetworkClient.connection_status_changed.connect(_on_status_changed)
-	NetworkClient.message_received.connect(_on_message_received)
+	NetworkClient.ensure_connected()
 	status_label.text = "Initialising..."
 
 
 func _on_status_changed(status: String) -> void:
 	status_label.text = "Status: " + status
-
-
-func _on_message_received(data: Dictionary) -> void:
-	var reply_text := JSON.stringify(data)
-	status_label.text = status_label.text + "\n\nServer echoed:\n" + reply_text
 
 
 func _input(event: InputEvent) -> void:
@@ -35,4 +30,3 @@ func _input(event: InputEvent) -> void:
 #   scripts/shot_input.gd    - pull-back drag, power calc, arrow preview with jitter
 #   scripts/hole_manager.gd  - loads hole scenes, handles OOB/water/cup areas
 #   scripts/hud.gd           - stroke counter, timer, toasts
-

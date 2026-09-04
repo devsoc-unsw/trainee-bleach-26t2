@@ -1,0 +1,355 @@
+[gd_scene load_steps=16 format=3 uid="uid://ctitlescreen"]
+
+[ext_resource type="Script" path="res://scripts/title_screen.gd" id="1_title"]
+[ext_resource type="Theme" path="res://ui/hud_theme.tres" id="2_theme"]
+[ext_resource type="FontFile" path="res://ui/fonts/Montserrat-ExtraBold.ttf" id="3_extra"]
+[ext_resource type="FontFile" path="res://ui/fonts/Montserrat-Bold.ttf" id="4_bold"]
+[ext_resource type="Script" path="res://scripts/fancy_button.gd" id="5_fancy"]
+
+[sub_resource type="ProceduralSkyMaterial" id="ProceduralSkyMaterial_sky"]
+sky_top_color = Color(0.45, 0.74, 0.98, 1)
+sky_horizon_color = Color(0.82, 0.92, 0.98, 1)
+ground_bottom_color = Color(0.7, 0.86, 0.96, 1)
+ground_horizon_color = Color(0.82, 0.92, 0.98, 1)
+sun_angle_max = 40.0
+
+[sub_resource type="Sky" id="Sky_title"]
+sky_material = SubResource("ProceduralSkyMaterial_sky")
+
+[sub_resource type="Environment" id="Environment_title"]
+background_mode = 2
+sky = SubResource("Sky_title")
+ambient_light_source = 2
+ambient_light_sky_contribution = 0.78
+tonemap_mode = 2
+fog_enabled = true
+fog_light_color = Color(0.75, 0.86, 0.95, 1)
+fog_density = 0.004
+fog_sky_affect = 0.45
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_player"]
+bg_color = Color(0.05, 0.07, 0.08, 0.62)
+corner_radius_top_left = 6
+corner_radius_top_right = 6
+corner_radius_bottom_right = 6
+corner_radius_bottom_left = 6
+content_margin_left = 12.0
+content_margin_top = 6.0
+content_margin_right = 10.0
+content_margin_bottom = 6.0
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_card"]
+bg_color = Color(0.965, 0.945, 0.902, 1)
+corner_radius_top_left = 28
+corner_radius_top_right = 28
+corner_radius_bottom_right = 28
+corner_radius_bottom_left = 28
+content_margin_left = 32.0
+content_margin_top = 28.0
+content_margin_right = 32.0
+content_margin_bottom = 28.0
+shadow_color = Color(0.42, 0.33, 0.27, 0.22)
+shadow_size = 18
+shadow_offset = Vector2(0, 6)
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_input"]
+bg_color = Color(1, 0.984, 0.96, 1)
+corner_radius_top_left = 14
+corner_radius_top_right = 14
+corner_radius_bottom_right = 14
+corner_radius_bottom_left = 14
+content_margin_left = 16.0
+content_margin_top = 12.0
+content_margin_right = 16.0
+content_margin_bottom = 12.0
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.78, 0.72, 0.64, 1)
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_input_focus"]
+bg_color = Color(1, 0.992, 0.975, 1)
+corner_radius_top_left = 14
+corner_radius_top_right = 14
+corner_radius_bottom_right = 14
+corner_radius_bottom_left = 14
+content_margin_left = 16.0
+content_margin_top = 12.0
+content_margin_right = 16.0
+content_margin_bottom = 12.0
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.298, 0.722, 0.69, 1)
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_btn"]
+bg_color = Color(0.298, 0.722, 0.69, 1)
+corner_radius_top_left = 999
+corner_radius_top_right = 999
+corner_radius_bottom_right = 999
+corner_radius_bottom_left = 999
+content_margin_left = 22.0
+content_margin_top = 12.0
+content_margin_right = 22.0
+content_margin_bottom = 12.0
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_btn_hover"]
+bg_color = Color(0.427, 0.8, 0.776, 1)
+corner_radius_top_left = 999
+corner_radius_top_right = 999
+corner_radius_bottom_right = 999
+corner_radius_bottom_left = 999
+content_margin_left = 22.0
+content_margin_top = 12.0
+content_margin_right = 22.0
+content_margin_bottom = 12.0
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_slider"]
+bg_color = Color(0.82, 0.76, 0.68, 1)
+corner_radius_top_left = 8
+corner_radius_top_right = 8
+corner_radius_bottom_right = 8
+corner_radius_bottom_left = 8
+content_margin_top = 8.0
+content_margin_bottom = 8.0
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_grabber"]
+bg_color = Color(0.298, 0.722, 0.69, 1)
+corner_radius_top_left = 8
+corner_radius_top_right = 8
+corner_radius_bottom_right = 8
+corner_radius_bottom_left = 8
+content_margin_top = 8.0
+content_margin_bottom = 8.0
+
+[node name="TitleScreen" type="Node3D"]
+script = ExtResource("1_title")
+
+[node name="World" type="Node3D" parent="."]
+
+[node name="Camera3D" type="Camera3D" parent="."]
+transform = Transform3D(0.94, -0.12, 0.32, 0, 0.936, 0.352, -0.342, -0.331, 0.88, -1.8, 5.6, 14)
+fov = 28.0
+current = true
+
+[node name="DirectionalLight3D" type="DirectionalLight3D" parent="."]
+transform = Transform3D(0.866, -0.354, 0.353, 0, 0.707, 0.707, -0.5, -0.612, 0.612, 8, 14, 6)
+light_color = Color(1, 0.96, 0.84, 1)
+light_energy = 1.15
+shadow_enabled = false
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="."]
+environment = SubResource("Environment_title")
+
+[node name="UI" type="CanvasLayer" parent="."]
+
+[node name="Root" type="Control" parent="UI"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+theme = ExtResource("2_theme")
+
+[node name="Left" type="VBoxContainer" parent="UI/Root"]
+layout_mode = 0
+offset_left = 28.0
+offset_top = 22.0
+offset_right = 340.0
+offset_bottom = 560.0
+theme_override_constants/separation = 16
+mouse_filter = 2
+
+[node name="Logo" type="VBoxContainer" parent="UI/Root/Left"]
+layout_mode = 2
+theme_override_constants/separation = 2
+mouse_filter = 2
+
+[node name="Unsw" type="Label" parent="UI/Root/Left/Logo"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.96, 0.82, 0.22, 1)
+theme_override_colors/font_outline_color = Color(0.45, 0.22, 0.05, 1)
+theme_override_constants/outline_size = 8
+theme_override_fonts/font = ExtResource("3_extra")
+theme_override_font_sizes/font_size = 22
+text = "UNSW"
+
+[node name="Title" type="Label" parent="UI/Root/Left/Logo"]
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 1, 1, 1)
+theme_override_colors/font_outline_color = Color(0.88, 0.45, 0.12, 1)
+theme_override_colors/font_shadow_color = Color(0.35, 0.16, 0.05, 0.7)
+theme_override_constants/outline_size = 14
+theme_override_constants/shadow_offset_x = 3
+theme_override_constants/shadow_offset_y = 4
+theme_override_fonts/font = ExtResource("3_extra")
+theme_override_font_sizes/font_size = 42
+text = "PUT PARTY"
+
+[node name="Menu" type="VBoxContainer" parent="UI/Root/Left"]
+layout_mode = 2
+theme_override_constants/separation = 4
+
+[node name="PlayerBar" type="PanelContainer" parent="UI/Root"]
+layout_mode = 1
+anchors_preset = 1
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -240.0
+offset_top = 16.0
+offset_right = -16.0
+offset_bottom = 52.0
+grow_horizontal = 0
+theme_override_styles/panel = SubResource("StyleBoxFlat_player")
+
+[node name="Row" type="HBoxContainer" parent="UI/Root/PlayerBar"]
+layout_mode = 2
+theme_override_constants/separation = 10
+alignment = 2
+
+[node name="Name" type="Label" parent="UI/Root/PlayerBar/Row"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_fonts/font = ExtResource("4_bold")
+theme_override_font_sizes/font_size = 15
+theme_override_colors/font_color = Color(1, 1, 1, 1)
+text = "Player"
+horizontal_alignment = 2
+
+[node name="Version" type="Label" parent="UI/Root"]
+layout_mode = 1
+anchors_preset = 3
+anchor_left = 1.0
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = -220.0
+offset_top = -28.0
+offset_right = -16.0
+offset_bottom = -10.0
+grow_horizontal = 0
+grow_vertical = 0
+theme_override_fonts/font = ExtResource("4_bold")
+theme_override_font_sizes/font_size = 12
+theme_override_colors/font_color = Color(1, 1, 1, 0.7)
+text = "v0.1.0"
+horizontal_alignment = 2
+
+[node name="SettingsDimmer" type="ColorRect" parent="UI"]
+visible = false
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+theme = ExtResource("2_theme")
+color = Color(0.1, 0.08, 0.06, 0.58)
+
+[node name="Card" type="PanelContainer" parent="UI/SettingsDimmer"]
+layout_mode = 1
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -210.0
+offset_top = -196.0
+offset_right = 210.0
+offset_bottom = 196.0
+mouse_filter = 0
+theme_override_styles/panel = SubResource("StyleBoxFlat_card")
+
+[node name="Layout" type="VBoxContainer" parent="UI/SettingsDimmer/Card"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="Title" type="Label" parent="UI/SettingsDimmer/Card/Layout"]
+layout_mode = 2
+theme_override_fonts/font = ExtResource("3_extra")
+theme_override_font_sizes/font_size = 26
+theme_override_colors/font_color = Color(0.18, 0.15, 0.13, 1)
+text = "SETTINGS"
+horizontal_alignment = 1
+
+[node name="Subtitle" type="Label" parent="UI/SettingsDimmer/Card/Layout"]
+layout_mode = 2
+theme_override_fonts/font = ExtResource("4_bold")
+theme_override_font_sizes/font_size = 13
+theme_override_colors/font_color = Color(0.48, 0.43, 0.38, 1)
+text = "Name and audio"
+horizontal_alignment = 1
+
+[node name="NameLabel" type="Label" parent="UI/SettingsDimmer/Card/Layout"]
+layout_mode = 2
+theme_override_fonts/font = ExtResource("3_extra")
+theme_override_font_sizes/font_size = 12
+theme_override_colors/font_color = Color(0.22, 0.18, 0.15, 1)
+text = "DISPLAY NAME"
+
+[node name="NameEdit" type="LineEdit" parent="UI/SettingsDimmer/Card/Layout"]
+custom_minimum_size = Vector2(0, 44)
+layout_mode = 2
+theme_override_fonts/font = ExtResource("4_bold")
+theme_override_font_sizes/font_size = 16
+theme_override_colors/font_color = Color(0.18, 0.15, 0.13, 1)
+theme_override_colors/font_placeholder_color = Color(0.55, 0.5, 0.45, 1)
+theme_override_colors/caret_color = Color(0.18, 0.15, 0.13, 1)
+theme_override_styles/normal = SubResource("StyleBoxFlat_input")
+theme_override_styles/focus = SubResource("StyleBoxFlat_input_focus")
+placeholder_text = "Player"
+max_length = 16
+caret_blink = true
+
+[node name="VolumeRow" type="HBoxContainer" parent="UI/SettingsDimmer/Card/Layout"]
+layout_mode = 2
+
+[node name="VolumeLabel" type="Label" parent="UI/SettingsDimmer/Card/Layout/VolumeRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_fonts/font = ExtResource("3_extra")
+theme_override_font_sizes/font_size = 12
+theme_override_colors/font_color = Color(0.22, 0.18, 0.15, 1)
+text = "VOLUME"
+
+[node name="VolumeValue" type="Label" parent="UI/SettingsDimmer/Card/Layout/VolumeRow"]
+layout_mode = 2
+theme_override_fonts/font = ExtResource("3_extra")
+theme_override_font_sizes/font_size = 13
+theme_override_colors/font_color = Color(0.22, 0.52, 0.5, 1)
+text = "80%"
+horizontal_alignment = 2
+
+[node name="Volume" type="HSlider" parent="UI/SettingsDimmer/Card/Layout"]
+custom_minimum_size = Vector2(0, 22)
+layout_mode = 2
+theme_override_styles/slider = SubResource("StyleBoxFlat_slider")
+theme_override_styles/grabber_area = SubResource("StyleBoxFlat_grabber")
+theme_override_styles/grabber_area_highlight = SubResource("StyleBoxFlat_grabber")
+max_value = 1.0
+step = 0.01
+value = 0.8
+
+[node name="Spacer" type="Control" parent="UI/SettingsDimmer/Card/Layout"]
+custom_minimum_size = Vector2(0, 10)
+layout_mode = 2
+
+[node name="Back" type="Button" parent="UI/SettingsDimmer/Card/Layout"]
+custom_minimum_size = Vector2(0, 48)
+layout_mode = 2
+focus_mode = 0
+mouse_default_cursor_shape = 2
+theme_override_fonts/font = ExtResource("3_extra")
+theme_override_font_sizes/font_size = 18
+theme_override_colors/font_color = Color(1, 1, 1, 1)
+theme_override_colors/font_hover_color = Color(1, 1, 1, 1)
+theme_override_colors/font_pressed_color = Color(1, 1, 1, 1)
+theme_override_styles/normal = SubResource("StyleBoxFlat_btn")
+theme_override_styles/hover = SubResource("StyleBoxFlat_btn_hover")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_btn")
+theme_override_styles/hover_pressed = SubResource("StyleBoxFlat_btn_hover")
+theme_override_styles/focus = SubResource("StyleBoxFlat_btn")
+text = "BACK"
+script = ExtResource("5_fancy")
