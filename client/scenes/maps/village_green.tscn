@@ -1,0 +1,22 @@
+[gd_scene format=3 uid="uid://cmapvillage"]
+
+[ext_resource type="PackedScene" uid="uid://dlkthciwpke3g" path="res://assets/maps/village_green.glb" id="1_glb"]
+[ext_resource type="Script" uid="uid://bliinu2csqyf7" path="res://scripts/glb_course.gd" id="2_script"]
+[ext_resource type="Shader" uid="uid://dxqfvf8wvcavg" path="res://shaders/ac_toon.gdshader" id="3_gvpax"]
+
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_5i7h2"]
+render_priority = 0
+shader = ExtResource("3_gvpax")
+shader_parameter/albedo = Color(0.93, 0.9, 0.82, 1)
+shader_parameter/shade = Color(0.6696, 0.63, 0.5576, 1)
+shader_parameter/toon_cutoff = 0.48
+shader_parameter/pattern = 0
+shader_parameter/pattern_scale = 1.0
+shader_parameter/pattern_color = Color(0.32, 0.52, 0.62, 1)
+
+[node name="VillageGreen" unique_id=690139227 instance=ExtResource("1_glb")]
+script = ExtResource("2_script")
+
+[node name="HoleCut" parent="." index="2" unique_id=1475369914]
+material_override = SubResource("ShaderMaterial_5i7h2")
+cast_shadow = 0
