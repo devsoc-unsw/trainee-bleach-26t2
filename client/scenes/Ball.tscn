@@ -1,18 +1,57 @@
 [gd_scene format=3 uid="uid://cbum0re6a8yc4"]
 
-[ext_resource type="Script" uid="uid://crnigxuj7hrwi" path="res://scripts/ball.gd" id="1_d73vv"]
+[ext_resource type="Script" uid="uid://crnigxuj7hrwi" path="res://scripts/Ball.gd" id="1_d73vv"]
+[ext_resource type="Shader" path="res://shaders/ac_ball.gdshader" id="2_ballsh"]
+[ext_resource type="Shader" path="res://shaders/ac_outline.gdshader" id="3_outsh"]
+[ext_resource type="Shader" path="res://shaders/ac_blob_shadow.gdshader" id="4_shadsh"]
+[ext_resource type="Script" path="res://scripts/ball_shadow.gd" id="5_shadow"]
 
 [sub_resource type="PhysicsMaterial" id="PhysicsMaterial_8iasl"]
-friction = 0.4
-bounce = 0.45
+friction = 0.35
+bounce = 0.12
 
-[sub_resource type="SphereMesh" id="SphereMesh_ujow2"]
-radius = 0.06
-height = 0.12
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_ball"]
+render_priority = 0
+shader = ExtResource("2_ballsh")
+shader_parameter/color_lit = Color(1, 0.97, 0.9, 1)
+shader_parameter/color_shade = Color(0.86, 0.72, 0.62, 1)
+shader_parameter/dimple_color = Color(0.93, 0.84, 0.74, 1)
+shader_parameter/stripe_color = Color(0.93, 0.38, 0.34, 1)
+shader_parameter/spec_color = Color(1, 0.98, 0.94, 1)
+shader_parameter/toon_cutoff = 0.52
+shader_parameter/wrap = 0.55
+shader_parameter/dimple_amount = 0.55
+shader_parameter/stripe_width = 0.07
+
+[sub_resource type="SphereMesh" id="SphereMesh_ball"]
+radius = 0.12
+height = 0.24
+radial_segments = 32
+rings = 16
+
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_outline"]
+render_priority = -1
+shader = ExtResource("3_outsh")
+shader_parameter/outline_color = Color(0.45, 0.32, 0.24, 1)
+
+[sub_resource type="SphereMesh" id="SphereMesh_outline"]
+radius = 0.12
+height = 0.24
+radial_segments = 24
+rings = 12
 
 [sub_resource type="SphereShape3D" id="SphereShape3D_ujow2"]
+radius = 0.12
 
-[node name="Ball" type="RigidBody3D" unique_id=922067448]
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_shadow"]
+render_priority = -2
+shader = ExtResource("4_shadsh")
+shader_parameter/shadow_color = Color(0.28, 0.18, 0.14, 0.34)
+
+[sub_resource type="PlaneMesh" id="PlaneMesh_shadow"]
+size = Vector2(0.48, 0.48)
+
+[node name="Ball" type="RigidBody3D"]
 mass = 0.05
 physics_material_override = SubResource("PhysicsMaterial_8iasl")
 continuous_cd = true
@@ -20,8 +59,22 @@ linear_damp = 0.8
 angular_damp = 0.2
 script = ExtResource("1_d73vv")
 
-[node name="MeshInstance3D" type="MeshInstance3D" parent="." unique_id=1997700214]
-mesh = SubResource("SphereMesh_ujow2")
+[node name="MeshInstance3D" type="MeshInstance3D" parent="."]
+material_override = SubResource("ShaderMaterial_ball")
+cast_shadow = 0
+mesh = SubResource("SphereMesh_ball")
 
-[node name="CollisionShape3D" type="CollisionShape3D" parent="." unique_id=1440129732]
+[node name="Outline" type="MeshInstance3D" parent="MeshInstance3D"]
+transform = Transform3D(1.25, 0, 0, 0, 1.25, 0, 0, 0, 1.25, 0, 0, 0)
+material_override = SubResource("ShaderMaterial_outline")
+cast_shadow = 0
+mesh = SubResource("SphereMesh_outline")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="."]
 shape = SubResource("SphereShape3D_ujow2")
+
+[node name="Shadow" type="MeshInstance3D" parent="."]
+material_override = SubResource("ShaderMaterial_shadow")
+cast_shadow = 0
+mesh = SubResource("PlaneMesh_shadow")
+script = ExtResource("5_shadow")

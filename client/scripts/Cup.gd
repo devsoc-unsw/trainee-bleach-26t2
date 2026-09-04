@@ -16,9 +16,12 @@ func _on_body_entered(body: Node3D) -> void:
 
 	var speed = body.linear_velocity.length()
 	if speed <= max_sink_speed:
-		body.linear_velocity = Vector3.ZERO
-		body.angular_velocity = Vector3.ZERO
-		body.freeze = true
+		if body.has_method("sink"):
+			body.sink()
+		else:
+			body.linear_velocity = Vector3.ZERO
+			body.angular_velocity = Vector3.ZERO
+			body.freeze = true
 		print("Ball in hole")
 		ball_sunk.emit()
 	else:
