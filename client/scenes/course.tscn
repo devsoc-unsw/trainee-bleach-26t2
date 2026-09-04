@@ -1,0 +1,72 @@
+[gd_scene format=3 uid="uid://ccourseputt"]
+
+[ext_resource type="PackedScene" uid="uid://cbum0re6a8yc4" path="res://scenes/Ball.tscn" id="1_ball"]
+[ext_resource type="PackedScene" uid="uid://bcd2w7jktuhxj" path="res://scenes/camera_rig.tscn" id="2_cam"]
+[ext_resource type="Script" uid="uid://dufdd7dpr65w3" path="res://scripts/aim_controller.gd" id="3_aim"]
+[ext_resource type="PackedScene" uid="uid://bholeputtparty" path="res://scenes/hole.tscn" id="4_hole"]
+[ext_resource type="Script" uid="uid://d2qtmaorjsqpl" path="res://scripts/OutOfBounds.gd" id="5_oob"]
+[ext_resource type="PackedScene" uid="uid://brwkov7j3tvxy" path="res://scenes/hud.tscn" id="6_hud"]
+[ext_resource type="Script" path="res://scripts/course.gd" id="7_course"]
+
+[sub_resource type="ProceduralSkyMaterial" id="ProceduralSkyMaterial_ac"]
+sky_top_color = Color(0.48, 0.78, 0.98, 1)
+sky_horizon_color = Color(0.72, 0.82, 0.92, 1)
+ground_bottom_color = Color(0.55, 0.72, 0.88, 1)
+ground_horizon_color = Color(0.68, 0.78, 0.88, 1)
+sun_angle_max = 40.0
+
+[sub_resource type="Sky" id="Sky_ac"]
+sky_material = SubResource("ProceduralSkyMaterial_ac")
+
+[sub_resource type="Environment" id="Environment_course"]
+background_mode = 2
+sky = SubResource("Sky_ac")
+ambient_light_source = 2
+ambient_light_sky_contribution = 0.48
+tonemap_mode = 2
+fog_enabled = true
+fog_light_color = Color(0.72, 0.82, 0.92, 1)
+fog_sun_scatter = 0.08
+fog_density = 0.0016
+fog_sky_affect = 0.22
+fog_height = -2.0
+fog_height_density = 0.04
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_oob"]
+size = Vector3(1000, 0.2, 1000)
+
+[node name="Course" type="Node3D"]
+script = ExtResource("7_course")
+
+[node name="DirectionalLight3D" type="DirectionalLight3D" parent="."]
+transform = Transform3D(0.866, -0.354, 0.353, 0, 0.707, 0.707, -0.5, -0.612, 0.612, 4, 10, 6)
+light_color = Color(1, 0.94, 0.78, 1)
+light_energy = 1.0
+light_indirect_energy = 0.4
+shadow_enabled = false
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="."]
+environment = SubResource("Environment_course")
+
+[node name="Ball" parent="." instance=ExtResource("1_ball")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1, 0)
+can_sleep = false
+
+[node name="CameraRig" parent="." node_paths=PackedStringArray("target") instance=ExtResource("2_cam")]
+target = NodePath("../Ball")
+
+[node name="AimController" type="Node3D" parent="." node_paths=PackedStringArray("ball", "camera_rig")]
+script = ExtResource("3_aim")
+ball = NodePath("../Ball")
+camera_rig = NodePath("../CameraRig")
+
+[node name="Hole" parent="." instance=ExtResource("4_hole")]
+
+[node name="OutOfBounds" type="Area3D" parent="."]
+script = ExtResource("5_oob")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="OutOfBounds"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -10, 0)
+shape = SubResource("BoxShape3D_oob")
+
+[node name="HUD" parent="." instance=ExtResource("6_hud")]

@@ -1,81 +1,94 @@
-[gd_scene format=3 uid="uid://fhs3ei8nl5oh"]
+[gd_scene load_steps=16 format=3 uid="uid://fhs3ei8nl5oh"]
 
-[ext_resource type="PackedScene" uid="uid://cbum0re6a8yc4" path="res://scenes/ball.tscn" id="1_1fpmp"]
+[ext_resource type="PackedScene" uid="uid://cbum0re6a8yc4" path="res://scenes/Ball.tscn" id="1_1fpmp"]
 [ext_resource type="PackedScene" uid="uid://bcd2w7jktuhxj" path="res://scenes/camera_rig.tscn" id="2_df0lk"]
 [ext_resource type="Script" uid="uid://dufdd7dpr65w3" path="res://scripts/aim_controller.gd" id="3_df0lk"]
-[ext_resource type="Script" uid="uid://djg5qiubtumt1" path="res://scripts/cup.gd" id="4_i6x8u"]
+[ext_resource type="PackedScene" uid="uid://bholeputtparty" path="res://scenes/hole.tscn" id="4_hole"]
 [ext_resource type="Script" uid="uid://d2qtmaorjsqpl" path="res://scripts/OutOfBounds.gd" id="5_8xg12"]
+[ext_resource type="PackedScene" uid="uid://brwkov7j3tvxy" path="res://scenes/hud.tscn" id="6_hud"]
+[ext_resource type="Script" uid="uid://fhbks4ferng" path="res://scripts/test_level.gd" id="7_level"]
+[ext_resource type="Shader" path="res://shaders/ac_grass.gdshader" id="8_grass"]
 
-[sub_resource type="PhysicsMaterial" id="PhysicsMaterial_2venv"]
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_grass"]
+render_priority = 0
+shader = ExtResource("8_grass")
+shader_parameter/grass_lit = Color(0.27, 0.45, 0.28, 1)
+shader_parameter/grass_shade = Color(0.16, 0.32, 0.2, 1)
+shader_parameter/check_size = 0.85
 
-[sub_resource type="BoxMesh" id="BoxMesh_ujow2"]
-size = Vector3(6, 0.2, 67)
+[sub_resource type="ProceduralSkyMaterial" id="ProceduralSkyMaterial_ac"]
+sky_top_color = Color(0.42, 0.72, 0.95, 1)
+sky_horizon_color = Color(0.98, 0.84, 0.62, 1)
+ground_bottom_color = Color(0.22, 0.38, 0.24, 1)
+ground_horizon_color = Color(0.55, 0.58, 0.4, 1)
+sun_angle_max = 40.0
 
-[sub_resource type="BoxShape3D" id="BoxShape3D_ihn87"]
-size = Vector3(6, 0.2, 67)
+[sub_resource type="Sky" id="Sky_ac"]
+sky_material = SubResource("ProceduralSkyMaterial_ac")
 
 [sub_resource type="Environment" id="Environment_8iasl"]
-
-[sub_resource type="SphereShape3D" id="SphereShape3D_ujow2"]
-radius = 0.3
+background_mode = 2
+sky = SubResource("Sky_ac")
+ambient_light_source = 2
+ambient_light_sky_contribution = 0.72
+tonemap_mode = 2
+fog_enabled = true
+fog_light_color = Color(0.95, 0.84, 0.62, 1)
+fog_sun_scatter = 0.12
+fog_density = 0.0018
+fog_sky_affect = 0.35
 
 [sub_resource type="BoxShape3D" id="BoxShape3D_ujow2"]
 size = Vector3(1000, 0.2, 1000)
 
-[sub_resource type="BoxMesh" id="BoxMesh_8iasl"]
-size = Vector3(5, 2, 0.1)
+[node name="TestLevel" type="Node3D"]
+script = ExtResource("7_level")
 
-[node name="TestLevel" type="Node3D" unique_id=1636690890]
-
-[node name="Ground" type="StaticBody3D" parent="." unique_id=1801611665]
+[node name="Ground" type="CSGCombiner3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.1, -33)
-physics_material_override = SubResource("PhysicsMaterial_2venv")
+use_collision = true
 
-[node name="MeshInstance3D" type="MeshInstance3D" parent="Ground" unique_id=2133051677]
-mesh = SubResource("BoxMesh_ujow2")
+[node name="Fairway" type="CSGBox3D" parent="Ground"]
+size = Vector3(6, 0.2, 67)
+material = SubResource("ShaderMaterial_grass")
 
-[node name="CollisionShape3D" type="CollisionShape3D" parent="Ground" unique_id=2132929693]
-shape = SubResource("BoxShape3D_ihn87")
+[node name="CupCut" type="CSGCylinder3D" parent="Ground"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, -30)
+operation = 2
+radius = 0.2
+height = 0.5
+sides = 20
 
-[node name="DirectionalLight3D" type="DirectionalLight3D" parent="." unique_id=960930001]
+[node name="DirectionalLight3D" type="DirectionalLight3D" parent="."]
+transform = Transform3D(0.866, -0.354, 0.353, 0, 0.707, 0.707, -0.5, -0.612, 0.612, 4, 10, 6)
+light_color = Color(1, 0.94, 0.78, 1)
+light_energy = 1.08
+light_indirect_energy = 0.4
+shadow_enabled = false
 
-[node name="WorldEnvironment" type="WorldEnvironment" parent="." unique_id=2141276519]
+[node name="WorldEnvironment" type="WorldEnvironment" parent="."]
 environment = SubResource("Environment_8iasl")
 
-[node name="Ball" parent="." unique_id=922067448 instance=ExtResource("1_1fpmp")]
+[node name="Ball" parent="." instance=ExtResource("1_1fpmp")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 10, 0)
 can_sleep = false
 
-[node name="CameraRig" parent="." unique_id=1100201651 node_paths=PackedStringArray("target") instance=ExtResource("2_df0lk")]
+[node name="CameraRig" parent="." node_paths=PackedStringArray("target") instance=ExtResource("2_df0lk")]
 target = NodePath("../Ball")
 
-[node name="AimController" type="Node3D" parent="." unique_id=648704331 node_paths=PackedStringArray("ball", "camera_rig")]
+[node name="AimController" type="Node3D" parent="." node_paths=PackedStringArray("ball", "camera_rig")]
 script = ExtResource("3_df0lk")
 ball = NodePath("../Ball")
 camera_rig = NodePath("../CameraRig")
 
-[node name="Cup" type="Area3D" parent="." unique_id=729051319]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.1, -63)
-script = ExtResource("4_i6x8u")
+[node name="Hole" parent="." instance=ExtResource("4_hole")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, -63)
 
-[node name="CollisionShape3D" type="CollisionShape3D" parent="Cup" unique_id=940950085]
-shape = SubResource("SphereShape3D_ujow2")
-
-[node name="OutOfBounds" type="Area3D" parent="." unique_id=1166695559]
+[node name="OutOfBounds" type="Area3D" parent="."]
 script = ExtResource("5_8xg12")
 
-[node name="CollisionShape3D" type="CollisionShape3D" parent="OutOfBounds" unique_id=2081052111]
+[node name="CollisionShape3D" type="CollisionShape3D" parent="OutOfBounds"]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -10, 0)
 shape = SubResource("BoxShape3D_ujow2")
 
-[node name="Marker1" type="StaticBody3D" parent="." unique_id=276597421]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, -30)
-
-[node name="MeshInstance3D" type="MeshInstance3D" parent="Marker1" unique_id=151966216]
-mesh = SubResource("BoxMesh_8iasl")
-
-[node name="Marker2" type="StaticBody3D" parent="." unique_id=638488726]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, -60)
-
-[node name="MeshInstance3D" type="MeshInstance3D" parent="Marker2" unique_id=1873191416]
-mesh = SubResource("BoxMesh_8iasl")
+[node name="HUD" parent="." instance=ExtResource("6_hud")]
