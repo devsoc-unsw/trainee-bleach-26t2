@@ -14,7 +14,70 @@ export interface ErrorResponse {
   message: string;
 }
 
-// TODO: add per-message schemas for client -> server:
+export interface PlayerPublic {
+  id: string;
+  name: string;
+  color: string;
+  host: boolean;
+  strokes: number;
+  holed: boolean;
+}
 
-// TODO: add per-message schemas for server -> client:
+export interface RoomPublic {
+  code: string;
+  name: string;
+  isPublic: boolean;
+  players: number;
+  maxPlayers: number;
+  host: string;
+}
 
+export interface LobbyStateMessage {
+  t: 'lobby_state';
+  code: string;
+  name: string;
+  isPublic: boolean;
+  hostId: string;
+  mapId: string;
+  maxPlayers: number;
+  rounds: number;
+  roundIndex: number;
+  players: PlayerPublic[];
+}
+
+export interface LobbyListMessage {
+  t: 'lobby_list';
+  rooms: RoomPublic[];
+}
+
+export interface WelcomeMessage {
+  t: 'welcome';
+  playerId: string;
+}
+
+export interface MatchStartMessage {
+  t: 'match_start';
+  mapId: string;
+}
+
+export interface BallSnap {
+  id: string;
+  x: number;
+  y: number;
+  z: number;
+  vx: number;
+  vy: number;
+  vz: number;
+  atRest: boolean;
+}
+
+export interface SnapshotMessage {
+  t: 'snapshot';
+  balls: BallSnap[];
+}
+
+export interface StrokeUpdateMessage {
+  t: 'stroke_update';
+  playerId: string;
+  strokes: number;
+}

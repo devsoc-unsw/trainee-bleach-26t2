@@ -1,11 +1,30 @@
 import http from 'node:http';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { WebSocketServer, WebSocket } from 'ws';
 import { envelopeSchema } from './schema.js';
 import type { ErrorResponse } from './schema.js';
+import * as rooms from './rooms.js';
 
 const PORT = parseInt(process.env['PORT'] ?? '8080', 10);
 const IS_PRODUCTION = process.env['NODE_ENV'] === 'production';
-const HOST = IS_PRODUCTION ? '0.0.0.0' : '127.0.0.1';
+const HOST = IS_PRODUCTION ? '0.0.0.0' : '0.0.0.0';
+const HERE = path.dirname(fileURLToPath(import.meta.url));
+const WEB_ROOT = process.env['WEB_ROOT'] ?? path.resolve(HERE, '../../client/build');
+
+const MIME: Record<string, string> = {
+  '.html': 'text/html; charset=utf-8',
+  '.js': 'text/javascript; charset=utf-8',
+  '.wasm': 'application/wasm',
+  '.pck': 'application/octet-stream',
+  '.png': 'image/png',
+  '.svg': 'image/svg+xml',
+  '.json': 'application/json',
+  '.css': 'text/css; charset=utf-8',
+  '.ico': 'image/x-icon',
+  '.wasm.map': 'application/json',
+};
 
 interface LogEntry {
   ts: string;
@@ -19,11 +38,18 @@ function log(entry: LogEntry): void {
 
 const startTime = Date.now();
 
-const server = http.createServer((_req, res) => {
+function setSecurityHeaders(res: http.ServerResponse): void {
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('X-Frame-Options', 'DENY');
+  res.setHeader('Cross-Origin-Opener-Policy', 'same-origin');
+  res.setHeader('Cross-Origin-Embedder-Policy', 'require-corp');
+  res.setHeader('Cross-Origin-Resource-Policy', 'same-origin');
+}
 
-  if (_req.method === 'GET' && _req.url === '/health') {
+function serveFile(req: http.IncomingMessage, res: http.ServerResponse): void {
+  setSecurityHeaders(res);
+  const url = new URL(req.url ?? '/', 'http://localhost');
+  if (req.method === 'GET' && url.pathname === '/health') {
     const body = JSON.stringify({
       status: 'ok',
       uptime: Math.floor((Date.now() - startTime) / 1000),
@@ -32,12 +58,38 @@ const server = http.createServer((_req, res) => {
     res.end(body);
     return;
   }
+  if (req.method !== 'GET' && req.method !== 'HEAD') {
+    res.writeHead(405, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ error: 'method_not_allowed' }));
+    return;
+  }
 
-  res.writeHead(404, { 'Content-Type': 'application/json' });
-  res.end(JSON.stringify({ error: 'not_found' }));
-});
+  let rel = decodeURIComponent(url.pathname);
+  if (rel === '/') {
+    rel = '/index.html';
+  }
+  const target = path.normalize(path.join(WEB_ROOT, rel));
+  if (!target.startsWith(WEB_ROOT)) {
+    res.writeHead(403, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ error: 'forbidden' }));
+    return;
+  }
+  if (!fs.existsSync(target) || fs.statSync(target).isDirectory()) {
+    res.writeHead(404, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ error: 'not_found', hint: 'Export the Godot Web build to client/build' }));
+    return;
+  }
+  const ext = path.extname(target);
+  res.writeHead(200, { 'Content-Type': MIME[ext] ?? 'application/octet-stream' });
+  if (req.method === 'HEAD') {
+    res.end();
+    return;
+  }
+  fs.createReadStream(target).pipe(res);
+}
 
-// TODO(security): restrict verifyClient to known client origins before production
+const server = http.createServer(serveFile);
+
 const wss = new WebSocketServer({
   server,
   verifyClient: (info, callback) => {
@@ -50,29 +102,13 @@ const wss = new WebSocketServer({
   },
 });
 
-// TODO: room management
-//   - rooms: Map<string, Room> stored in memory
-//   - generate 4-letter room codes (no vowels, no ambiguous chars)
-//   - destroy room when last player disconnects
-//   - idle room timeout
-//
-// TODO: Room type needs:
-//   - players map, host tracking
-//   - game state machine: LOBBY -> COUNTDOWN -> HOLE_ACTIVE -> HOLE_SUMMARY -> MATCH_END
-//   - per-hole timer (90s)
-//   - stroke counts (server-authoritative)
-//   - hole config (par, spawn position, cup position)
-
 let connectionCounter = 0;
 
 wss.on('connection', (ws: WebSocket) => {
   const connectionId = ++connectionCounter;
-
-  log({
-    ts: new Date().toISOString(),
-    event: 'ws_open',
-    connectionId,
-  });
+  log({ ts: new Date().toISOString(), event: 'ws_open', connectionId });
+  rooms.send(ws, { t: 'welcome', playerId: rooms.register(ws) });
+  rooms.send(ws, rooms.lobbyList());
 
   ws.on('message', (raw: Buffer | ArrayBuffer | Buffer[]) => {
     let text: string;
@@ -86,11 +122,6 @@ wss.on('connection', (ws: WebSocket) => {
       }
     } catch {
       sendError(ws, 'PARSE_ERROR', 'Could not decode message as UTF-8');
-      log({
-        ts: new Date().toISOString(),
-        event: 'ws_decode_error',
-        connectionId,
-      });
       return;
     }
 
@@ -99,82 +130,238 @@ wss.on('connection', (ws: WebSocket) => {
       parsed = JSON.parse(text);
     } catch {
       sendError(ws, 'PARSE_ERROR', 'Invalid JSON');
-      log({
-        ts: new Date().toISOString(),
-        event: 'ws_json_error',
-        connectionId,
-        raw: text.slice(0, 200),
-      });
       return;
     }
 
     const result = envelopeSchema.safeParse(parsed);
-
     if (!result.success) {
-      const issues = result.error.issues.map((i) => i.message).join('; ');
-      sendError(ws, 'INVALID_MESSAGE', issues);
-      log({
-        ts: new Date().toISOString(),
-        event: 'ws_validation_failure',
-        connectionId,
-        issues,
-      });
+      sendError(ws, 'INVALID_MESSAGE', result.error.issues.map((i) => i.message).join('; '));
       return;
     }
 
-    log({
-      ts: new Date().toISOString(),
-      event: 'ws_message',
-      connectionId,
-      type: result.data.t,
-    });
-
-    // TODO: replace echo with message routing by result.data.t:
-    //   'join'        -> create/join room, assign player id + colour, broadcast lobby_state
-    //   'ready'       -> toggle ready, broadcast lobby_state
-    //   'start_match' -> host only, transition LOBBY -> COUNTDOWN
-    //   'shot'        -> validate (rate limit 250ms, atRest gate, HOLE_ACTIVE only),
-    //                    increment stroke count, broadcast stroke_update
-    //   'ball_state'  -> rebroadcast as part of snapshot (15Hz while balls moving)
-    //   'holed'       -> validate position against cup, lock score, check if hole done
-    //   'oob'         -> add penalty stroke, broadcast stroke_update
-    //   'ping'        -> reply with pong
-    //
-    // TODO: server validation:
-    //   - shot rate limit (min 250ms between shots per player)
-    //   - shot only accepted if client reported atRest and during HOLE_ACTIVE
-    //   - holed position must be within tolerance of cup position
-    //   - positions outside per-hole bounding box get ignored
-    //   - par+3 cap: end hole for player at par+3 strokes
-    ws.send(JSON.stringify(result.data));
+    const msg = result.data as Record<string, unknown>;
+    const type = String(msg['t']);
+    log({ ts: new Date().toISOString(), event: 'ws_message', connectionId, type });
+    route(ws, type, msg);
   });
 
-  ws.on('close', (code: number, reason: Buffer) => {
-    log({
-      ts: new Date().toISOString(),
-      event: 'ws_close',
-      connectionId,
-      code,
-      reason: reason.toString('utf-8'),
-    });
+  ws.on('close', () => {
+    const notice = rooms.departureNotice(ws);
+    if (notice) {
+      rooms.broadcast(notice.room, notice.payload, ws);
+    }
+    const room = rooms.leave(ws);
+    if (room) {
+      rooms.broadcast(room, rooms.lobbyState(room));
+      if (room.phase === 'selecting') {
+        rooms.broadcast(room, rooms.voteState(room));
+      }
+      const finished = rooms.tryFinishHole(room);
+      if (finished === 'vote') {
+        rooms.broadcast(room, rooms.voteState(room));
+      } else if (finished === 'over') {
+        rooms.broadcast(room, { t: 'match_over' });
+        rooms.broadcast(room, rooms.lobbyState(room));
+      }
+    }
+    broadcastLobbyList();
+    log({ ts: new Date().toISOString(), event: 'ws_close', connectionId });
   });
 
   ws.on('error', (err: Error) => {
-    log({
-      ts: new Date().toISOString(),
-      event: 'ws_error',
-      connectionId,
-      error: err.message,
-    });
+    log({ ts: new Date().toISOString(), event: 'ws_error', connectionId, error: err.message });
   });
 });
 
-function sendError(ws: WebSocket, code: string, message: string): void {
-  const response: ErrorResponse = { t: 'error', code, message };
-  if (ws.readyState === WebSocket.OPEN) {
-    ws.send(JSON.stringify(response));
+function route(ws: WebSocket, type: string, msg: Record<string, unknown>): void {
+  switch (type) {
+    case 'list':
+      rooms.send(ws, rooms.lobbyList());
+      break;
+    case 'create': {
+      const room = rooms.createRoom(
+        ws,
+        String(msg['name'] ?? 'Putt Party'),
+        Boolean(msg['isPublic'] ?? true),
+        String(msg['playerName'] ?? 'Player'),
+        Number(msg['rounds'] ?? 1)
+      );
+      rooms.send(ws, rooms.lobbyState(room));
+      broadcastLobbyList();
+      break;
+    }
+    case 'join': {
+      const joined = rooms.joinRoom(ws, String(msg['code'] ?? ''), String(msg['playerName'] ?? 'Player'));
+      if (typeof joined === 'string') {
+        sendError(ws, 'JOIN_FAILED', joined);
+        return;
+      }
+      rooms.broadcast(joined, rooms.lobbyState(joined));
+      broadcastLobbyList();
+      break;
+    }
+    case 'leave': {
+      const notice = rooms.departureNotice(ws);
+      if (notice) {
+        rooms.broadcast(notice.room, notice.payload, ws);
+      }
+      const left = rooms.leave(ws);
+      if (left) {
+        rooms.broadcast(left, rooms.lobbyState(left));
+        if (left.phase === 'selecting') {
+          rooms.broadcast(left, rooms.voteState(left));
+        }
+        const finished = rooms.tryFinishHole(left);
+        if (finished === 'vote') {
+          rooms.broadcast(left, rooms.voteState(left));
+          broadcastLobbyList();
+        } else if (finished === 'over') {
+          rooms.broadcast(left, { t: 'match_over' });
+          rooms.broadcast(left, rooms.lobbyState(left));
+          broadcastLobbyList();
+        }
+      }
+      rooms.send(ws, rooms.lobbyList());
+      broadcastLobbyList();
+      break;
+    }
+    case 'chat': {
+      const posted = rooms.chatFrom(ws, String(msg['text'] ?? ''));
+      if (typeof posted === 'string') {
+        sendError(ws, 'CHAT_FAILED', posted);
+        return;
+      }
+      rooms.broadcast(posted.room, posted.payload);
+      break;
+    }
+    case 'select': {
+      const picking = rooms.beginSelect(ws);
+      if (typeof picking === 'string') {
+        sendError(ws, 'START_FAILED', picking);
+        return;
+      }
+      rooms.broadcast(picking, rooms.voteState(picking));
+      broadcastLobbyList();
+      break;
+    }
+    case 'vote': {
+      const voted = rooms.castVote(ws, String(msg['mapId'] ?? ''));
+      if (typeof voted === 'string') {
+        sendError(ws, 'VOTE_FAILED', voted);
+        return;
+      }
+      rooms.broadcast(voted, rooms.voteState(voted));
+      break;
+    }
+    case 'quick_start': {
+      const started = rooms.quickStart(ws);
+      if (typeof started === 'string') {
+        sendError(ws, 'START_FAILED', started);
+        return;
+      }
+      rooms.broadcast(started, { t: 'match_start', mapId: started.mapId });
+      broadcastLobbyList();
+      break;
+    }
+    case 'start': {
+      const started = rooms.startMatch(ws, String(msg['mapId'] ?? 'rainbow_stairs'));
+      if (typeof started === 'string') {
+        sendError(ws, 'START_FAILED', started);
+        return;
+      }
+      rooms.broadcast(started, { t: 'match_start', mapId: started.mapId });
+      broadcastLobbyList();
+      break;
+    }
+    case 'shot': {
+      const player = rooms.playerFor(ws);
+      const room = rooms.roomFor(ws);
+      if (!player || !room || room.phase !== 'playing') {
+        return;
+      }
+      player.strokes += 1;
+      rooms.broadcast(room, { t: 'stroke_update', playerId: player.id, strokes: player.strokes });
+      break;
+    }
+    case 'ball_state': {
+      const player = rooms.playerFor(ws);
+      const room = rooms.roomFor(ws);
+      if (!player || !room || room.phase !== 'playing') {
+        return;
+      }
+      player.ball = {
+        id: player.id,
+        x: num(msg['x']),
+        y: num(msg['y']),
+        z: num(msg['z']),
+        vx: num(msg['vx']),
+        vy: num(msg['vy']),
+        vz: num(msg['vz']),
+        atRest: Boolean(msg['atRest']),
+      };
+      rooms.broadcast(room, rooms.snapshot(room), ws);
+      break;
+    }
+    case 'holed': {
+      const player = rooms.playerFor(ws);
+      const marked = rooms.markHoled(ws);
+      if (typeof marked === 'string' || !player) {
+        return;
+      }
+      rooms.broadcast(marked.room, { t: 'player_holed', playerId: player.id, strokes: player.strokes });
+      rooms.broadcast(marked.room, rooms.holeNotice(player));
+      if (marked.result === 'vote') {
+        rooms.broadcast(marked.room, rooms.voteState(marked.room));
+        broadcastLobbyList();
+      } else if (marked.result === 'over') {
+        rooms.broadcast(marked.room, { t: 'match_over' });
+        rooms.broadcast(marked.room, rooms.lobbyState(marked.room));
+        broadcastLobbyList();
+      }
+      break;
+    }
+    case 'oob': {
+      const player = rooms.playerFor(ws);
+      const room = rooms.roomFor(ws);
+      if (!player || !room) {
+        return;
+      }
+      player.strokes += 1;
+      rooms.broadcast(room, { t: 'stroke_update', playerId: player.id, strokes: player.strokes });
+      break;
+    }
+    case 'ping':
+      rooms.send(ws, { t: 'pong' });
+      break;
+    default:
+      break;
   }
 }
+
+function num(value: unknown): number {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : 0;
+}
+
+function broadcastLobbyList(): void {
+  const list = rooms.lobbyList();
+  for (const client of wss.clients) {
+    if (rooms.roomFor(client)) {
+      continue;
+    }
+    rooms.send(client, list);
+  }
+}
+
+function sendError(ws: WebSocket, code: string, message: string): void {
+  const response: ErrorResponse = { t: 'error', code, message };
+  rooms.send(ws, response);
+}
+
+rooms.setVoteEndedHandler((room) => {
+  rooms.broadcast(room, { t: 'match_start', mapId: room.mapId });
+  broadcastLobbyList();
+});
 
 server.listen(PORT, HOST, () => {
   log({
@@ -183,5 +370,6 @@ server.listen(PORT, HOST, () => {
     host: HOST,
     port: PORT,
     env: IS_PRODUCTION ? 'production' : 'development',
+    webRoot: WEB_ROOT,
   });
 });
