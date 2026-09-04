@@ -1,0 +1,554 @@
+[gd_scene format=3 uid="uid://brwkov7j3tvxy"]
+
+[ext_resource type="Script" uid="uid://dy6feaiske18s" path="res://scripts/hud.gd" id="1_hud"]
+[ext_resource type="Theme" path="res://ui/hud_theme.tres" id="2_theme"]
+[ext_resource type="Script" uid="uid://bqyoyw2tf4by7" path="res://scripts/top_bar.gd" id="3_topbar"]
+[ext_resource type="Script" uid="uid://dcaw2vhwwlfte" path="res://scripts/on_off_toggle.gd" id="4_toggle"]
+[ext_resource type="Script" path="res://scripts/ball_status.gd" id="13_ballstatus"]
+[ext_resource type="FontFile" path="res://ui/fonts/Montserrat-ExtraBold.ttf" id="5_extrabold"]
+[ext_resource type="FontFile" path="res://ui/fonts/Montserrat-Bold.ttf" id="6_bold"]
+[ext_resource type="Texture2D" path="res://ui/icons/camera.svg" id="7_camera"]
+[ext_resource type="Texture2D" path="res://ui/icons/eye.svg" id="8_eye"]
+[ext_resource type="Texture2D" path="res://ui/icons/settings.svg" id="10_settings"]
+[ext_resource type="Texture2D" path="res://ui/icons/chevron_up.svg" id="11_chevron"]
+[ext_resource type="Texture2D" path="res://ui/icons/spiral.svg" id="12_spiral"]
+
+[sub_resource type="FontVariation" id="FontVariation_caption"]
+base_font = ExtResource("5_extrabold")
+spacing_glyph = 1
+
+[sub_resource type="LabelSettings" id="LabelSettings_caption"]
+font = SubResource("FontVariation_caption")
+font_size = 18
+font_color = Color(0.353, 0.322, 0.282, 1)
+
+[sub_resource type="LabelSettings" id="LabelSettings_value"]
+font = ExtResource("5_extrabold")
+font_size = 20
+font_color = Color(0.298, 0.722, 0.69, 1)
+
+[sub_resource type="LabelSettings" id="LabelSettings_scorecard"]
+font = ExtResource("5_extrabold")
+font_size = 18
+font_color = Color(0.965, 0.945, 0.902, 1)
+
+[sub_resource type="LabelSettings" id="LabelSettings_body"]
+font = ExtResource("6_bold")
+font_size = 17
+font_color = Color(0.353, 0.322, 0.282, 1)
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_btn"]
+bg_color = Color(0.298, 0.722, 0.69, 1)
+corner_radius_top_left = 999
+corner_radius_top_right = 999
+corner_radius_bottom_right = 999
+corner_radius_bottom_left = 999
+corner_detail = 16
+content_margin_left = 9.0
+content_margin_top = 9.0
+content_margin_right = 9.0
+content_margin_bottom = 9.0
+shadow_color = Color(0.42, 0.33, 0.27, 0.18)
+shadow_size = 3
+shadow_offset = Vector2(0, 1)
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_btn_hover"]
+bg_color = Color(0.427, 0.8, 0.776, 1)
+corner_radius_top_left = 999
+corner_radius_top_right = 999
+corner_radius_bottom_right = 999
+corner_radius_bottom_left = 999
+corner_detail = 16
+content_margin_left = 9.0
+content_margin_top = 9.0
+content_margin_right = 9.0
+content_margin_bottom = 9.0
+shadow_color = Color(0.298, 0.722, 0.69, 0.35)
+shadow_size = 4
+shadow_offset = Vector2(0, 1)
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_btn_pressed"]
+bg_color = Color(0.227, 0.604, 0.576, 1)
+corner_radius_top_left = 999
+corner_radius_top_right = 999
+corner_radius_bottom_right = 999
+corner_radius_bottom_left = 999
+corner_detail = 16
+content_margin_left = 9.0
+content_margin_top = 9.0
+content_margin_right = 9.0
+content_margin_bottom = 9.0
+
+[sub_resource type="StyleBoxEmpty" id="StyleBoxEmpty_focus"]
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_view_idle"]
+bg_color = Color(0.898, 0.875, 0.831, 1)
+corner_radius_top_left = 999
+corner_radius_top_right = 999
+corner_radius_bottom_right = 999
+corner_radius_bottom_left = 999
+corner_detail = 16
+content_margin_left = 9.0
+content_margin_top = 9.0
+content_margin_right = 9.0
+content_margin_bottom = 9.0
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_view_idle_hover"]
+bg_color = Color(0.835, 0.808, 0.757, 1)
+corner_radius_top_left = 999
+corner_radius_top_right = 999
+corner_radius_bottom_right = 999
+corner_radius_bottom_left = 999
+corner_detail = 16
+content_margin_left = 9.0
+content_margin_top = 9.0
+content_margin_right = 9.0
+content_margin_bottom = 9.0
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_view_selected"]
+bg_color = Color(0.298, 0.722, 0.69, 1)
+border_width_left = 3
+border_width_top = 3
+border_width_right = 3
+border_width_bottom = 3
+border_color = Color(0.227, 0.604, 0.576, 1)
+corner_radius_top_left = 999
+corner_radius_top_right = 999
+corner_radius_bottom_right = 999
+corner_radius_bottom_left = 999
+corner_detail = 16
+content_margin_left = 8.0
+content_margin_top = 8.0
+content_margin_right = 8.0
+content_margin_bottom = 8.0
+shadow_color = Color(0.298, 0.722, 0.69, 0.4)
+shadow_size = 6
+shadow_offset = Vector2(0, 1)
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_view_selected_hover"]
+bg_color = Color(0.427, 0.8, 0.776, 1)
+border_width_left = 3
+border_width_top = 3
+border_width_right = 3
+border_width_bottom = 3
+border_color = Color(0.227, 0.604, 0.576, 1)
+corner_radius_top_left = 999
+corner_radius_top_right = 999
+corner_radius_bottom_right = 999
+corner_radius_bottom_left = 999
+corner_detail = 16
+content_margin_left = 8.0
+content_margin_top = 8.0
+content_margin_right = 8.0
+content_margin_bottom = 8.0
+shadow_color = Color(0.298, 0.722, 0.69, 0.45)
+shadow_size = 7
+shadow_offset = Vector2(0, 1)
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_scorecard"]
+bg_color = Color(0.965, 0.945, 0.902, 1)
+corner_radius_top_left = 36
+corner_radius_top_right = 36
+corner_radius_bottom_right = 36
+corner_radius_bottom_left = 36
+corner_detail = 16
+shadow_color = Color(0.42, 0.33, 0.27, 0.18)
+shadow_size = 14
+shadow_offset = Vector2(0, 4)
+content_margin_left = 0.0
+content_margin_top = 0.0
+content_margin_right = 0.0
+content_margin_bottom = 0.0
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_header"]
+bg_color = Color(0.298, 0.722, 0.69, 1)
+corner_radius_top_left = 36
+corner_radius_top_right = 36
+corner_radius_bottom_right = 0
+corner_radius_bottom_left = 0
+corner_detail = 16
+content_margin_left = 22.0
+content_margin_top = 18.0
+content_margin_right = 16.0
+content_margin_bottom = 18.0
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_chevron"]
+bg_color = Color(0.227, 0.604, 0.576, 1)
+corner_radius_top_left = 14
+corner_radius_top_right = 14
+corner_radius_bottom_right = 14
+corner_radius_bottom_left = 14
+corner_detail = 12
+content_margin_left = 6.0
+content_margin_top = 6.0
+content_margin_right = 6.0
+content_margin_bottom = 6.0
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_slot"]
+bg_color = Color(0.898, 0.875, 0.831, 0.55)
+corner_radius_top_left = 999
+corner_radius_top_right = 999
+corner_radius_bottom_right = 999
+corner_radius_bottom_left = 999
+corner_detail = 20
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_ability"]
+bg_color = Color(0.298, 0.722, 0.69, 1)
+corner_radius_top_left = 999
+corner_radius_top_right = 999
+corner_radius_bottom_right = 999
+corner_radius_bottom_left = 999
+corner_detail = 20
+content_margin_left = 9.0
+content_margin_top = 9.0
+content_margin_right = 9.0
+content_margin_bottom = 9.0
+shadow_color = Color(0.42, 0.33, 0.27, 0.2)
+shadow_size = 6
+shadow_offset = Vector2(0, 2)
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_ability_hover"]
+bg_color = Color(0.427, 0.8, 0.776, 1)
+corner_radius_top_left = 999
+corner_radius_top_right = 999
+corner_radius_bottom_right = 999
+corner_radius_bottom_left = 999
+corner_detail = 20
+content_margin_left = 9.0
+content_margin_top = 9.0
+content_margin_right = 9.0
+content_margin_bottom = 9.0
+shadow_color = Color(0.298, 0.722, 0.69, 0.35)
+shadow_size = 7
+shadow_offset = Vector2(0, 2)
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_ability_pressed"]
+bg_color = Color(0.227, 0.604, 0.576, 1)
+corner_radius_top_left = 999
+corner_radius_top_right = 999
+corner_radius_bottom_right = 999
+corner_radius_bottom_left = 999
+corner_detail = 20
+content_margin_left = 9.0
+content_margin_top = 9.0
+content_margin_right = 9.0
+content_margin_bottom = 9.0
+
+[node name="HUD" type="CanvasLayer"]
+layer = 10
+script = ExtResource("1_hud")
+
+[node name="Root" type="Control" parent="."]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+theme = ExtResource("2_theme")
+
+[node name="TopBar" type="Control" parent="Root"]
+custom_minimum_size = Vector2(0, 80)
+layout_mode = 1
+anchors_preset = 10
+anchor_right = 1.0
+offset_bottom = 80.0
+grow_horizontal = 2
+mouse_filter = 2
+script = ExtResource("3_topbar")
+
+[node name="LeftButtons" type="HBoxContainer" parent="Root/TopBar"]
+layout_mode = 1
+offset_left = 36.0
+offset_top = 15.0
+offset_right = 300.0
+offset_bottom = 65.0
+mouse_filter = 2
+theme_override_constants/separation = 10
+
+[node name="BallStatus" type="Control" parent="Root/TopBar/LeftButtons"]
+custom_minimum_size = Vector2(136, 50)
+layout_mode = 2
+mouse_filter = 2
+script = ExtResource("13_ballstatus")
+font = ExtResource("6_bold")
+
+[node name="CameraButton" type="Button" parent="Root/TopBar/LeftButtons"]
+custom_minimum_size = Vector2(50, 50)
+layout_mode = 2
+focus_mode = 0
+mouse_filter = 0
+mouse_behavior_recursive = 2
+mouse_default_cursor_shape = 2
+toggle_mode = true
+action_mode = 0
+button_pressed = true
+theme_override_colors/icon_normal_color = Color(0.298, 0.722, 0.69, 1)
+theme_override_colors/icon_hover_color = Color(0.227, 0.604, 0.576, 1)
+theme_override_colors/icon_pressed_color = Color(1, 1, 1, 1)
+theme_override_colors/icon_hover_pressed_color = Color(1, 1, 1, 1)
+theme_override_styles/normal = SubResource("StyleBoxFlat_view_idle")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_view_selected")
+theme_override_styles/hover = SubResource("StyleBoxFlat_view_idle_hover")
+theme_override_styles/hover_pressed = SubResource("StyleBoxFlat_view_selected_hover")
+theme_override_styles/focus = SubResource("StyleBoxEmpty_focus")
+icon = ExtResource("7_camera")
+icon_alignment = 1
+expand_icon = true
+
+[node name="LookButton" type="Button" parent="Root/TopBar/LeftButtons"]
+custom_minimum_size = Vector2(50, 50)
+layout_mode = 2
+focus_mode = 0
+mouse_filter = 0
+mouse_behavior_recursive = 2
+mouse_default_cursor_shape = 2
+toggle_mode = true
+action_mode = 0
+theme_override_colors/icon_normal_color = Color(0.298, 0.722, 0.69, 1)
+theme_override_colors/icon_hover_color = Color(0.227, 0.604, 0.576, 1)
+theme_override_colors/icon_pressed_color = Color(1, 1, 1, 1)
+theme_override_colors/icon_hover_pressed_color = Color(1, 1, 1, 1)
+theme_override_styles/normal = SubResource("StyleBoxFlat_view_idle")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_view_selected")
+theme_override_styles/hover = SubResource("StyleBoxFlat_view_idle_hover")
+theme_override_styles/hover_pressed = SubResource("StyleBoxFlat_view_selected_hover")
+theme_override_styles/focus = SubResource("StyleBoxEmpty_focus")
+icon = ExtResource("8_eye")
+icon_alignment = 1
+expand_icon = true
+
+[node name="Stats" type="HBoxContainer" parent="Root/TopBar"]
+layout_mode = 1
+anchors_preset = 5
+anchor_left = 0.5
+anchor_right = 0.5
+offset_left = -460.0
+offset_top = 15.0
+offset_right = 460.0
+offset_bottom = 65.0
+grow_horizontal = 2
+mouse_filter = 2
+alignment = 1
+theme_override_constants/separation = 22
+
+[node name="HoleGroup" type="HBoxContainer" parent="Root/TopBar/Stats"]
+layout_mode = 2
+mouse_filter = 2
+theme_override_constants/separation = 8
+
+[node name="Caption" type="Label" parent="Root/TopBar/Stats/HoleGroup"]
+layout_mode = 2
+text = "HOLE"
+label_settings = SubResource("LabelSettings_caption")
+vertical_alignment = 1
+
+[node name="Value" type="Label" parent="Root/TopBar/Stats/HoleGroup"]
+layout_mode = 2
+text = "1"
+label_settings = SubResource("LabelSettings_value")
+vertical_alignment = 1
+
+[node name="ParGroup" type="HBoxContainer" parent="Root/TopBar/Stats"]
+layout_mode = 2
+mouse_filter = 2
+theme_override_constants/separation = 8
+
+[node name="Caption" type="Label" parent="Root/TopBar/Stats/ParGroup"]
+layout_mode = 2
+text = "PAR"
+label_settings = SubResource("LabelSettings_caption")
+vertical_alignment = 1
+
+[node name="Value" type="Label" parent="Root/TopBar/Stats/ParGroup"]
+layout_mode = 2
+text = "3"
+label_settings = SubResource("LabelSettings_value")
+vertical_alignment = 1
+
+[node name="StrokeGroup" type="HBoxContainer" parent="Root/TopBar/Stats"]
+layout_mode = 2
+mouse_filter = 2
+theme_override_constants/separation = 8
+
+[node name="Caption" type="Label" parent="Root/TopBar/Stats/StrokeGroup"]
+layout_mode = 2
+text = "STROKE"
+label_settings = SubResource("LabelSettings_caption")
+vertical_alignment = 1
+
+[node name="Value" type="Label" parent="Root/TopBar/Stats/StrokeGroup"]
+layout_mode = 2
+text = "0"
+label_settings = SubResource("LabelSettings_value")
+vertical_alignment = 1
+
+[node name="TimerGroup" type="HBoxContainer" parent="Root/TopBar/Stats"]
+layout_mode = 2
+mouse_filter = 2
+theme_override_constants/separation = 8
+
+[node name="Caption" type="Label" parent="Root/TopBar/Stats/TimerGroup"]
+layout_mode = 2
+text = "TIMER"
+label_settings = SubResource("LabelSettings_caption")
+vertical_alignment = 1
+
+[node name="Value" type="Label" parent="Root/TopBar/Stats/TimerGroup"]
+layout_mode = 2
+text = "0:00"
+label_settings = SubResource("LabelSettings_value")
+vertical_alignment = 1
+
+[node name="RightButtons" type="HBoxContainer" parent="Root/TopBar"]
+layout_mode = 1
+anchors_preset = 1
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -146.0
+offset_top = 15.0
+offset_right = -36.0
+offset_bottom = 65.0
+grow_horizontal = 0
+mouse_filter = 2
+theme_override_constants/separation = 10
+alignment = 2
+
+[node name="SettingsButton" type="Button" parent="Root/TopBar/RightButtons"]
+custom_minimum_size = Vector2(50, 50)
+layout_mode = 2
+focus_mode = 0
+mouse_default_cursor_shape = 2
+theme_override_styles/normal = SubResource("StyleBoxFlat_btn")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_btn_pressed")
+theme_override_styles/hover = SubResource("StyleBoxFlat_btn_hover")
+theme_override_styles/hover_pressed = SubResource("StyleBoxFlat_btn_pressed")
+theme_override_styles/focus = SubResource("StyleBoxEmpty_focus")
+icon = ExtResource("10_settings")
+icon_alignment = 1
+expand_icon = true
+
+[node name="Scorecard" type="PanelContainer" parent="Root"]
+custom_minimum_size = Vector2(300, 0)
+layout_mode = 1
+anchors_preset = 2
+anchor_top = 1.0
+anchor_bottom = 1.0
+offset_left = 24.0
+offset_top = -158.0
+offset_right = 324.0
+offset_bottom = -24.0
+grow_horizontal = 1
+grow_vertical = 0
+theme_override_styles/panel = SubResource("StyleBoxFlat_scorecard")
+
+[node name="Layout" type="VBoxContainer" parent="Root/Scorecard"]
+layout_mode = 2
+theme_override_constants/separation = 0
+
+[node name="Header" type="PanelContainer" parent="Root/Scorecard/Layout"]
+layout_mode = 2
+theme_override_styles/panel = SubResource("StyleBoxFlat_header")
+
+[node name="HeaderRow" type="HBoxContainer" parent="Root/Scorecard/Layout/Header"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="Title" type="Label" parent="Root/Scorecard/Layout/Header/HeaderRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "SCORECARD"
+label_settings = SubResource("LabelSettings_scorecard")
+vertical_alignment = 1
+
+[node name="ChevronButton" type="Button" parent="Root/Scorecard/Layout/Header/HeaderRow"]
+custom_minimum_size = Vector2(34, 34)
+layout_mode = 2
+pivot_offset = Vector2(17, 17)
+focus_mode = 0
+mouse_default_cursor_shape = 2
+theme_override_styles/normal = SubResource("StyleBoxFlat_chevron")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_btn_pressed")
+theme_override_styles/hover = SubResource("StyleBoxFlat_btn_hover")
+theme_override_styles/hover_pressed = SubResource("StyleBoxFlat_btn_pressed")
+theme_override_styles/focus = SubResource("StyleBoxEmpty_focus")
+icon = ExtResource("11_chevron")
+icon_alignment = 1
+expand_icon = true
+
+[node name="Body" type="MarginContainer" parent="Root/Scorecard/Layout"]
+layout_mode = 2
+theme_override_constants/margin_left = 18
+theme_override_constants/margin_top = 14
+theme_override_constants/margin_right = 14
+theme_override_constants/margin_bottom = 16
+
+[node name="BodyRow" type="HBoxContainer" parent="Root/Scorecard/Layout/Body"]
+layout_mode = 2
+theme_override_constants/separation = 12
+
+[node name="ShowPlayers" type="Label" parent="Root/Scorecard/Layout/Body/BodyRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Show Players"
+label_settings = SubResource("LabelSettings_body")
+vertical_alignment = 1
+
+[node name="PlayersToggle" type="Control" parent="Root/Scorecard/Layout/Body/BodyRow"]
+custom_minimum_size = Vector2(52, 30)
+layout_mode = 2
+script = ExtResource("4_toggle")
+font = ExtResource("6_bold")
+
+[node name="Abilities" type="HBoxContainer" parent="Root"]
+layout_mode = 1
+anchors_preset = 3
+anchor_left = 1.0
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = -214.0
+offset_top = -82.0
+offset_right = -24.0
+offset_bottom = -24.0
+grow_horizontal = 0
+grow_vertical = 0
+theme_override_constants/separation = 10
+alignment = 2
+
+[node name="Slot1" type="Panel" parent="Root/Abilities"]
+custom_minimum_size = Vector2(58, 58)
+layout_mode = 2
+size_flags_horizontal = 4
+size_flags_vertical = 4
+mouse_filter = 0
+theme_override_styles/panel = SubResource("StyleBoxFlat_slot")
+
+[node name="Slot2" type="Panel" parent="Root/Abilities"]
+custom_minimum_size = Vector2(58, 58)
+layout_mode = 2
+size_flags_horizontal = 4
+size_flags_vertical = 4
+mouse_filter = 0
+theme_override_styles/panel = SubResource("StyleBoxFlat_slot")
+
+[node name="AbilityButton" type="Button" parent="Root/Abilities"]
+custom_minimum_size = Vector2(58, 58)
+layout_mode = 2
+size_flags_horizontal = 4
+size_flags_vertical = 4
+focus_mode = 0
+mouse_default_cursor_shape = 2
+theme_override_styles/normal = SubResource("StyleBoxFlat_ability")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_ability_pressed")
+theme_override_styles/hover = SubResource("StyleBoxFlat_ability_hover")
+theme_override_styles/hover_pressed = SubResource("StyleBoxFlat_ability_pressed")
+theme_override_styles/focus = SubResource("StyleBoxEmpty_focus")
+icon = ExtResource("12_spiral")
+icon_alignment = 1
+expand_icon = true
+
+[connection signal="pressed" from="Root/TopBar/RightButtons/SettingsButton" to="." method="_on_settings_pressed"]
+[connection signal="pressed" from="Root/Scorecard/Layout/Header/HeaderRow/ChevronButton" to="." method="_on_chevron_pressed"]
+[connection signal="pressed" from="Root/Abilities/AbilityButton" to="." method="_on_ability_pressed"]
