@@ -15,11 +15,17 @@ run/main_scene="res://scenes/title.tscn"
 config/features=PackedStringArray("4.7", "Forward Plus")
 config/icon="res://icon.svg"
 
+[audio]
+
+buses/default_bus_layout="res://default_bus_layout.tres"
+
 [autoload]
 
 GameSession="*res://scripts/game_session.gd"
 NetworkClient="*res://scripts/network_client.gd"
 PhoneLink="*res://scripts/phone_link.gd"
+Music="*res://scripts/music_player.gd"
+Sfx="*res://scripts/sfx_player.gd"
 
 [display]
 

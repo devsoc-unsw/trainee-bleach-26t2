@@ -94,6 +94,64 @@ static func input_box() -> StyleBoxFlat:
 	return style
 
 
+static func add_audio_sliders(parent: Node, insert_at: int = -1) -> void:
+	var specs: Array = [
+		["MASTER", GameSession.master_volume, "set_master_volume"],
+		["MUSIC", GameSession.music_volume, "set_music_volume"],
+		["SOUND EFFECTS", GameSession.sfx_volume, "set_sfx_volume"],
+		["UI EFFECTS", GameSession.ui_volume, "set_ui_volume"],
+	]
+	var idx := insert_at
+	for spec in specs:
+		var row := HBoxContainer.new()
+		var caption := Label.new()
+		caption.text = str(spec[0])
+		caption.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		apply_font(caption, true, 12, INK)
+		var pct := Label.new()
+		var amount := float(spec[1])
+		pct.text = "%d%%" % int(round(amount * 100.0))
+		pct.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+		apply_font(pct, true, 13, TEAL)
+		row.add_child(caption)
+		row.add_child(pct)
+		var slider := HSlider.new()
+		slider.min_value = 0.0
+		slider.max_value = 1.0
+		slider.step = 0.01
+		slider.value = amount
+		slider.custom_minimum_size = Vector2(0, 22)
+		var track := StyleBoxFlat.new()
+		track.bg_color = Color("E4DCCE")
+		track.set_corner_radius_all(8)
+		track.content_margin_top = 6
+		track.content_margin_bottom = 6
+		var fill := StyleBoxFlat.new()
+		fill.bg_color = TEAL
+		fill.set_corner_radius_all(8)
+		slider.add_theme_stylebox_override("slider", track)
+		slider.add_theme_stylebox_override("grabber_area", fill if amount > 0.001 else StyleBoxEmpty.new())
+		slider.add_theme_stylebox_override("grabber_area_highlight", fill if amount > 0.001 else StyleBoxEmpty.new())
+		var method := str(spec[2])
+		slider.value_changed.connect(func(v: float) -> void:
+			pct.text = "%d%%" % int(round(v * 100.0))
+			var bar: StyleBox = fill if v > 0.001 else StyleBoxEmpty.new()
+			slider.add_theme_stylebox_override("grabber_area", bar)
+			slider.add_theme_stylebox_override("grabber_area_highlight", bar)
+			GameSession.call(method, v)
+		)
+		if idx >= 0:
+			parent.add_child(row)
+			parent.move_child(row, idx)
+			idx += 1
+			parent.add_child(slider)
+			parent.move_child(slider, idx)
+			idx += 1
+		else:
+			parent.add_child(row)
+			parent.add_child(slider)
+
+
 static func apply_font(node: Control, extra: bool, size: int, color: Color) -> void:
 	node.add_theme_font_override("font", FONT_EXTRA if extra else FONT_BOLD)
 	node.add_theme_font_size_override("font_size", size)

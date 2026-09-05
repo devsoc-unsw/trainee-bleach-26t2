@@ -4,7 +4,7 @@ signal camera_pressed
 signal look_pressed
 signal settings_pressed
 signal ability_pressed
-signal power_used(kind: String)
+signal power_used(kind: String, slot: int)
 signal quit_pressed
 signal courses_pressed
 signal phone_link_pressed
@@ -17,6 +17,7 @@ signal spectate_next_pressed
 signal scorecard_toggled(expanded: bool)
 signal results_skip_pressed
 signal results_hold_finished
+signal timer_expired
 
 @export var hole: int = 1
 @export var par: int = 3
@@ -25,6 +26,10 @@ signal results_hold_finished
 
 var elapsed: float = 0.0
 var scorecard_expanded: bool = true
+var countdown_mode: bool = false
+var countdown_ends_at: float = 0.0
+var _timer_expired_emitted: bool = false
+const FFA_HOLE_SECS := 210
 
 @onready var hole_value: Label = $Root/TopBar/Stats/HoleGroup/Value
 @onready var par_value: Label = $Root/TopBar/Stats/ParGroup/Value
@@ -154,10 +159,26 @@ func set_elapsed(seconds: float) -> void:
 
 func start_timer() -> void:
 	timer_running = true
+	if countdown_mode and countdown_ends_at <= 0.0:
+		countdown_ends_at = Time.get_unix_time_from_system() * 1000.0 + float(FFA_HOLE_SECS * 1000)
+	_refresh_timer()
 
 
 func stop_timer() -> void:
 	timer_running = false
+
+
+func set_countdown_end(ends_at_ms: float) -> void:
+	countdown_mode = true
+	countdown_ends_at = ends_at_ms
+	_timer_expired_emitted = false
+	_refresh_timer()
+
+
+func clear_countdown() -> void:
+	countdown_mode = false
+	countdown_ends_at = 0.0
+	_timer_expired_emitted = false
 
 
 func show_kickoff(text: String) -> void:
@@ -191,8 +212,8 @@ func _build_power_hud() -> void:
 func _ensure_power_hud() -> void:
 	if _shield_slot:
 		return
-	_shield_slot = _bind_power_slot($Root/Abilities/Slot1)
-	_shrink_slot = _bind_power_slot($Root/Abilities/Slot2)
+	_shield_slot = _bind_power_slot($Root/Abilities/Slot1, 0)
+	_shrink_slot = _bind_power_slot($Root/Abilities/Slot2, 1)
 	var leftover := $Root/Abilities.get_node_or_null("AbilityButton")
 	if leftover:
 		leftover.visible = false
@@ -201,7 +222,7 @@ func _ensure_power_hud() -> void:
 	bar.offset_left = -146.0
 
 
-func _bind_power_slot(host: Control) -> PowerSlot:
+func _bind_power_slot(host: Control, index: int) -> PowerSlot:
 	host.add_theme_stylebox_override("panel", StyleBoxEmpty.new())
 	host.mouse_filter = Control.MOUSE_FILTER_STOP
 	var slot := PowerSlot.new()
@@ -209,7 +230,7 @@ func _bind_power_slot(host: Control) -> PowerSlot:
 	slot.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	slot.pressed.connect(func() -> void:
 		if slot.kind != "":
-			power_used.emit(slot.kind)
+			power_used.emit(slot.kind, index)
 	)
 	host.add_child(slot)
 	return slot
@@ -248,6 +269,7 @@ func _ensure_kickoff() -> void:
 
 func reset_timer() -> void:
 	elapsed = 0.0
+	_timer_expired_emitted = false
 	_refresh_timer()
 
 
@@ -373,6 +395,16 @@ func _refresh_timer() -> void:
 	if timer_value == null:
 		return
 	var total := int(elapsed)
+	if countdown_mode:
+		if timer_running and countdown_ends_at > 0.0:
+			total = maxi(0, int(ceil(countdown_ends_at / 1000.0 - Time.get_unix_time_from_system())))
+		else:
+			total = FFA_HOLE_SECS
+		if timer_running and total <= 0 and not _timer_expired_emitted:
+			_timer_expired_emitted = true
+			timer_running = false
+			total = 0
+			timer_expired.emit()
 	var minutes := int(total / 60.0)
 	var seconds := total % 60
 	timer_value.text = "%d:%02d" % [minutes, seconds]
@@ -611,7 +643,7 @@ func _build_pause_menu() -> void:
 
 	var card := PanelContainer.new()
 	card.add_theme_stylebox_override("panel", UiStyle.card(24))
-	card.custom_minimum_size = Vector2(280, 0)
+	card.custom_minimum_size = Vector2(340, 0)
 	card.gui_input.connect(func(event: InputEvent) -> void:
 		if event is InputEventMouseButton:
 			get_viewport().set_input_as_handled()
@@ -625,6 +657,7 @@ func _build_pause_menu() -> void:
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	UiStyle.apply_font(title, true, 22, UiStyle.INK)
 	col.add_child(title)
+	UiStyle.add_audio_sliders(col)
 
 	var quit := Button.new()
 	quit.text = "QUIT GAME"
@@ -1028,10 +1061,10 @@ func _on_scorecard_header_input(event: InputEvent) -> void:
 
 
 func _copy_chevron_look(btn: Button) -> void:
-	for name in ["normal", "pressed", "hover", "hover_pressed", "focus"]:
-		var box := chevron_button.get_theme_stylebox(name)
+	for style_name in ["normal", "pressed", "hover", "hover_pressed", "focus"]:
+		var box := chevron_button.get_theme_stylebox(style_name)
 		if box:
-			btn.add_theme_stylebox_override(name, box)
+			btn.add_theme_stylebox_override(style_name, box)
 
 
 func _toggle_chat() -> void:
@@ -1085,24 +1118,28 @@ func can_skip_results() -> bool:
 	return _results_hold_open and _results_skip != null and _results_skip.visible
 
 
-func show_round_results(hole_index: int, last_hole: bool, results: Array, hole_par: int) -> void:
-	var ranked := _sorted_result_dicts(results, "strokes", "time")
+func show_round_results(hole_index: int, _last_hole: bool, results: Array, _hole_par: int) -> void:
+	var field := "points" if GameSession.is_free_for_all() else "strokes"
+	var time_field := "" if GameSession.is_free_for_all() else "time"
+	var ranked := _sorted_result_dicts(results, field, time_field)
 	await _present_results("Results", "Hole %d" % (hole_index + 1), _result_rows_from(
-		ranked, "strokes", "time"
+		ranked, field, time_field
 	), false)
 
 
 func show_standings_results(results: Array) -> void:
-	var ranked := _sorted_result_dicts(results, "total", "totalTime")
+	var time_field := "" if GameSession.is_free_for_all() else "totalTime"
+	var ranked := _sorted_result_dicts(results, "total", time_field)
 	await _present_results("Scores", "Standings", _result_rows_from(
-		ranked, "total", "totalTime"
+		ranked, "total", time_field
 	), true)
 
 
 func show_match_results(placings: Array) -> void:
-	var ranked := _sorted_result_dicts(placings, "total", "time")
+	var time_field := "" if GameSession.is_free_for_all() else "time"
+	var ranked := _sorted_result_dicts(placings, "total", time_field)
 	await _present_results("Final", "Scores", _result_rows_from(
-		ranked, "total", "time"
+		ranked, "total", time_field
 	), true)
 
 
@@ -1181,15 +1218,13 @@ func _sorted_result_dicts(results: Array, field: String, time_field: String = ""
 		if item is Dictionary:
 			rows.append(item)
 	rows.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
-		var left := int(a.get(field, 0))
-		var right := int(b.get(field, 0))
+		var left := int(a.get(field, a.get("strokes", 0)))
+		var right := int(b.get(field, b.get("strokes", 0)))
 		var left_t := _row_time(a, time_field)
 		var right_t := _row_time(b, time_field)
 		if GameSession.is_free_for_all():
-			if not is_equal_approx(left_t, right_t):
-				return left_t < right_t
 			if left != right:
-				return left < right
+				return left > right
 		else:
 			if left != right:
 				return left < right
@@ -1484,9 +1519,12 @@ func _make_result_line(row: Dictionary) -> Control:
 	stats.add_theme_constant_override("separation", 28)
 	stats.alignment = BoxContainer.ALIGNMENT_CENTER
 	var putts := int(row.get("putts", 0))
-	stats.add_child(_make_stat_value("%d %s" % [putts, "putt" if putts == 1 else "putts"]))
-	if bool(row.get("show_time", true)):
-		stats.add_child(_make_stat_value(_format_clock(float(row.get("time", 0)))))
+	if GameSession.is_free_for_all():
+		stats.add_child(_make_stat_value("%d %s" % [putts, "pt" if putts == 1 else "pts"]))
+	else:
+		stats.add_child(_make_stat_value("%d %s" % [putts, "putt" if putts == 1 else "putts"]))
+		if bool(row.get("show_time", true)):
+			stats.add_child(_make_stat_value(_format_clock(float(row.get("time", 0)))))
 	box.add_child(stats)
 	return card
 
