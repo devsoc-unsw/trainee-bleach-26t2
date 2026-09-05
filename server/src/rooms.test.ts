@@ -306,4 +306,22 @@ describe('rooms', () => {
     assert.equal(taken.pickupId, 'green_shield');
     assert.equal(b.sent.some((m) => m.t === 'pickup_taken'), true);
   });
+
+  it('lets a player rename and claim a free ball colour in the lobby', () => {
+    const a = fakeSocket();
+    const b = fakeSocket();
+    rooms.register(a.ws);
+    rooms.register(b.ws);
+    const room = rooms.createRoom(a.ws, 'Looks', true, 'Host');
+    rooms.joinRoom(b.ws, room.code, 'Guest');
+    const renamed = rooms.setProfile(b.ws, '  Lou  ', '#27AE60');
+    assert.notEqual(typeof renamed, 'string');
+    const guest = [...room.players.values()].find((p) => p.id !== room.hostId);
+    assert.equal(guest?.name, 'Lou');
+    assert.equal(guest?.color, '#27AE60');
+    assert.equal(rooms.setProfile(a.ws, 'Host', '#27AE60'), 'That colour is already taken');
+    assert.equal(rooms.setProfile(b.ws, 'Lou', '#not-a-colour'), 'Pick a valid ball colour');
+    rooms.startMatch(a.ws, 'rainbow_stairs');
+    assert.equal(rooms.setProfile(b.ws, 'Nope'), 'Cannot change that after the match has started');
+  });
 });

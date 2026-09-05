@@ -72,6 +72,8 @@ var _aim_phone_btns: Array[Button] = []
 var _results_dimmer: ColorRect
 var _results_title: Label
 var _results_sub: Label
+var _results_round_header: Control
+var _results_match_header: Control
 var _results_rows: VBoxContainer
 var _results_tween: Tween
 var _kickoff_dimmer: ColorRect
@@ -1084,7 +1086,10 @@ func _on_show_players_toggled(enabled: bool) -> void:
 func show_round_results(hole_index: int, last_hole: bool, results: Array, hole_par: int) -> void:
 	_ensure_results_overlay()
 	_results_title.text = "HOLE %d RESULTS" % (hole_index + 1)
+	UiStyle.apply_font(_results_title, true, 22, UiStyle.INK)
 	_results_sub.text = "Final results incoming..." if last_hole else "Next hole starting soon"
+	_results_round_header.visible = true
+	_results_match_header.visible = false
 	var ranked: Array = results.duplicate()
 	ranked.sort_custom(func(a, b):
 		if int(a.get("strokes", 0)) == int(b.get("strokes", 0)):
@@ -1114,8 +1119,28 @@ func show_round_results(hole_index: int, last_hole: bool, results: Array, hole_p
 
 func show_match_results(placings: Array) -> void:
 	_ensure_results_overlay()
-	_results_title.text = "MATCH COMPLETE"
-	_results_sub.text = "Lowest strokes wins"
+	var winners: Array[Dictionary] = []
+	for p in placings:
+		if p is Dictionary and int(p.get("place", 1)) == 1:
+			winners.append(p)
+	if winners.size() == 1:
+		var winner: Dictionary = winners[0]
+		_results_title.text = "%s WINS!" % String(winner.get("name", "Player")).to_upper()
+		UiStyle.apply_font(_results_title, true, 28, Color(str(winner.get("color", "#4CB8B0"))))
+		_results_sub.text = "Lowest strokes wins"
+	elif winners.size() > 1:
+		var names: PackedStringArray = PackedStringArray()
+		for winner in winners:
+			names.append(String(winner.get("name", "Player")).to_upper())
+		_results_title.text = "%s TIE!" % " & ".join(names)
+		UiStyle.apply_font(_results_title, true, 24, UiStyle.INK)
+		_results_sub.text = "Shared first, same total strokes"
+	else:
+		_results_title.text = "MATCH COMPLETE"
+		UiStyle.apply_font(_results_title, true, 22, UiStyle.INK)
+		_results_sub.text = "Lowest strokes wins"
+	_results_round_header.visible = false
+	_results_match_header.visible = true
 	var rows: Array = []
 	for p in placings:
 		if not p is Dictionary:
@@ -1182,9 +1207,13 @@ func _ensure_results_overlay() -> void:
 	_results_sub.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	UiStyle.apply_font(_results_sub, true, 14, UiStyle.TEAL)
 	col.add_child(_results_sub)
-	var header := _make_result_line("#", "Name", "Hole", "Par", "Total", Color(0.45, 0.38, 0.32), false)
-	header.modulate.a = 0.65
-	col.add_child(header)
+	_results_round_header = _make_result_line("#", "Name", "Hole", "Par", "Total", Color(0.45, 0.38, 0.32), false)
+	_results_round_header.modulate.a = 0.65
+	col.add_child(_results_round_header)
+	_results_match_header = _make_result_line("#", "Name", "", "", "Total", Color(0.45, 0.38, 0.32), false)
+	_results_match_header.modulate.a = 0.65
+	_results_match_header.visible = false
+	col.add_child(_results_match_header)
 	_results_rows = VBoxContainer.new()
 	_results_rows.add_theme_constant_override("separation", 8)
 	col.add_child(_results_rows)

@@ -34,8 +34,10 @@ void fragment() {
 		float shift = fract((floor(cell.x) + floor(cell.y)) * 0.13);
 		col = mix(col * (0.9 + shift * 0.06), col * 0.58, grout);
 	} else if (pattern == 2) {
+		vec3 wn = abs(normalize(v_world_n));
+		float horiz = wn.x >= wn.z ? v_world.z : v_world.x;
 		float row = floor(v_world.y / max(pattern_scale * 0.42, 0.12));
-		vec2 cell = vec2(v_world.x + row * 0.38, v_world.y) / vec2(max(pattern_scale, 0.2), max(pattern_scale * 0.42, 0.12));
+		vec2 cell = vec2(horiz + row * 0.38, v_world.y) / vec2(max(pattern_scale, 0.2), max(pattern_scale * 0.42, 0.12));
 		vec2 f = fract(cell);
 		float mortar = 1.0 - step(0.1, f.x) * step(0.16, f.y);
 		col = mix(col, col * 0.68, mortar);
@@ -50,6 +52,9 @@ void fragment() {
 	} else if (pattern == 4) {
 		float blot = sin(v_world.x * 2.3) * sin(v_world.z * 1.9) * sin(v_world.y * 2.8);
 		col = mix(col * 0.86, col * 1.08, blot * 0.5 + 0.5);
+	} else if (pattern == 5) {
+		float slat = step(0.4, fract(v_world.y / max(pattern_scale, 0.07)));
+		col = mix(col * 0.28, col, slat);
 	}
 	ALBEDO = col;
 	ROUGHNESS = pattern == 3 ? 0.42 : 0.92;

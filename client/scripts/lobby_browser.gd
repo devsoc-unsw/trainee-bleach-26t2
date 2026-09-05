@@ -37,6 +37,11 @@ var _ffa_btn: Button
 var _room_mode_label: Label
 var _room_turn_btn: Button
 var _room_ffa_btn: Button
+var _preview_ball: RigidBody3D
+var _name_edit: LineEdit
+var _colour_row: HBoxContainer
+var _colour_buttons: Array[Button] = []
+var _profile_error: Label
 
 
 func _ready() -> void:
@@ -52,6 +57,7 @@ func _ready() -> void:
 	_make_rounds_picker()
 	_make_mode_picker()
 	_make_room_mode_controls()
+	_make_profile_controls()
 	create_dimmer.gui_input.connect(func(e: InputEvent) -> void: _dimmer_close(e, create_dimmer))
 	join_dimmer.gui_input.connect(func(e: InputEvent) -> void: _dimmer_close(e, join_dimmer))
 	join_edit.text_changed.connect(_on_join_code_typed)
@@ -116,7 +122,9 @@ func _on_state_received(_lobby: Dictionary) -> void:
 func _on_error_received(_code: String, message: String) -> void:
 	_waiting_for_room = false
 	join_error.text = message
-	if not join_dimmer.visible and not GameSession.active_lobby.is_empty():
+	if room_view.visible and not GameSession.active_lobby.is_empty():
+		if _profile_error:
+			_profile_error.text = message
 		return
 	if not join_dimmer.visible:
 		_show_overlay(join_dimmer)
@@ -133,6 +141,9 @@ func _build_backdrop() -> void:
 	camera.add_child(ball)
 	ball.position = Vector3(-0.72, -0.42, -1.2)
 	ball.scale = Vector3.ONE * 1.45
+	_preview_ball = ball
+	if _preview_ball.has_method("apply_color"):
+		_preview_ball.call("apply_color", GameSession.my_color)
 
 
 func _make_player_list() -> void:
@@ -198,6 +209,7 @@ func _show_room() -> void:
 	start_btn.visible = GameSession.hosting
 	_refresh_room_mode_ui()
 	_fill_players(lobby.get("player_list", []))
+	_refresh_profile_ui(lobby.get("player_list", []))
 
 
 func _fill_players(people: Variant) -> void:
@@ -439,6 +451,115 @@ func _set_create_mode(mode: String) -> void:
 		_style_choice(_turn_btn, mode == "turn_by_turn")
 	if _ffa_btn:
 		_style_choice(_ffa_btn, mode == "free_for_all")
+
+
+func _make_profile_controls() -> void:
+	var layout: VBoxContainer = $UI/Root/Content/RoomView/Card/Layout
+	var name_cap := Label.new()
+	name_cap.text = "YOUR NAME"
+	name_cap.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	UiStyle.apply_font(name_cap, true, 13, UiStyle.INK)
+	layout.add_child(name_cap)
+	_name_edit = LineEdit.new()
+	_name_edit.placeholder_text = "Your name"
+	_name_edit.max_length = 18
+	_name_edit.alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_name_edit.add_theme_stylebox_override("normal", UiStyle.input_box())
+	UiStyle.apply_font(_name_edit, false, 16, UiStyle.INK)
+	_name_edit.text_submitted.connect(_on_name_submitted)
+	_name_edit.focus_exited.connect(_commit_name)
+	layout.add_child(_name_edit)
+	var colour_cap := Label.new()
+	colour_cap.text = "BALL COLOUR"
+	colour_cap.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	UiStyle.apply_font(colour_cap, true, 13, UiStyle.INK)
+	layout.add_child(colour_cap)
+	_colour_row = HBoxContainer.new()
+	_colour_row.alignment = BoxContainer.ALIGNMENT_CENTER
+	_colour_row.add_theme_constant_override("separation", 8)
+	layout.add_child(_colour_row)
+	for hex in GameSession.BALL_COLORS:
+		var btn := Button.new()
+		btn.focus_mode = Control.FOCUS_NONE
+		btn.custom_minimum_size = Vector2(34, 34)
+		btn.tooltip_text = "Claim this ball colour"
+		btn.set_meta("hex", hex)
+		btn.pressed.connect(_pick_colour.bind(hex))
+		_colour_row.add_child(btn)
+		_colour_buttons.append(btn)
+	_profile_error = Label.new()
+	_profile_error.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_profile_error.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	UiStyle.apply_font(_profile_error, true, 12, Color("C45A3A"))
+	layout.add_child(_profile_error)
+	var insert_at := _room_mode_label.get_index() if _room_mode_label else start_btn.get_index()
+	layout.move_child(name_cap, insert_at)
+	layout.move_child(_name_edit, insert_at + 1)
+	layout.move_child(colour_cap, insert_at + 2)
+	layout.move_child(_colour_row, insert_at + 3)
+	layout.move_child(_profile_error, insert_at + 4)
+
+
+func _refresh_profile_ui(people: Variant) -> void:
+	if _profile_error:
+		_profile_error.text = ""
+	if _name_edit and not _name_edit.has_focus():
+		_name_edit.text = GameSession.player_name
+	if _preview_ball and _preview_ball.has_method("apply_color"):
+		_preview_ball.call("apply_color", GameSession.my_color)
+	var taken: Dictionary = {}
+	var mine := GameSession.my_color.to_html(false).to_upper()
+	if people is Array:
+		for p in people:
+			if not p is Dictionary:
+				continue
+			var hex := str(p.get("color", "")).trim_prefix("#").to_upper()
+			if str(p.get("id", "")) == NetworkClient.player_id:
+				mine = hex
+			else:
+				taken[hex] = true
+	for btn in _colour_buttons:
+		var hex := str(btn.get_meta("hex", "")).trim_prefix("#").to_upper()
+		var chosen := hex == mine
+		var busy := taken.has(hex)
+		btn.disabled = busy
+		btn.modulate = Color(1, 1, 1, 0.28) if busy else Color.WHITE
+		var style := StyleBoxFlat.new()
+		style.bg_color = Color("#%s" % hex)
+		style.set_corner_radius_all(10)
+		style.border_width_left = 3 if chosen else 0
+		style.border_width_top = 3 if chosen else 0
+		style.border_width_right = 3 if chosen else 0
+		style.border_width_bottom = 3 if chosen else 0
+		style.border_color = Color("3A322C")
+		btn.add_theme_stylebox_override("normal", style)
+		btn.add_theme_stylebox_override("hover", style)
+		btn.add_theme_stylebox_override("pressed", style)
+		btn.add_theme_stylebox_override("disabled", style)
+		btn.add_theme_stylebox_override("focus", style)
+
+
+func _on_name_submitted(_text: String) -> void:
+	_commit_name()
+
+
+func _commit_name() -> void:
+	if _name_edit == null:
+		return
+	var cleaned := _name_edit.text.strip_edges()
+	if cleaned.is_empty():
+		cleaned = "Player"
+		_name_edit.text = cleaned
+	if cleaned == GameSession.player_name:
+		return
+	GameSession.set_profile(cleaned, "")
+
+
+func _pick_colour(hex: String) -> void:
+	var current := "#%s" % GameSession.my_color.to_html(false)
+	if hex.to_upper() == current.to_upper():
+		return
+	GameSession.set_profile("", hex)
 
 
 func _make_room_mode_controls() -> void:

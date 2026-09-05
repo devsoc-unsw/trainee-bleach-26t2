@@ -70,6 +70,26 @@ static func brick_wall() -> ShaderMaterial:
 	return toon(BRICK, BRICK_SHADE, 2, 0.52)
 
 
+static func quad_brick() -> ShaderMaterial:
+	return toon(Color("C4A57A"), Color("9A7D55"), 2, 0.34)
+
+
+static func quad_plaster() -> ShaderMaterial:
+	return toon(Color("D8C9A4"), Color("B8A67E"))
+
+
+static func metal_silver() -> ShaderMaterial:
+	return toon(Color("C5C8CE"), Color("8B9098"))
+
+
+static func metal_dark() -> ShaderMaterial:
+	return toon(Color("2C2E33"), Color("16181C"))
+
+
+static func louver_glass() -> ShaderMaterial:
+	return toon(Color("4A5A68"), Color("2A3844"), 5, 0.09, Color("1A2228"))
+
+
 static func cream_building() -> ShaderMaterial:
 	return toon(CREAM, Color(0.78, 0.7, 0.58), 3, 1.65, Color(0.42, 0.62, 0.72))
 
@@ -413,6 +433,99 @@ static func label(parent: Node3D, text: String, pos: Vector3, font_size: int = 6
 	node.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	parent.add_child(node)
 	return node
+
+
+static func dress_quad_facade(
+	parent: Node3D,
+	origin: Vector3,
+	width: float,
+	ground_y: float,
+	yaw: float,
+	with_entrance: bool = false
+) -> Node3D:
+	var face := Node3D.new()
+	face.name = "QuadFacade"
+	face.position = Vector3(origin.x, ground_y, origin.z)
+	face.rotation.y = yaw
+	parent.add_child(face)
+	if width < 6.0:
+		return face
+
+	var brick := quad_brick()
+	var plaster := quad_plaster()
+	var silver := metal_silver()
+	var dark := metal_dark()
+	var glass := toon(Color("6A8A9C"), Color("3A5464"))
+	var shade := toon(Color("6A5A44"), Color("4A3C30"))
+	var combo := combiner(face, false)
+	var half := width * 0.5
+	var door_w := 3.4 if with_entrance else 0.0
+	var col_h := 3.28
+	var bay := 3.2
+
+	box(combo, Vector3(width + 0.2, col_h, 0.22), Vector3(0.0, col_h * 0.5, -0.72), shade, CSGShape3D.OPERATION_UNION, false)
+	box(combo, Vector3(width + 0.15, 0.18, 1.05), Vector3(0.0, col_h + 0.05, 0.18), brick, CSGShape3D.OPERATION_UNION, false)
+
+	var x := -half + 1.15
+	while x <= half - 0.7:
+		var in_door := with_entrance and absf(x) < door_w * 0.52
+		if not in_door:
+			box(combo, Vector3(0.78, col_h, 0.68), Vector3(x, col_h * 0.5, 0.34), brick, CSGShape3D.OPERATION_UNION, false)
+			cylinder(combo, 0.15, col_h - 0.12, Vector3(x, col_h * 0.5, -0.12), silver, 10, CSGShape3D.OPERATION_UNION, false)
+		x += bay
+
+	if with_entrance:
+		box(combo, Vector3(door_w, 2.55, 0.16), Vector3(0.0, 1.28, -0.52), toon(Color("3A322C"), Color("221C18")), CSGShape3D.OPERATION_UNION, false)
+		box(combo, Vector3(door_w + 0.35, 0.16, 0.28), Vector3(0.0, 2.62, -0.28), plaster, CSGShape3D.OPERATION_UNION, false)
+		var sign := label(face, "Quadrangle West", Vector3(0.0, 2.95, 0.22), 42)
+		sign.rotation.y = PI
+		sign.modulate = Color("F4EFE4")
+
+	box(combo, Vector3(width + 0.1, 0.12, 0.58), Vector3(0.0, col_h + 0.16, 0.28), plaster, CSGShape3D.OPERATION_UNION, false)
+	_quad_rail(combo, width, col_h + 0.22, dark, glass)
+
+	box(combo, Vector3(width + 0.1, 0.32, 0.1), Vector3(0.0, 6.05, 0.06), plaster, CSGShape3D.OPERATION_UNION, false)
+	box(combo, Vector3(width + 0.1, 0.32, 0.1), Vector3(0.0, 8.48, 0.06), plaster, CSGShape3D.OPERATION_UNION, false)
+
+	var win := louver_glass()
+	var frame := dark
+	for storey in [4.15, 6.55]:
+		var wx := -half + 1.35
+		while wx <= half - 1.2:
+			var skip_door := with_entrance and storey < 5.0 and absf(wx) < door_w * 0.55
+			var skip_bay := with_entrance and storey > 5.5 and absf(wx) < 2.4
+			if not skip_door and not skip_bay:
+				box(combo, Vector3(0.5, 1.55, 0.05), Vector3(wx, storey + 0.78, 0.05), frame, CSGShape3D.OPERATION_UNION, false)
+				box(combo, Vector3(0.4, 1.42, 0.04), Vector3(wx, storey + 0.78, 0.08), win, CSGShape3D.OPERATION_UNION, false)
+			wx += 1.55
+
+	if with_entrance:
+		box(combo, Vector3(4.7, 0.1, 0.78), Vector3(0.0, 6.42, 0.42), dark, CSGShape3D.OPERATION_UNION, false)
+		box(combo, Vector3(4.55, 1.05, 0.06), Vector3(0.0, 6.98, 0.78), glass, CSGShape3D.OPERATION_UNION, false)
+		box(combo, Vector3(4.7, 0.08, 0.78), Vector3(0.0, 7.52, 0.42), dark, CSGShape3D.OPERATION_UNION, false)
+		box(combo, Vector3(0.08, 1.1, 0.78), Vector3(-2.3, 6.97, 0.42), dark, CSGShape3D.OPERATION_UNION, false)
+		box(combo, Vector3(0.08, 1.1, 0.78), Vector3(2.3, 6.97, 0.42), dark, CSGShape3D.OPERATION_UNION, false)
+		cylinder(combo, 0.22, 0.42, Vector3(-1.1, 6.68, 0.28), toon(FOLIAGE, FOLIAGE_SHADE), 8, CSGShape3D.OPERATION_UNION, false)
+		cylinder(combo, 0.18, 0.36, Vector3(1.25, 6.64, 0.22), toon(FOLIAGE, FOLIAGE_SHADE), 8, CSGShape3D.OPERATION_UNION, false)
+
+	box(combo, Vector3(width - 0.4, 1.45, 0.1), Vector3(0.0, 9.45, 0.08), toon(Color("5A7384"), Color("2E4452")), CSGShape3D.OPERATION_UNION, false)
+	box(combo, Vector3(width + 0.35, 0.2, 0.95), Vector3(0.0, 10.28, 0.22), dark, CSGShape3D.OPERATION_UNION, false)
+	var bx := -half + 1.4
+	while bx <= half - 1.2:
+		box(combo, Vector3(0.08, 0.38, 0.55), Vector3(bx, 10.02, 0.28), dark, CSGShape3D.OPERATION_UNION, false)
+		bx += 3.2
+	return face
+
+
+static func _quad_rail(combo: Node3D, width: float, y: float, dark: Material, glass: Material) -> void:
+	var half := width * 0.5
+	box(combo, Vector3(width + 0.05, 0.05, 0.5), Vector3(0.0, y, 0.28), dark, CSGShape3D.OPERATION_UNION, false)
+	box(combo, Vector3(width + 0.05, 0.04, 0.5), Vector3(0.0, y + 0.82, 0.28), dark, CSGShape3D.OPERATION_UNION, false)
+	box(combo, Vector3(width + 0.02, 0.72, 0.03), Vector3(0.0, y + 0.42, 0.48), glass, CSGShape3D.OPERATION_UNION, false)
+	var px := -half + 0.8
+	while px <= half - 0.6:
+		box(combo, Vector3(0.05, 0.86, 0.05), Vector3(px, y + 0.43, 0.48), dark, CSGShape3D.OPERATION_UNION, false)
+		px += 1.55
 
 
 static func menu_backdrop(world: Node3D) -> void:

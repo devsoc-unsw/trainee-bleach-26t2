@@ -506,6 +506,17 @@ async function route(ws: WebSocket, type: string, msg: Record<string, unknown>):
       rooms.broadcast(changed, rooms.lobbyState(changed));
       break;
     }
+    case 'set_profile': {
+      const name = typeof msg['name'] === 'string' ? String(msg['name']) : undefined;
+      const color = typeof msg['color'] === 'string' ? String(msg['color']) : undefined;
+      const updated = rooms.setProfile(ws, name, color);
+      if (typeof updated === 'string') {
+        sendError(ws, 'PROFILE_FAILED', updated);
+        return;
+      }
+      rooms.broadcast(updated, rooms.lobbyState(updated));
+      break;
+    }
     case 'oob': {
       const player = rooms.playerFor(ws);
       const room = rooms.roomFor(ws);

@@ -220,6 +220,15 @@ func send_set_mode(mode: String) -> void:
 	_send({ "t": "set_mode", "mode": mode })
 
 
+func send_set_profile(player_name: String = "", color: String = "") -> void:
+	var msg := { "t": "set_profile" }
+	if not player_name.is_empty():
+		msg["name"] = player_name
+	if not color.is_empty():
+		msg["color"] = color
+	_send(msg)
+
+
 func send_join(code: String, player_name: String) -> void:
 	_send({ "t": "join", "code": code, "playerName": player_name })
 

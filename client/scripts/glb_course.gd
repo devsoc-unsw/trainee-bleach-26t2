@@ -65,6 +65,7 @@ func _rebuild_course() -> void:
 	_restyle_materials()
 	_punch_cup()
 	_close_building_abyss()
+	_dress_quad_west()
 	if not Engine.is_editor_hint():
 		_add_collision()
 	_add_cliffs()
@@ -486,7 +487,7 @@ func _close_building_abyss() -> void:
 	if green == null or green.mesh == null or buildings == null or buildings.mesh == null:
 		return
 	var g: AABB = green.mesh.get_aabb()
-	var cream := MapKit.cream_building()
+	var cream := MapKit.quad_brick()
 	var vols := _building_volumes(buildings)
 	if vols.is_empty():
 		return
@@ -564,6 +565,27 @@ func _close_building_abyss() -> void:
 			CSGShape3D.OPERATION_UNION,
 			not Engine.is_editor_hint()
 		))
+
+
+func _dress_quad_west() -> void:
+	var green := get_node_or_null("Green") as MeshInstance3D
+	if green == null or green.mesh == null:
+		return
+	if get_node_or_null("QuadBuildings") == null:
+		return
+	var g: AABB = green.mesh.get_aabb()
+	var y0 := g.position.y + g.size.y
+	var gx0 := g.position.x
+	var gx1 := gx0 + g.size.x
+	var gz0 := g.position.z
+	var gz1 := gz0 + g.size.z
+	var root := Node3D.new()
+	root.name = "QuadWestDress"
+	_gen(root)
+	add_child(root)
+	MapKit.dress_quad_facade(root, Vector3((gx0 + gx1) * 0.5, y0, gz0), gx1 - gx0, y0, 0.0, true)
+	MapKit.dress_quad_facade(root, Vector3(gx0, y0, (gz0 + gz1) * 0.5), gz1 - gz0, y0, PI * 0.5, false)
+	MapKit.dress_quad_facade(root, Vector3(gx1, y0, (gz0 + gz1) * 0.5), gz1 - gz0, y0, -PI * 0.5, false)
 
 
 func _hide_imported_cup() -> void:
@@ -1008,7 +1030,9 @@ func _toon_from(src: Material, node_key: String) -> Material:
 		return MapKit.toon(Color("3A322C"))
 	if key.find("white") >= 0:
 		return MapKit.toon(MapKit.WHITE)
-	if node_key.find("law") >= 0 or node_key.find("quad") >= 0 or node_key.find("hall") >= 0 or node_key.find("grandstand") >= 0:
+	if node_key.find("quad") >= 0:
+		return MapKit.quad_brick()
+	if node_key.find("law") >= 0 or node_key.find("hall") >= 0 or node_key.find("grandstand") >= 0:
 		if albedo.g > albedo.r * 0.9 and albedo.b > albedo.r * 0.85:
 			return MapKit.toon(Color("6BB8D0"), Color("3A7A90"))
 		if albedo.r > 0.55 and albedo.g > 0.5:
