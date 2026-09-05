@@ -3,6 +3,9 @@ extends RefCounted
 
 const CREAM := Color("F6F1E6")
 const CREAM_DEEP := Color("EDE4D4")
+const GHOST := Color("FBF7F0")
+const GHOST_HOVER := Color("E6DCD0")
+const GHOST_PRESS := Color("DCD1C3")
 const TEAL := Color("4CB8B0")
 const TEAL_HOVER := Color("6DCCC6")
 const TEAL_PRESS := Color("3A9A93")
@@ -56,11 +59,22 @@ static func card(radius: int = 28) -> StyleBoxFlat:
 	return style
 
 
-static func ghost_pill() -> StyleBoxFlat:
+static func ghost_pill(color: Color = GHOST) -> StyleBoxFlat:
 	var style := pill(Color(1, 1, 1, 0.35), 18, 12)
 	style.shadow_size = 0
-	style.bg_color = Color("FBF7F0")
+	style.bg_color = color
 	return style
+
+
+static func apply_ghost_button(btn: BaseButton) -> void:
+	btn.add_theme_stylebox_override("normal", ghost_pill())
+	btn.add_theme_stylebox_override("hover", ghost_pill(GHOST_HOVER))
+	btn.add_theme_stylebox_override("pressed", ghost_pill(GHOST_PRESS))
+	btn.add_theme_stylebox_override("hover_pressed", ghost_pill(GHOST_PRESS))
+	btn.add_theme_stylebox_override("focus", ghost_pill())
+	btn.add_theme_stylebox_override("disabled", ghost_pill(Color(GHOST, 0.72)))
+	var color := btn.get_theme_color("font_color")
+	apply_button_font(btn, color)
 
 
 static func input_box() -> StyleBoxFlat:
@@ -83,4 +97,15 @@ static func input_box() -> StyleBoxFlat:
 static func apply_font(node: Control, extra: bool, size: int, color: Color) -> void:
 	node.add_theme_font_override("font", FONT_EXTRA if extra else FONT_BOLD)
 	node.add_theme_font_size_override("font_size", size)
+	apply_button_font(node, color)
+
+
+static func apply_button_font(node: Control, color: Color) -> void:
 	node.add_theme_color_override("font_color", color)
+	if not node is BaseButton:
+		return
+	node.add_theme_color_override("font_hover_color", color)
+	node.add_theme_color_override("font_pressed_color", color)
+	node.add_theme_color_override("font_focus_color", color)
+	node.add_theme_color_override("font_hover_pressed_color", color)
+	node.add_theme_color_override("font_disabled_color", Color(color, color.a * 0.7))

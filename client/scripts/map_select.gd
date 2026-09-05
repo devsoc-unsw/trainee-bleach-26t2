@@ -23,6 +23,7 @@ func _ready() -> void:
 	_cam_base = MapKit.frame_menu_camera(camera)
 	_build_tiles()
 	_build_vote_chrome()
+	UiStyle.apply_ghost_button(back_btn)
 	back_btn.pressed.connect(_go_back)
 	GameSession.vote_updated.connect(_refresh_votes)
 	_refresh_votes()

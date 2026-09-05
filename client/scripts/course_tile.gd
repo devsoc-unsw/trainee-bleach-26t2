@@ -206,7 +206,8 @@ func _apply() -> void:
 		name_box.content_margin_top = 4
 		name_box.content_margin_bottom = 4
 	_name_panel.add_theme_stylebox_override("panel", name_box)
-	_name_label.add_theme_color_override("font_color", Color(1, 1, 1, 0.45 if locked else 1.0))
+	var name_color := UiStyle.INK if lit and not locked else Color(1, 1, 1, 0.45 if locked else 1.0)
+	_name_label.add_theme_color_override("font_color", name_color)
 
 
 func _on_gui(event: InputEvent) -> void:

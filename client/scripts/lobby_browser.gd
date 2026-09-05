@@ -56,6 +56,16 @@ func _ready() -> void:
 	join_dimmer.gui_input.connect(func(e: InputEvent) -> void: _dimmer_close(e, join_dimmer))
 	join_edit.text_changed.connect(_on_join_code_typed)
 	_style_scrollbar()
+	for path in [
+		"UI/Root/Content/ListView/Header/Back",
+		"UI/Root/Content/ListView/Actions/Join",
+		"UI/Root/Content/RoomView/Card/Layout/Leave",
+		"UI/Root/CreateDimmer/Card/Layout/Back",
+		"UI/Root/JoinDimmer/Card/Layout/Back",
+	]:
+		var ghost := get_node_or_null(path) as BaseButton
+		if ghost:
+			UiStyle.apply_ghost_button(ghost)
 
 	NetworkClient.lobby_list_received.connect(_on_list_received)
 	NetworkClient.lobby_state_received.connect(_on_state_received)
@@ -547,10 +557,8 @@ func _style_choice(btn: Button, on: bool) -> void:
 	btn.add_theme_stylebox_override("pressed", UiStyle.pill(color.darkened(0.08), 18, 10))
 	btn.add_theme_stylebox_override("hover_pressed", UiStyle.pill(color.darkened(0.08), 18, 10))
 	btn.add_theme_stylebox_override("focus", UiStyle.pill(color, 18, 10))
-	btn.add_theme_color_override("font_color", font)
-	btn.add_theme_color_override("font_hover_color", font)
-	btn.add_theme_color_override("font_pressed_color", font)
-	btn.add_theme_color_override("font_hover_pressed_color", font)
+	btn.add_theme_stylebox_override("disabled", UiStyle.pill(color, 18, 10))
+	UiStyle.apply_button_font(btn, font)
 
 
 func _show_overlay(dimmer: ColorRect) -> void:
