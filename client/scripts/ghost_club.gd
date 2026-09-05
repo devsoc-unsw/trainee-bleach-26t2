@@ -70,6 +70,17 @@ func follow(ball: Node3D, aim: Vector3) -> void:
 	global_position = ball.global_position
 
 
+func stow() -> void:
+	_holding = false
+	_calibrated = false
+	_target_swing = 0.0
+	_target_open = 0.0
+	_swing = 0.0
+	_open = 0.0
+	_fade = 0.0
+	visible = false
+
+
 func _process(delta: float) -> void:
 	var want := 1.0 if _holding else 0.0
 	var fade_speed := 12.0 if _holding else 14.0

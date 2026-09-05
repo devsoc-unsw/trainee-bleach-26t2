@@ -6,7 +6,7 @@ extends Node3D
 @export var zoom_speed: float = 1.0
 @export var min_zoom: float = 3.0
 @export var max_zoom: float = 36.0
-@export var overview_zoom: float = 18.0
+@export var overview_zoom: float = 12.0
 @export var min_pitch: float = -85.0
 @export var max_pitch: float = -10.0
 
@@ -122,6 +122,14 @@ func _unhandled_input(event: InputEvent) -> void:
 		_update_rotation()
 
 
+func orbit_look(look_x: float, look_y: float, delta: float) -> void:
+	if absf(look_x) < 0.06 and absf(look_y) < 0.06:
+		return
+	yaw -= look_x * 1.7 * delta
+	pitch = clampf(pitch + look_y * 70.0 * delta, min_pitch, max_pitch)
+	_update_rotation()
+
+
 func _update_rotation() -> void:
 	rotation = Vector3(deg_to_rad(pitch), yaw, 0)
 
@@ -141,13 +149,14 @@ func _move_free(delta: float) -> void:
 	if right.length_squared() > 0.0001:
 		right = right.normalized()
 	var wish := Vector3.ZERO
-	if Input.is_physical_key_pressed(KEY_W) or Input.is_physical_key_pressed(KEY_UP):
+	_look_free(delta)
+	if Input.is_physical_key_pressed(KEY_W):
 		wish += fwd
-	if Input.is_physical_key_pressed(KEY_S) or Input.is_physical_key_pressed(KEY_DOWN):
+	if Input.is_physical_key_pressed(KEY_S):
 		wish -= fwd
-	if Input.is_physical_key_pressed(KEY_A) or Input.is_physical_key_pressed(KEY_LEFT):
+	if Input.is_physical_key_pressed(KEY_A):
 		wish -= right
-	if Input.is_physical_key_pressed(KEY_D) or Input.is_physical_key_pressed(KEY_RIGHT):
+	if Input.is_physical_key_pressed(KEY_D):
 		wish += right
 	if Input.is_physical_key_pressed(KEY_E) or Input.is_physical_key_pressed(KEY_SPACE):
 		wish.y += 1.0
@@ -157,6 +166,26 @@ func _move_free(delta: float) -> void:
 		return
 	var speed := move_speed * (2.2 if Input.is_physical_key_pressed(KEY_SHIFT) else 1.0)
 	global_position += wish.normalized() * speed * delta
+
+
+func _look_free(delta: float) -> void:
+	var yaw_step := 1.7 * delta
+	var pitch_step := 70.0 * delta
+	var turned := false
+	if Input.is_physical_key_pressed(KEY_LEFT):
+		yaw += yaw_step
+		turned = true
+	if Input.is_physical_key_pressed(KEY_RIGHT):
+		yaw -= yaw_step
+		turned = true
+	if Input.is_physical_key_pressed(KEY_UP):
+		pitch = clampf(pitch + pitch_step, min_pitch, max_pitch)
+		turned = true
+	if Input.is_physical_key_pressed(KEY_DOWN):
+		pitch = clampf(pitch - pitch_step, min_pitch, max_pitch)
+		turned = true
+	if turned:
+		_update_rotation()
 
 
 func _chat_focused() -> bool:

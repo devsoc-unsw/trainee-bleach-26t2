@@ -3,7 +3,8 @@ extends Node
 
 signal hit_received(power: float, stick_x: float, stick_y: float)
 signal urls_changed
-signal pose_received(beta: float, gamma: float, holding: bool, stick_x: float, stick_y: float, lift: float, power: float, accel: float, yaw: float, recenter: bool)
+signal pose_received(beta: float, gamma: float, holding: bool, stick_x: float, stick_y: float, lift: float, power: float, accel: float, yaw: float, recenter: bool, look_x: float, look_y: float)
+signal power_used(kind: String)
 
 const HTML_PATH := "res://ui/phone_remote.html"
 const PORT := 27351
@@ -34,6 +35,10 @@ var _dns_queue := -1
 var _dns_want := ""
 var _last_error := ""
 var _cached_ips: PackedStringArray
+var _left_kind := ""
+var _left_left := 0.0
+var _right_kind := ""
+var _right_left := 0.0
 
 
 func _ready() -> void:
@@ -50,6 +55,13 @@ func listen_port() -> int:
 
 func last_error() -> String:
 	return _last_error
+
+
+func set_powers(left_kind: String, left_left: float, right_kind: String, right_left: float) -> void:
+	_left_kind = left_kind
+	_left_left = maxf(left_left, 0.0)
+	_right_kind = right_kind
+	_right_left = maxf(right_left, 0.0)
 
 
 func ensure_listening() -> Error:
@@ -327,8 +339,16 @@ func _try_handle(index: int) -> bool:
 		return true
 	if method == "POST" and path == "/pose":
 		_emit_pose(body)
-		_respond(peer, 200, "application/json", "{\"ok\":true}", false)
+		_respond(peer, 200, "application/json", _powers_json(), false)
 		return false
+	if method == "POST" and path == "/power":
+		var kind := str(_stick_from_body(body).get("kind", ""))
+		if kind == "shield" or kind == "shrink":
+			power_used.emit(kind)
+		_respond(peer, 200, "application/json", "{\"ok\":true}", true)
+		_close(index)
+		_drop(index)
+		return true
 	if method == "OPTIONS":
 		_respond(peer, 204, "text/plain; charset=utf-8", "", true)
 	elif method == "GET" or method == "HEAD":
@@ -362,6 +382,16 @@ func _respond(peer: StreamPeer, code: int, content_type: String, body: String, c
 		peer.put_data(payload)
 
 
+func _powers_json() -> String:
+	return JSON.stringify({
+		"ok": true,
+		"leftKind": _left_kind,
+		"leftLeft": _left_left,
+		"rightKind": _right_kind,
+		"rightLeft": _right_left,
+	})
+
+
 func _emit_pose(body: PackedByteArray) -> void:
 	var parsed: Variant = JSON.parse_string(body.get_string_from_utf8())
 	if not parsed is Dictionary:
@@ -377,7 +407,9 @@ func _emit_pose(body: PackedByteArray) -> void:
 		clampf(float(data.get("p", 0.0)), 0.0, 1.0),
 		float(data.get("a", 0.0)),
 		float(data.get("al", 0.0)),
-		bool(data.get("c", 0))
+		bool(data.get("c", 0)),
+		clampf(float(data.get("lx", 0.0)), -1.0, 1.0),
+		clampf(float(data.get("ly", 0.0)), -1.0, 1.0)
 	)
 
 

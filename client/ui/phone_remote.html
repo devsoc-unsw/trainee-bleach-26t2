@@ -68,7 +68,107 @@
       pointer-events: none;
     }
     #pad.held #knob { background: var(--teal-press); }
+    #aim-row {
+      position: relative;
+      width: min(68vw, 240px);
+      height: min(68vw, 240px);
+    }
+    #aim-row #pad {
+      width: 100%;
+      height: 100%;
+    }
+    #look {
+      position: absolute;
+      width: 32%;
+      height: 32%;
+      right: -16%;
+      bottom: 8%;
+      z-index: 2;
+      border-radius: 50%;
+      border: 5px solid #e4dcce;
+      background: #fffbf5;
+      box-shadow: 0 8px 16px rgba(58, 50, 44, 0.14);
+      touch-action: none;
+    }
+    #look.held { border-color: var(--teal); }
+    #look-knob {
+      width: 44%;
+      height: 44%;
+      border-radius: 50%;
+      background: var(--teal);
+      color: #fff;
+      font-size: 9px;
+      font-weight: 800;
+      letter-spacing: 0.06em;
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      transform: translate(-50%, -50%);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 6px 12px rgba(58, 50, 44, 0.16);
+      pointer-events: none;
+    }
+    #look.held #look-knob { background: var(--teal-press); }
     #status { min-height: 1.4em; }
+    #powers {
+      width: 100%;
+      display: flex;
+      justify-content: center;
+      gap: 28px;
+      padding: 4px 0 2px;
+    }
+    .pslot {
+      width: 68px;
+      height: 68px;
+      border: none;
+      padding: 0;
+      background: transparent;
+      position: relative;
+      appearance: none;
+      -webkit-appearance: none;
+      touch-action: manipulation;
+    }
+    .pslot .ring,
+    .pslot .face {
+      position: absolute;
+      inset: 0;
+      border-radius: 50%;
+      pointer-events: none;
+    }
+    .pslot.empty .ring {
+      border: 3px dotted #8a7e72;
+      background: transparent;
+    }
+    .pslot.charged .face,
+    .pslot.active .face {
+      background: #f6f1e6;
+      box-shadow: 0 6px 14px rgba(58, 50, 44, 0.12);
+    }
+    .pslot.charged.shield .ring { border: 3px solid #5a5248; }
+    .pslot.charged.tiny .ring { border: 3px solid #c9a22a; }
+    .pslot.active .ring {
+      border: none;
+      background: conic-gradient(from 0deg, var(--accent) var(--sweep), transparent var(--sweep));
+      -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 3px), #000 calc(100% - 2px));
+      mask: radial-gradient(farthest-side, transparent calc(100% - 3px), #000 calc(100% - 2px));
+    }
+    .pslot.shield { --accent: #5a5248; --sweep: 0deg; }
+    .pslot.tiny { --accent: #c9a22a; --sweep: 0deg; }
+    .pslot .sigil {
+      position: absolute;
+      inset: 16%;
+      width: 68%;
+      height: 68%;
+      pointer-events: none;
+      opacity: 0;
+    }
+    .pslot.charged.shield .sigil-shield,
+    .pslot.active.shield .sigil-shield,
+    .pslot.charged.tiny .sigil-tiny,
+    .pslot.active.tiny .sigil-tiny { opacity: 1; }
+    .pslot.charged { cursor: pointer; }
     #swing {
       width: 100%;
       height: 132px;
@@ -158,7 +258,40 @@
   <div id="play">
     <h1>PHONE REMOTE</h1>
     <p id="status">Drag AIM for power and direction. Then swing the phone up and down.</p>
-    <div id="pad"><div id="meter"></div><div id="knob">AIM</div></div>
+    <div id="aim-row">
+      <div id="pad"><div id="meter"></div><div id="knob">AIM</div></div>
+      <div id="look" aria-label="Look">
+        <div id="look-knob">LOOK</div>
+      </div>
+    </div>
+    <div id="powers">
+      <button type="button" class="pslot empty" id="p-left" data-kind="" aria-label="Power slot">
+        <span class="face"></span>
+        <span class="ring"></span>
+        <svg class="sigil sigil-shield" viewBox="0 0 48 48" aria-hidden="true">
+          <path d="M24 6 L38 14 L36 28 L24 42 L12 28 L10 14 Z" fill="#8e8a84" stroke="#5a5248" stroke-width="1.8" stroke-linejoin="round"/>
+          <path d="M24 12 L24 34" stroke="#f6f1e6" stroke-width="1.6"/>
+        </svg>
+        <svg class="sigil sigil-tiny" viewBox="0 0 48 48" aria-hidden="true">
+          <circle cx="24" cy="24" r="14" fill="none" stroke="#c9a22a" stroke-width="2.2"/>
+          <circle cx="24" cy="24" r="7" fill="#f2d04b"/>
+          <circle cx="21.5" cy="21.5" r="1.8" fill="#fff4c2"/>
+        </svg>
+      </button>
+      <button type="button" class="pslot empty" id="p-right" data-kind="" aria-label="Power slot">
+        <span class="face"></span>
+        <span class="ring"></span>
+        <svg class="sigil sigil-shield" viewBox="0 0 48 48" aria-hidden="true">
+          <path d="M24 6 L38 14 L36 28 L24 42 L12 28 L10 14 Z" fill="#8e8a84" stroke="#5a5248" stroke-width="1.8" stroke-linejoin="round"/>
+          <path d="M24 12 L24 34" stroke="#f6f1e6" stroke-width="1.6"/>
+        </svg>
+        <svg class="sigil sigil-tiny" viewBox="0 0 48 48" aria-hidden="true">
+          <circle cx="24" cy="24" r="14" fill="none" stroke="#c9a22a" stroke-width="2.2"/>
+          <circle cx="24" cy="24" r="7" fill="#f2d04b"/>
+          <circle cx="21.5" cy="21.5" r="1.8" fill="#fff4c2"/>
+        </svg>
+      </button>
+    </div>
     <div id="swing"><div id="swing-fill"></div><div id="swing-label">SWING BAR (backup)</div></div>
     <div id="tune">
       <button id="calibrate" type="button">CALIBRATE</button>
@@ -179,6 +312,8 @@
     const status = document.getElementById("status");
     const pad = document.getElementById("pad");
     const knob = document.getElementById("knob");
+    const lookPad = document.getElementById("look");
+    const lookKnob = document.getElementById("look-knob");
     const meter = document.getElementById("meter");
     const sensors = document.getElementById("sensors");
     const sState = document.getElementById("s-state");
@@ -216,6 +351,9 @@
     let fired = false;
     let sx = 0;
     let sy = 0;
+    let lx = 0;
+    let ly = 0;
+    let looking = false;
     let power = 0;
     let beta = 75;
     let gamma = 0;
@@ -261,6 +399,52 @@
     const pairCode = (new URLSearchParams(location.search).get("c") || "").replace(/\s+/g, "").toUpperCase();
     let pairWs = null;
     let pairLinked = false;
+    const slotLeft = document.getElementById("p-left");
+    const slotRight = document.getElementById("p-right");
+
+    function applyPowers(data) {
+      if (!data || typeof data !== "object") return;
+      if (data.leftKind != null || data.rightKind != null) {
+        paintSlot(slotLeft, data.leftKind, data.leftLeft);
+        paintSlot(slotRight, data.rightKind, data.rightLeft);
+        return;
+      }
+      paintSlot(slotLeft, data.shield ? "shield" : "", data.shieldLeft);
+      paintSlot(slotRight, data.shrink ? "shrink" : "", data.shrinkLeft);
+    }
+
+    function paintSlot(el, kind, left) {
+      if (!el) return;
+      const next = kind === "shield" || kind === "shrink" ? kind : "";
+      const remaining = next ? Math.max(0, Number(left) || 0) : 0;
+      const maxTime = next === "shield" ? 5 : 10;
+      el.setAttribute("data-kind", next);
+      el.classList.toggle("empty", !next);
+      el.classList.toggle("charged", !!next && remaining <= 0.001);
+      el.classList.toggle("active", remaining > 0.001);
+      el.classList.toggle("shield", next === "shield");
+      el.classList.toggle("tiny", next === "shrink");
+      el.style.setProperty("--sweep", (Math.max(0, Math.min(1, remaining / maxTime)) * 360) + "deg");
+    }
+
+    function usePower(kind) {
+      const el = (slotLeft && slotLeft.getAttribute("data-kind") === kind) ? slotLeft
+        : (slotRight && slotRight.getAttribute("data-kind") === kind) ? slotRight
+        : null;
+      if (!el || !el.classList.contains("charged")) return;
+      if (pairCode && pairWs && pairWs.readyState === 1) {
+        try {
+          pairWs.send(JSON.stringify({ t: "power", kind: kind }));
+        } catch (_) {}
+        return;
+      }
+      fetch("/power", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ kind: kind }),
+        keepalive: true,
+      }).catch(() => {});
+    }
 
     function poseBody() {
       return {
@@ -274,6 +458,8 @@
         a: motionNow,
         al: alpha,
         c: recenter ? 1 : 0,
+        lx: lx,
+        ly: ly,
       };
     }
 
@@ -293,6 +479,9 @@
             pairLinked = true;
             poseOk = true;
             poseFails = 0;
+          }
+          if (msg.t === "phone_powers") {
+            applyPowers(msg);
           }
           if (msg.t === "buzz") {
             buzzHit(msg.power);
@@ -349,9 +538,9 @@
         if (res.ok) {
           poseOk = true;
           poseFails = 0;
-        } else {
-          poseFails += 1;
+          return res.json().then((data) => applyPowers(data)).catch(() => {});
         }
+        poseFails += 1;
       }).catch(() => {
         poseFails += 1;
       }).finally(() => {
@@ -405,6 +594,55 @@
       power = t;
       meter.style.borderColor = powerColor(power);
       if (!fired) showAimStatus();
+    }
+
+    function lookFromEvent(ev) {
+      const box = lookPad.getBoundingClientRect();
+      const cx = box.left + box.width * 0.5;
+      const cy = box.top + box.height * 0.5;
+      const max = box.width * 0.36;
+      let dx = ev.clientX - cx;
+      let dy = ev.clientY - cy;
+      const mag = Math.hypot(dx, dy);
+      const dead = max * 0.1;
+      const t = mag < dead ? 0 : Math.min(1, (mag - dead) / (max - dead));
+      const nx = mag > 0.001 ? dx / mag : 0;
+      const ny = mag > 0.001 ? dy / mag : 0;
+      dx = nx * t * max;
+      dy = ny * t * max;
+      lookKnob.style.transform = "translate(calc(-50% + " + dx + "px), calc(-50% + " + dy + "px))";
+      lx = nx * t;
+      ly = -ny * t;
+    }
+
+    function lookStart(ev) {
+      ev.preventDefault();
+      ev.stopPropagation();
+      if (ev.pointerId != null && lookPad.setPointerCapture) {
+        try { lookPad.setPointerCapture(ev.pointerId); } catch (_) {}
+      }
+      looking = true;
+      lookPad.classList.add("held");
+      lookFromEvent(ev);
+      sendPose();
+    }
+
+    function lookMove(ev) {
+      if (!looking) return;
+      ev.preventDefault();
+      lookFromEvent(ev);
+      sendPose();
+    }
+
+    function lookEnd(ev) {
+      if (ev) ev.preventDefault();
+      if (!looking) return;
+      looking = false;
+      lookPad.classList.remove("held");
+      lookKnob.style.transform = "translate(-50%, -50%)";
+      lx = 0;
+      ly = 0;
+      sendPose();
     }
 
     function resetSwing() {
@@ -890,6 +1128,10 @@
     pad.addEventListener("pointermove", holdMove);
     pad.addEventListener("pointerup", holdEnd);
     pad.addEventListener("pointercancel", holdEnd);
+    lookPad.addEventListener("pointerdown", lookStart);
+    lookPad.addEventListener("pointermove", lookMove);
+    lookPad.addEventListener("pointerup", lookEnd);
+    lookPad.addEventListener("pointercancel", lookEnd);
     swing.addEventListener("pointerdown", laneDown);
     swing.addEventListener("pointermove", laneMove);
     swing.addEventListener("pointerup", laneUpEvent);
@@ -898,12 +1140,24 @@
       if (document.hidden) {
         holding = false;
         pad.classList.remove("held");
+        looking = false;
+        lookPad.classList.remove("held");
+        lookKnob.style.transform = "translate(-50%, -50%)";
+        lx = 0;
+        ly = 0;
         laneReset("SWING");
         stopPoseStream();
       } else {
         startPoseStream();
       }
     });
+    function onPowerTap(ev) {
+      ev.preventDefault();
+      ev.stopPropagation();
+      usePower(ev.currentTarget.getAttribute("data-kind"));
+    }
+    slotLeft.addEventListener("click", onPowerTap);
+    slotRight.addEventListener("click", onPowerTap);
     calibrateBtn.addEventListener("click", () => {
       askSensors();
       armHaptics();

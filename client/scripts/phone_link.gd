@@ -1,9 +1,10 @@
 extends CanvasLayer
 
 signal hit_received(power: float, stick_x: float, stick_y: float)
-signal pose_received(beta: float, gamma: float, holding: bool, stick_x: float, stick_y: float, lift: float, power: float, accel: float, yaw: float, recenter: bool)
+signal pose_received(beta: float, gamma: float, holding: bool, stick_x: float, stick_y: float, lift: float, power: float, accel: float, yaw: float, recenter: bool, look_x: float, look_y: float)
 signal qr_ready(bytes: PackedByteArray)
 signal urls_changed
+signal power_used(kind: String)
 
 const STALE_MS := 2500
 const CURSOR_HZ := 15.0
@@ -42,6 +43,7 @@ func _ready() -> void:
 			_try_click()
 	)
 	server.pose_received.connect(_on_pose)
+	server.power_used.connect(func(kind: String) -> void: power_used.emit(kind))
 	server.urls_changed.connect(func() -> void: urls_changed.emit())
 	_cursor = (load("res://scripts/wii_pointer.gd") as GDScript).new()
 	add_child(_cursor)
@@ -73,6 +75,11 @@ func local_url() -> String:
 
 func is_linked() -> bool:
 	return _session_live
+
+
+func set_powers(left_kind: String, left_left: float, right_kind: String, right_left: float) -> void:
+	if server:
+		server.set_powers(left_kind, left_left, right_kind, right_left)
 
 
 func pointer_live() -> bool:
@@ -280,8 +287,8 @@ func _cursor_drive() -> Vector2:
 	return _stick / mag * t
 
 
-func _on_pose(beta: float, gamma: float, holding: bool, stick_x: float, stick_y: float, lift: float, power: float, accel: float = 0.0, yaw: float = 0.0, recenter: bool = false) -> void:
-	pose_received.emit(beta, gamma, holding, stick_x, stick_y, lift, power, accel, yaw, recenter)
+func _on_pose(beta: float, gamma: float, holding: bool, stick_x: float, stick_y: float, lift: float, power: float, accel: float = 0.0, yaw: float = 0.0, recenter: bool = false, look_x: float = 0.0, look_y: float = 0.0) -> void:
+	pose_received.emit(beta, gamma, holding, stick_x, stick_y, lift, power, accel, yaw, recenter, look_x, look_y)
 	_session_live = true
 	_last_pose_ms = Time.get_ticks_msec()
 	var raw := Vector2(stick_x, stick_y)
@@ -305,9 +312,6 @@ func _click_under_cursor() -> void:
 		return
 	if hit.has_signal("hovered"):
 		hit.emit_signal("hovered")
-	if hit is CourseTile:
-		(hit as CourseTile).chosen.emit()
-		return
 	if hit.has_signal("chosen"):
 		hit.emit_signal("chosen")
 		return
@@ -338,9 +342,9 @@ func _clickable_at(node: Node, pos: Vector2) -> Control:
 		return null
 	if not control.get_global_rect().has_point(pos):
 		return null
+	if node.get("locked") == true:
+		return null
 	if node is BaseButton:
-		return control
-	if node is CourseTile and not (node as CourseTile).locked:
 		return control
 	if control.has_signal("chosen") or control.has_signal("pressed") or control.has_signal("toggled"):
 		return control
