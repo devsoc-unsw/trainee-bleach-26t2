@@ -237,14 +237,52 @@ describe('rooms', () => {
     const first = rooms.markHoled(a.ws) as { result: string };
     assert.equal(first.result, 'player');
     const second = rooms.markHoled(b.ws) as { room: rooms.Room; result: string };
-    assert.equal(second.result, 'vote');
+    assert.equal(second.result, 'summary');
+    assert.equal(second.room.phase, 'playing');
+    assert.equal(second.room.summaryPending, true);
+    const after = rooms.continueAfterHole(second.room);
+    assert.equal(after, 'vote');
     assert.equal(second.room.phase, 'selecting');
     assert.equal(second.room.roundIndex, 1);
 
     rooms.quickStart(a.ws);
     rooms.markHoled(a.ws);
     const last = rooms.markHoled(b.ws) as { room: rooms.Room; result: string };
-    assert.equal(last.result, 'over');
+    assert.equal(last.result, 'summary');
+    assert.equal(rooms.continueAfterHole(last.room), 'over');
     assert.equal(last.room.phase, 'lobby');
+  });
+
+  it('lets the host set turn-by-turn or free-for-all before the match starts', () => {
+    const a = fakeSocket();
+    const b = fakeSocket();
+    rooms.register(a.ws);
+    rooms.register(b.ws);
+    const room = rooms.createRoom(a.ws, 'Modes', true, 'Host', 1, 'turn_by_turn');
+    assert.equal(room.gameMode, 'turn_by_turn');
+    rooms.joinRoom(b.ws, room.code, 'Guest');
+    assert.equal(rooms.setGameMode(b.ws, 'free_for_all'), 'Only the host can change the mode');
+    const changed = rooms.setGameMode(a.ws, 'free_for_all');
+    assert.notEqual(typeof changed, 'string');
+    assert.equal((changed as rooms.Room).gameMode, 'free_for_all');
+    assert.equal(rooms.lobbyState(room).gameMode, 'free_for_all');
+  });
+
+  it('lets a player rename and claim a free ball colour in the lobby', () => {
+    const a = fakeSocket();
+    const b = fakeSocket();
+    rooms.register(a.ws);
+    rooms.register(b.ws);
+    const room = rooms.createRoom(a.ws, 'Looks', true, 'Host');
+    rooms.joinRoom(b.ws, room.code, 'Guest');
+    const renamed = rooms.setProfile(b.ws, '  Lou  ', '#27AE60');
+    assert.notEqual(typeof renamed, 'string');
+    const guest = [...room.players.values()].find((p) => p.id !== room.hostId);
+    assert.equal(guest?.name, 'Lou');
+    assert.equal(guest?.color, '#27AE60');
+    assert.equal(rooms.setProfile(a.ws, 'Host', '#27AE60'), 'That colour is already taken');
+    assert.equal(rooms.setProfile(b.ws, 'Lou', '#not-a-colour'), 'Pick a valid ball colour');
+    rooms.startMatch(a.ws, 'rainbow_stairs');
+    assert.equal(rooms.setProfile(b.ws, 'Nope'), 'Cannot change that after the match has started');
   });
 });

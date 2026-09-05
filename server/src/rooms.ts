@@ -8,13 +8,25 @@ import type {
 } from './schema.js';
 
 const CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-const COLORS = ['#E23B3B', '#4CB8B0', '#F2D04B', '#7B5BBF'];
+export const BALL_COLORS = [
+  '#E23B3B',
+  '#4CB8B0',
+  '#F2D04B',
+  '#7B5BBF',
+  '#E67E22',
+  '#27AE60',
+  '#2980B9',
+  '#E84393',
+];
+const COLORS = BALL_COLORS;
 const MAX_PLAYERS = 4;
 export const MAP_IDS = ['rainbow_stairs', 'main_walk', 'village_green'] as const;
 export const VOTE_MS = 30_000;
 
 export type Phase = 'lobby' | 'selecting' | 'playing';
 export type MapId = (typeof MAP_IDS)[number];
+export type GameMode = 'turn_by_turn' | 'free_for_all';
+export const HOLE_SUMMARY_MS = 8_000;
 
 export interface Player {
   id: string;
@@ -23,6 +35,7 @@ export interface Player {
   host: boolean;
   ws: WebSocket;
   strokes: number;
+  totalStrokes: number;
   holed: boolean;
   joinedAt: number;
   ball: BallSnap;
@@ -37,6 +50,8 @@ export interface Room {
   phase: Phase;
   rounds: number;
   roundIndex: number;
+  gameMode: GameMode;
+  summaryPending: boolean;
   joinSeq: number;
   players: Map<string, Player>;
   votes: Map<string, string>;
@@ -47,6 +62,7 @@ const rooms = new Map<string, Room>();
 const socketRoom = new Map<WebSocket, string>();
 const socketIds = new WeakMap<WebSocket, string>();
 const voteTimers = new Map<string, ReturnType<typeof setTimeout>>();
+const holeAdvanceTimers = new Map<string, ReturnType<typeof setTimeout>>();
 let playerSeq = 0;
 let onVoteEnded: ((room: Room) => void) | undefined;
 
@@ -59,6 +75,10 @@ export function resetForTests(): void {
     clearTimeout(timer);
   }
   voteTimers.clear();
+  for (const timer of holeAdvanceTimers.values()) {
+    clearTimeout(timer);
+  }
+  holeAdvanceTimers.clear();
   rooms.clear();
   socketRoom.clear();
   playerSeq = 0;
@@ -119,6 +139,7 @@ export function lobbyState(room: Room): LobbyStateMessage {
     maxPlayers: MAX_PLAYERS,
     rounds: room.rounds,
     roundIndex: room.roundIndex,
+    gameMode: room.gameMode,
     players,
   };
 }
@@ -180,7 +201,8 @@ export function createRoom(
   name: string,
   isPublic: boolean,
   playerName: string,
-  rounds = 1
+  rounds = 1,
+  gameMode: string = 'turn_by_turn'
 ): Room {
   leave(ws);
   const code = freshCode();
@@ -194,6 +216,8 @@ export function createRoom(
     phase: 'lobby',
     rounds: clampRounds(rounds),
     roundIndex: 0,
+    gameMode: normalizeGameMode(gameMode),
+    summaryPending: false,
     joinSeq: 0,
     players: new Map(),
     votes: new Map(),
@@ -206,6 +230,7 @@ export function createRoom(
     host: true,
     ws,
     strokes: 0,
+    totalStrokes: 0,
     holed: false,
     joinedAt: ++room.joinSeq,
     ball: emptyBall(id),
@@ -236,6 +261,7 @@ export function joinRoom(ws: WebSocket, code: string, playerName: string): Room 
     host: false,
     ws,
     strokes: 0,
+    totalStrokes: 0,
     holed: false,
     joinedAt: ++room.joinSeq,
     ball: emptyBall(id),
@@ -269,6 +295,7 @@ export function leave(ws: WebSocket): Room | undefined {
   room.votes.delete(leaving.id);
   if (room.players.size === 0) {
     clearVoteTimer(code);
+    clearHoleAdvance(code);
     rooms.delete(code);
     return undefined;
   }
@@ -327,6 +354,12 @@ export function beginSelect(ws: WebSocket): Room | string {
   }
   if (room.phase === 'lobby') {
     room.roundIndex = 0;
+    room.summaryPending = false;
+    for (const p of room.players.values()) {
+      p.totalStrokes = 0;
+      p.strokes = 0;
+      p.holed = false;
+    }
   }
   startVote(room);
   return room;
@@ -361,7 +394,117 @@ export function quickStart(ws: WebSocket): Room | string {
   return commitMatch(room, winningMap(room));
 }
 
-export function markHoled(ws: WebSocket): { room: Room; result: 'player' | 'vote' | 'over' } | string {
+export function setProfile(ws: WebSocket, name?: string, color?: string): Room | string {
+  const room = roomFor(ws);
+  const player = playerFor(ws);
+  if (!room || !player) {
+    return 'You are not in a lobby';
+  }
+  if (room.phase !== 'lobby') {
+    return 'Cannot change that after the match has started';
+  }
+  if (typeof name === 'string') {
+    const cleaned = name.replace(/\s+/g, ' ').trim().slice(0, 18);
+    player.name = cleaned || 'Player';
+  }
+  if (typeof color === 'string' && color.length > 0) {
+    const hex = normalizeBallColor(color);
+    if (!hex) {
+      return 'Pick a valid ball colour';
+    }
+    for (const other of room.players.values()) {
+      if (other.id !== player.id && other.color.toLowerCase() === hex.toLowerCase()) {
+        return 'That colour is already taken';
+      }
+    }
+    player.color = hex;
+  }
+  return room;
+}
+
+export function setGameMode(ws: WebSocket, mode: string): Room | string {
+  const room = roomFor(ws);
+  const player = playerFor(ws);
+  if (!room || !player) {
+    return 'You are not in a lobby';
+  }
+  if (player.id !== room.hostId) {
+    return 'Only the host can change the mode';
+  }
+  if (room.phase !== 'lobby') {
+    return 'Cannot change mode after the match has started';
+  }
+  room.gameMode = normalizeGameMode(mode);
+  return room;
+}
+
+export function holeEndPayload(room: Room): {
+  t: 'hole_end';
+  holeIndex: number;
+  lastHole: boolean;
+  results: Array<{
+    playerId: string;
+    name: string;
+    color: string;
+    strokes: number;
+    total: number;
+    holed: boolean;
+  }>;
+} {
+  return {
+    t: 'hole_end',
+    holeIndex: room.roundIndex,
+    lastHole: room.roundIndex + 1 >= room.rounds,
+    results: [...room.players.values()].map((p) => ({
+      playerId: p.id,
+      name: p.name,
+      color: p.color,
+      strokes: p.strokes,
+      total: p.totalStrokes,
+      holed: p.holed,
+    })),
+  };
+}
+
+export function matchPlacings(room: Room): Array<{
+  playerId: string;
+  name: string;
+  color: string;
+  total: number;
+  place: number;
+}> {
+  const ranked = [...room.players.values()].sort((a, b) => {
+    if (a.totalStrokes !== b.totalStrokes) {
+      return a.totalStrokes - b.totalStrokes;
+    }
+    return a.name.localeCompare(b.name);
+  });
+  const placings: Array<{
+    playerId: string;
+    name: string;
+    color: string;
+    total: number;
+    place: number;
+  }> = [];
+  let place = 1;
+  let prev: number | null = null;
+  ranked.forEach((p, i) => {
+    if (prev !== null && p.totalStrokes !== prev) {
+      place = i + 1;
+    }
+    placings.push({
+      playerId: p.id,
+      name: p.name,
+      color: p.color,
+      total: p.totalStrokes,
+      place,
+    });
+    prev = p.totalStrokes;
+  });
+  return placings;
+}
+
+export function markHoled(ws: WebSocket): { room: Room; result: 'player' | 'summary' } | string {
   const room = roomFor(ws);
   const player = playerFor(ws);
   if (!room || !player) {
@@ -376,8 +519,8 @@ export function markHoled(ws: WebSocket): { room: Room; result: 'player' | 'vote
   return { room, result: finished ?? 'player' };
 }
 
-export function tryFinishHole(room: Room): 'vote' | 'over' | null {
-  if (room.phase !== 'playing') {
+export function tryFinishHole(room: Room): 'summary' | null {
+  if (room.phase !== 'playing' || room.summaryPending) {
     return null;
   }
   for (const p of room.players.values()) {
@@ -385,6 +528,16 @@ export function tryFinishHole(room: Room): 'vote' | 'over' | null {
       return null;
     }
   }
+  for (const p of room.players.values()) {
+    p.totalStrokes += p.strokes;
+  }
+  room.summaryPending = true;
+  return 'summary';
+}
+
+export function continueAfterHole(room: Room): 'vote' | 'over' {
+  clearHoleAdvance(room.code);
+  room.summaryPending = false;
   room.roundIndex += 1;
   if (room.roundIndex >= room.rounds) {
     room.phase = 'lobby';
@@ -393,6 +546,25 @@ export function tryFinishHole(room: Room): 'vote' | 'over' | null {
   }
   startVote(room);
   return 'vote';
+}
+
+export function scheduleHoleAdvance(
+  room: Room,
+  onDone: (live: Room, result: 'vote' | 'over') => void
+): void {
+  clearHoleAdvance(room.code);
+  holeAdvanceTimers.set(
+    room.code,
+    setTimeout(() => {
+      holeAdvanceTimers.delete(room.code);
+      const live = rooms.get(room.code);
+      if (!live || !live.summaryPending) {
+        return;
+      }
+      const result = continueAfterHole(live);
+      onDone(live, result);
+    }, HOLE_SUMMARY_MS)
+  );
 }
 
 export function chatFrom(
@@ -472,6 +644,7 @@ function commitMatch(room: Room, mapId: string): Room {
   clearVoteTimer(room.code);
   room.mapId = mapId;
   room.phase = 'playing';
+  room.summaryPending = false;
   room.votes.clear();
   room.voteDeadline = 0;
   for (const p of room.players.values()) {
@@ -508,6 +681,24 @@ function newestPlayer(room: Room): Player | undefined {
     }
   }
   return newest;
+}
+
+function normalizeBallColor(value: string): string | null {
+  const hex = value.trim().toUpperCase();
+  const match = COLORS.find((c) => c.toUpperCase() === hex);
+  return match ?? null;
+}
+
+function normalizeGameMode(value: string): GameMode {
+  return value === 'free_for_all' ? 'free_for_all' : 'turn_by_turn';
+}
+
+function clearHoleAdvance(code: string): void {
+  const timer = holeAdvanceTimers.get(code);
+  if (timer) {
+    clearTimeout(timer);
+  }
+  holeAdvanceTimers.delete(code);
 }
 
 function clampRounds(value: number): number {

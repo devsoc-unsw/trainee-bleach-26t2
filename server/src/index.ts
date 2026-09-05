@@ -157,11 +157,9 @@ wss.on('connection', (ws: WebSocket) => {
         rooms.broadcast(room, rooms.voteState(room));
       }
       const finished = rooms.tryFinishHole(room);
-      if (finished === 'vote') {
-        rooms.broadcast(room, rooms.voteState(room));
-      } else if (finished === 'over') {
-        rooms.broadcast(room, { t: 'match_over' });
-        rooms.broadcast(room, rooms.lobbyState(room));
+      if (finished === 'summary') {
+        rooms.broadcast(room, rooms.holeEndPayload(room));
+        rooms.scheduleHoleAdvance(room, onHoleAdvance);
       }
     }
     broadcastLobbyList();
@@ -184,7 +182,8 @@ function route(ws: WebSocket, type: string, msg: Record<string, unknown>): void 
         String(msg['name'] ?? 'Putt Party'),
         Boolean(msg['isPublic'] ?? true),
         String(msg['playerName'] ?? 'Player'),
-        Number(msg['rounds'] ?? 1)
+        Number(msg['rounds'] ?? 1),
+        String(msg['gameMode'] ?? 'turn_by_turn')
       );
       rooms.send(ws, rooms.lobbyState(room));
       broadcastLobbyList();
@@ -212,13 +211,9 @@ function route(ws: WebSocket, type: string, msg: Record<string, unknown>): void 
           rooms.broadcast(left, rooms.voteState(left));
         }
         const finished = rooms.tryFinishHole(left);
-        if (finished === 'vote') {
-          rooms.broadcast(left, rooms.voteState(left));
-          broadcastLobbyList();
-        } else if (finished === 'over') {
-          rooms.broadcast(left, { t: 'match_over' });
-          rooms.broadcast(left, rooms.lobbyState(left));
-          broadcastLobbyList();
+        if (finished === 'summary') {
+          rooms.broadcast(left, rooms.holeEndPayload(left));
+          rooms.scheduleHoleAdvance(left, onHoleAdvance);
         }
       }
       rooms.send(ws, rooms.lobbyList());
@@ -310,14 +305,30 @@ function route(ws: WebSocket, type: string, msg: Record<string, unknown>): void 
       }
       rooms.broadcast(marked.room, { t: 'player_holed', playerId: player.id, strokes: player.strokes });
       rooms.broadcast(marked.room, rooms.holeNotice(player));
-      if (marked.result === 'vote') {
-        rooms.broadcast(marked.room, rooms.voteState(marked.room));
-        broadcastLobbyList();
-      } else if (marked.result === 'over') {
-        rooms.broadcast(marked.room, { t: 'match_over' });
-        rooms.broadcast(marked.room, rooms.lobbyState(marked.room));
-        broadcastLobbyList();
+      if (marked.result === 'summary') {
+        rooms.broadcast(marked.room, rooms.holeEndPayload(marked.room));
+        rooms.scheduleHoleAdvance(marked.room, onHoleAdvance);
       }
+      break;
+    }
+    case 'set_mode': {
+      const changed = rooms.setGameMode(ws, String(msg['mode'] ?? ''));
+      if (typeof changed === 'string') {
+        sendError(ws, 'MODE_FAILED', changed);
+        return;
+      }
+      rooms.broadcast(changed, rooms.lobbyState(changed));
+      break;
+    }
+    case 'set_profile': {
+      const name = typeof msg['name'] === 'string' ? String(msg['name']) : undefined;
+      const color = typeof msg['color'] === 'string' ? String(msg['color']) : undefined;
+      const updated = rooms.setProfile(ws, name, color);
+      if (typeof updated === 'string') {
+        sendError(ws, 'PROFILE_FAILED', updated);
+        return;
+      }
+      rooms.broadcast(updated, rooms.lobbyState(updated));
       break;
     }
     case 'oob': {
@@ -356,6 +367,17 @@ function broadcastLobbyList(): void {
 function sendError(ws: WebSocket, code: string, message: string): void {
   const response: ErrorResponse = { t: 'error', code, message };
   rooms.send(ws, response);
+}
+
+function onHoleAdvance(room: rooms.Room, result: 'vote' | 'over'): void {
+  if (result === 'vote') {
+    rooms.broadcast(room, rooms.voteState(room));
+    broadcastLobbyList();
+    return;
+  }
+  rooms.broadcast(room, { t: 'match_over', placings: rooms.matchPlacings(room) });
+  rooms.broadcast(room, rooms.lobbyState(room));
+  broadcastLobbyList();
 }
 
 rooms.setVoteEndedHandler((room) => {

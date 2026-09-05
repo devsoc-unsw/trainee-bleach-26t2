@@ -42,6 +42,7 @@ export interface LobbyStateMessage {
   maxPlayers: number;
   rounds: number;
   roundIndex: number;
+  gameMode: 'turn_by_turn' | 'free_for_all';
   players: PlayerPublic[];
 }
 
