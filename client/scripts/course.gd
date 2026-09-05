@@ -174,6 +174,7 @@ func _setup_multiplayer() -> void:
 	NetworkClient.player_holed.connect(_on_player_holed)
 	NetworkClient.chat_received.connect(_on_chat_received)
 	NetworkClient.lobby_state_received.connect(_on_lobby_state)
+	NetworkClient.hole_ended.connect(_on_hole_ended)
 	var people: Variant = GameSession.active_lobby.get("player_list", [])
 	if people is Array:
 		for p in people:
@@ -182,7 +183,7 @@ func _setup_multiplayer() -> void:
 			var id := str(p.get("id", ""))
 			if id.is_empty() or id == NetworkClient.player_id:
 				continue
-			_ensure_ghost(id, Color(str(p.get("color", "#4CB8B0"))), ball.global_position)
+			_ensure_ghost(id, Color(str(p.get("color", "#4CB8B0"))), ball.global_position, str(p.get("name", "Player")))
 
 
 func _on_snapshot(balls: Array) -> void:
@@ -193,7 +194,7 @@ func _on_snapshot(balls: Array) -> void:
 		if id.is_empty() or id == NetworkClient.player_id:
 			continue
 		var pos := Vector3(float(snap.get("x", 0.0)), float(snap.get("y", 0.5)), float(snap.get("z", 0.0)))
-		var ghost := _ensure_ghost(id, _color_for(id), pos)
+		var ghost := _ensure_ghost(id, _color_for(id), pos, _player_name(id))
 		ghost.set("target", pos)
 
 
@@ -206,17 +207,29 @@ func _color_for(id: String) -> Color:
 	return Color("4CB8B0")
 
 
-func _ensure_ghost(id: String, tint: Color, pos: Vector3) -> Node3D:
+func _ensure_ghost(id: String, tint: Color, pos: Vector3, player_name: String = "") -> Node3D:
 	if _ghosts.has(id) and is_instance_valid(_ghosts[id]):
 		return _ghosts[id]
 	var ghost: Node3D = BALL_SCENE.instantiate()
 	ghost.set_script(GHOST_SCRIPT)
 	add_child(ghost)
 	if ghost.has_method("setup"):
-		ghost.call("setup", id, tint, pos)
-	ghost.visible = GameSession.show_players
+		if player_name.is_empty():
+			player_name = _player_name(id)
+		ghost.call("setup", id, tint, pos, player_name)
+	ghost.visible = _ghosts_visible()
 	_ghosts[id] = ghost
 	return ghost
+
+
+func _local_holed() -> bool:
+	return bool(_holed_ids.get(NetworkClient.player_id, false)) or (ball != null and bool(ball.get("is_holed")))
+
+
+func _ghosts_visible() -> bool:
+	if GameSession.is_turn_by_turn() and not _local_holed() and not _spectating:
+		return false
+	return GameSession.show_players or _spectating
 
 
 func _on_show_players_changed(enabled: bool) -> void:
@@ -225,9 +238,10 @@ func _on_show_players_changed(enabled: bool) -> void:
 
 
 func _apply_ghost_visibility() -> void:
+	var show := _ghosts_visible()
 	for ghost in _ghosts.values():
 		if ghost is Node3D and is_instance_valid(ghost):
-			ghost.visible = GameSession.show_players
+			ghost.visible = show
 
 
 func _on_shot_taken(_direction: Vector3, _power: float) -> void:
@@ -332,6 +346,7 @@ func _on_ball_sunk() -> void:
 	_holed_ids[id] = true
 	if GameSession.online:
 		NetworkClient.send_holed()
+		_apply_ghost_visibility()
 
 
 func _on_sunk_finished() -> void:
@@ -345,6 +360,15 @@ func _on_sunk_finished() -> void:
 		hole.show_results(hud.hole, hud.par, hud.strokes, hud.timer_value.text)
 
 
+func _unhandled_input(event: InputEvent) -> void:
+	if not _spectating:
+		return
+	if event is InputEventKey and event.pressed and not event.echo:
+		if event.physical_keycode == KEY_TAB:
+			_cycle_spectate(1)
+			get_viewport().set_input_as_handled()
+
+
 func _enter_spectate() -> void:
 	_spectating = true
 	if hole.has_node("WinMenu"):
@@ -352,6 +376,7 @@ func _enter_spectate() -> void:
 	hud.show_spectate(true)
 	_spectate_follow = true
 	_spectate_index = 0
+	_apply_ghost_visibility()
 	_apply_spectate_target()
 
 
@@ -422,10 +447,22 @@ func _apply_spectate_target() -> void:
 	var id := ids[_spectate_index]
 	var ghost: Node3D = _ghosts.get(id) as Node3D
 	if ghost == null or not is_instance_valid(ghost):
-		ghost = _ensure_ghost(id, _color_for(id), camera_rig.global_position)
+		ghost = _ensure_ghost(id, _color_for(id), camera_rig.global_position, _player_name(id))
 	camera_rig.set_follow(ghost)
 	ghost.visible = true
 	hud.set_spectate_target_name(_player_name(id))
+
+
+func _on_hole_ended(hole_index: int, last_hole: bool, results: Array) -> void:
+	hud.show_spectate(false)
+	hud.show_round_results(hole_index, last_hole, results, int(GameSession.get_map().get("par", 3)))
+
+
+func present_match_results(placings: Array) -> void:
+	hud.show_match_results(placings)
+	await get_tree().create_timer(8.0).timeout
+	if is_inside_tree():
+		GameSession.return_to_lobby()
 
 
 func _on_oob() -> void:

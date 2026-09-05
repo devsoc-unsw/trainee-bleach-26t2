@@ -53,6 +53,11 @@ var _spectate_name: Label
 var _follow_btn: Button
 var _free_btn: Button
 var _cycle_row: HBoxContainer
+var _results_dimmer: ColorRect
+var _results_title: Label
+var _results_sub: Label
+var _results_rows: VBoxContainer
+var _results_tween: Tween
 
 
 func _ready() -> void:
@@ -535,7 +540,7 @@ func set_spectate_mode(follow: bool) -> void:
 
 func set_spectate_target_name(player_name: String) -> void:
 	if _spectate_name:
-		_spectate_name.text = player_name if not player_name.is_empty() else "FREE ROAM"
+		_spectate_name.text = player_name if not player_name.is_empty() else "FREE ROAM — right-drag to look"
 
 
 func _build_spectate_bar() -> void:
@@ -658,3 +663,176 @@ func _apply_scorecard_state() -> void:
 
 func _on_show_players_toggled(enabled: bool) -> void:
 	show_players_changed.emit(enabled)
+
+
+func show_round_results(hole_index: int, last_hole: bool, results: Array, par: int) -> void:
+	_ensure_results_overlay()
+	_results_title.text = "HOLE %d RESULTS" % (hole_index + 1)
+	_results_sub.text = "Final results incoming..." if last_hole else "Next hole starting soon"
+	var ranked: Array = results.duplicate()
+	ranked.sort_custom(func(a, b):
+		if int(a.get("strokes", 0)) == int(b.get("strokes", 0)):
+			return String(a.get("name", "")) < String(b.get("name", ""))
+		return int(a.get("strokes", 0)) < int(b.get("strokes", 0))
+	)
+	var rows: Array = []
+	var place := 1
+	var prev := -1
+	for i in ranked.size():
+		var r: Dictionary = ranked[i]
+		var strokes := int(r.get("strokes", 0))
+		if i > 0 and strokes != prev:
+			place = i + 1
+		prev = strokes
+		rows.append(_result_row_data(
+			place,
+			String(r.get("name", "Player")),
+			String(r.get("playerId", "")),
+			Color(str(r.get("color", "#E23B3B"))),
+			str(strokes),
+			_rel_text(strokes - par, bool(r.get("holed", true))),
+			str(int(r.get("total", strokes)))
+		))
+	_play_result_rows(rows)
+
+
+func show_match_results(placings: Array) -> void:
+	_ensure_results_overlay()
+	_results_title.text = "MATCH COMPLETE"
+	_results_sub.text = "Lowest strokes wins"
+	var rows: Array = []
+	for p in placings:
+		if not p is Dictionary:
+			continue
+		rows.append(_result_row_data(
+			int(p.get("place", 1)),
+			String(p.get("name", "Player")),
+			String(p.get("playerId", "")),
+			Color(str(p.get("color", "#E23B3B"))),
+			"",
+			"",
+			"%d strokes" % int(p.get("total", 0))
+		))
+	_play_result_rows(rows)
+
+
+func _result_row_data(place: int, player_name: String, player_id: String, colour: Color, hole_text: String, par_text: String, total_text: String) -> Dictionary:
+	return {
+		"place": place,
+		"name": player_name,
+		"id": player_id,
+		"color": colour,
+		"hole": hole_text,
+		"par": par_text,
+		"total": total_text,
+	}
+
+
+func _rel_text(rel: int, completed: bool) -> String:
+	if not completed:
+		return "DNF"
+	if rel == 0:
+		return "E"
+	if rel > 0:
+		return "+%d" % rel
+	return str(rel)
+
+
+func _ensure_results_overlay() -> void:
+	if _results_dimmer:
+		return
+	_results_dimmer = ColorRect.new()
+	_results_dimmer.color = Color(0.08, 0.07, 0.06, 0.72)
+	_results_dimmer.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_results_dimmer.mouse_filter = Control.MOUSE_FILTER_STOP
+	_results_dimmer.visible = false
+	$Root.add_child(_results_dimmer)
+	var center := CenterContainer.new()
+	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	center.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_results_dimmer.add_child(center)
+	var card := PanelContainer.new()
+	card.add_theme_stylebox_override("panel", UiStyle.card(24))
+	card.custom_minimum_size = Vector2(460, 0)
+	center.add_child(card)
+	var col := VBoxContainer.new()
+	col.add_theme_constant_override("separation", 10)
+	card.add_child(col)
+	_results_title = Label.new()
+	_results_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	UiStyle.apply_font(_results_title, true, 22, UiStyle.INK)
+	col.add_child(_results_title)
+	_results_sub = Label.new()
+	_results_sub.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	UiStyle.apply_font(_results_sub, true, 14, UiStyle.TEAL)
+	col.add_child(_results_sub)
+	var header := _make_result_line("#", "Name", "Hole", "Par", "Total", Color(0.45, 0.38, 0.32), false)
+	header.modulate.a = 0.65
+	col.add_child(header)
+	_results_rows = VBoxContainer.new()
+	_results_rows.add_theme_constant_override("separation", 8)
+	col.add_child(_results_rows)
+
+
+func _play_result_rows(rows: Array) -> void:
+	show_spectate(false)
+	for child in _results_rows.get_children():
+		child.queue_free()
+	var created: Array[Control] = []
+	for row in rows:
+		var line := _make_result_line(
+			"#%d" % int(row["place"]),
+			String(row["name"]),
+			String(row["hole"]),
+			String(row["par"]),
+			String(row["total"]),
+			row["color"],
+			String(row["id"]) == NetworkClient.player_id
+		)
+		line.modulate.a = 0.0
+		_results_rows.add_child(line)
+		created.append(line)
+	_results_dimmer.visible = true
+	_results_dimmer.modulate.a = 0.0
+	if _results_tween:
+		_results_tween.kill()
+	_results_tween = create_tween()
+	_results_tween.tween_property(_results_dimmer, "modulate:a", 1.0, 0.28)
+	for i in range(created.size() - 1, -1, -1):
+		_results_tween.tween_property(created[i], "modulate:a", 1.0, 0.22)
+
+
+func _make_result_line(place_text: String, player_name: String, hole_text: String, par_text: String, total_text: String, colour: Color, is_local: bool) -> HBoxContainer:
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 10)
+	var place_l := Label.new()
+	place_l.text = place_text
+	place_l.custom_minimum_size = Vector2(40, 0)
+	UiStyle.apply_font(place_l, true, 16, UiStyle.INK)
+	row.add_child(place_l)
+	var name_l := Label.new()
+	name_l.text = player_name + ("  (you)" if is_local else "")
+	name_l.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	UiStyle.apply_font(name_l, true, 16, colour)
+	row.add_child(name_l)
+	if not hole_text.is_empty():
+		var hole_l := Label.new()
+		hole_l.text = hole_text
+		hole_l.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+		hole_l.custom_minimum_size = Vector2(44, 0)
+		UiStyle.apply_font(hole_l, true, 16, UiStyle.INK)
+		row.add_child(hole_l)
+	if not par_text.is_empty():
+		var par_l := Label.new()
+		par_l.text = par_text
+		par_l.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+		par_l.custom_minimum_size = Vector2(44, 0)
+		UiStyle.apply_font(par_l, true, 16, UiStyle.INK)
+		row.add_child(par_l)
+	var total_l := Label.new()
+	total_l.text = total_text
+	total_l.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	total_l.custom_minimum_size = Vector2(72, 0)
+	UiStyle.apply_font(total_l, true, 16, UiStyle.INK)
+	row.add_child(total_l)
+	return row

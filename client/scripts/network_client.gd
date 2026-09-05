@@ -9,7 +9,8 @@ signal vote_state_received(deadline: float, votes: Dictionary, counts: Dictionar
 signal snapshot_received(balls: Array)
 signal stroke_updated(player_id: String, strokes: int)
 signal player_holed(player_id: String, strokes: int)
-signal match_over
+signal match_over(placings: Array)
+signal hole_ended(hole_index: int, last_hole: bool, results: Array)
 signal chat_received(payload: Dictionary)
 signal error_received(code: String, message: String)
 
@@ -129,8 +130,15 @@ func _handle_packet(packet: PackedByteArray) -> void:
 			stroke_updated.emit(str(data.get("playerId", "")), int(data.get("strokes", 0)))
 		"player_holed":
 			player_holed.emit(str(data.get("playerId", "")), int(data.get("strokes", 0)))
+		"hole_end":
+			hole_ended.emit(
+				int(data.get("holeIndex", 0)),
+				bool(data.get("lastHole", false)),
+				data.get("results", []) if data.get("results", []) is Array else []
+			)
 		"match_over":
-			match_over.emit()
+			var raw: Variant = data.get("placings", [])
+			match_over.emit(raw if raw is Array else [])
 		"chat":
 			chat_received.emit(data)
 		"error":
@@ -143,8 +151,19 @@ func send_list() -> void:
 	_send({ "t": "list" })
 
 
-func send_create(lobby_name: String, is_public: bool, player_name: String, rounds: int = 1) -> void:
-	_send({ "t": "create", "name": lobby_name, "isPublic": is_public, "playerName": player_name, "rounds": rounds })
+func send_create(lobby_name: String, is_public: bool, player_name: String, rounds: int = 1, game_mode: String = "turn_by_turn") -> void:
+	_send({
+		"t": "create",
+		"name": lobby_name,
+		"isPublic": is_public,
+		"playerName": player_name,
+		"rounds": rounds,
+		"gameMode": game_mode,
+	})
+
+
+func send_set_mode(mode: String) -> void:
+	_send({ "t": "set_mode", "mode": mode })
 
 
 func send_join(code: String, player_name: String) -> void:
