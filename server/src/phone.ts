@@ -401,8 +401,9 @@ export function parseIpconfig(text: string): string[] {
       continue;
     }
     const match = line.match(/\b(\d{1,3}(?:\.\d{1,3}){3})\b/);
-    if (match && isLanIpv4(match[1])) {
-      ips.push(match[1]);
+    const ip = match?.[1];
+    if (ip && isLanIpv4(ip)) {
+      ips.push(ip);
     }
   }
   return unique(ips);
