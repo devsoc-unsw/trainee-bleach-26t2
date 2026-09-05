@@ -12,4 +12,3 @@ func _on_body_entered(body: Node3D) -> void:
 
 	print("Ball went out of bounds")
 	oob_triggered.emit()
-	putt.reset_to(putt.last_safe_position)

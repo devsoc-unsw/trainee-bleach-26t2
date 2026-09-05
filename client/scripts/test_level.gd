@@ -88,3 +88,5 @@ func _on_sunk_finished() -> void:
 
 func _on_oob() -> void:
 	hud.set_ball_state(BallStatusIndicator.State.OOB)
+	if ball != null:
+		ball.reset_to(ball.last_safe_position)
