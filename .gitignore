@@ -33,3 +33,6 @@ Thumbs.db
 **/*key.pem
 **/*.key
 server/certs/
+
+# Duplicate asset copies outside the Godot project
+/assets/
