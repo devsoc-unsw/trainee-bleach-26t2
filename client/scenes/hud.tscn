@@ -508,7 +508,7 @@ anchor_left = 1.0
 anchor_top = 1.0
 anchor_right = 1.0
 anchor_bottom = 1.0
-offset_left = -214.0
+offset_left = -146.0
 offset_top = -82.0
 offset_right = -24.0
 offset_bottom = -24.0
@@ -523,7 +523,7 @@ layout_mode = 2
 size_flags_horizontal = 4
 size_flags_vertical = 4
 mouse_filter = 0
-theme_override_styles/panel = SubResource("StyleBoxFlat_slot")
+theme_override_styles/panel = SubResource("StyleBoxEmpty_focus")
 
 [node name="Slot2" type="Panel" parent="Root/Abilities"]
 custom_minimum_size = Vector2(58, 58)
@@ -531,24 +531,7 @@ layout_mode = 2
 size_flags_horizontal = 4
 size_flags_vertical = 4
 mouse_filter = 0
-theme_override_styles/panel = SubResource("StyleBoxFlat_slot")
-
-[node name="AbilityButton" type="Button" parent="Root/Abilities"]
-custom_minimum_size = Vector2(58, 58)
-layout_mode = 2
-size_flags_horizontal = 4
-size_flags_vertical = 4
-focus_mode = 0
-mouse_default_cursor_shape = 2
-theme_override_styles/normal = SubResource("StyleBoxFlat_ability")
-theme_override_styles/pressed = SubResource("StyleBoxFlat_ability_pressed")
-theme_override_styles/hover = SubResource("StyleBoxFlat_ability_hover")
-theme_override_styles/hover_pressed = SubResource("StyleBoxFlat_ability_pressed")
-theme_override_styles/focus = SubResource("StyleBoxEmpty_focus")
-icon = ExtResource("12_spiral")
-icon_alignment = 1
-expand_icon = true
+theme_override_styles/panel = SubResource("StyleBoxEmpty_focus")
 
 [connection signal="pressed" from="Root/TopBar/RightButtons/SettingsButton" to="." method="_on_settings_pressed"]
 [connection signal="pressed" from="Root/Scorecard/Layout/Header/HeaderRow/ChevronButton" to="." method="_on_chevron_pressed"]
-[connection signal="pressed" from="Root/Abilities/AbilityButton" to="." method="_on_ability_pressed"]

@@ -32,10 +32,18 @@ const MAPS := {
 		"hole": 1,
 		"accent": Color("E23B3B"),
 		"scene": "res://scenes/maps/rainbow_stairs.tscn",
-		"overview_zoom": 22.0,
+		"overview_zoom": 12.0,
 		"preview": "res://assets/previews/rainbow_stairs.png",
 		"preview_from": Vector3(14.0, 12.0, 8.0),
 		"preview_look": Vector3(0.5, 1.2, -18.0),
+		"pickups": [
+			{"id": "rainbow_shield", "kind": "shield", "pos": Vector3(2.4, 0.2, -5.2)},
+			{"id": "rainbow_shrink", "kind": "shrink", "pos": Vector3(-2.6, 0.9, -16.5)},
+		],
+		"pads": [
+			{"pos": Vector3(0.0, 0.55, -11.5), "dir": Vector3(0.04, 0.0, -1.0), "len": 2.8, "wid": 1.5},
+			{"pos": Vector3(0.6, 1.4, -27.5), "dir": Vector3(0.15, 0.0, -1.0), "len": 2.4, "wid": 1.4},
+		],
 	},
 	"main_walk": {
 		"id": "main_walk",
@@ -45,10 +53,18 @@ const MAPS := {
 		"hole": 2,
 		"accent": Color("4CB8B0"),
 		"scene": "res://scenes/maps/main_walk.tscn",
-		"overview_zoom": 28.0,
+		"overview_zoom": 15.0,
 		"preview": "res://assets/previews/main_walk.png",
 		"preview_from": Vector3(18.0, 16.0, 8.0),
 		"preview_look": Vector3(0.0, 0.6, -28.0),
+		"pickups": [
+			{"id": "mall_shield", "kind": "shield", "pos": Vector3(3.6, 0.2, -14.0)},
+			{"id": "mall_shrink", "kind": "shrink", "pos": Vector3(-3.4, 0.2, -32.0)},
+		],
+		"pads": [
+			{"pos": Vector3(0.0, 0.2, -22.0), "dir": Vector3(0.0, 0.0, -1.0), "len": 3.0, "wid": 1.6},
+			{"pos": Vector3(0.9, 0.2, -48.0), "dir": Vector3(0.12, 0.0, -1.0), "len": 2.6, "wid": 1.45},
+		],
 	},
 	"village_green": {
 		"id": "village_green",
@@ -58,10 +74,18 @@ const MAPS := {
 		"hole": 3,
 		"accent": Color("5BBF5B"),
 		"scene": "res://scenes/maps/village_green.tscn",
-		"overview_zoom": 24.0,
+		"overview_zoom": 13.0,
 		"preview": "res://assets/previews/village_green.png",
 		"preview_from": Vector3(16.0, 13.0, 8.0),
 		"preview_look": Vector3(0.0, 0.6, -20.0),
+		"pickups": [
+			{"id": "green_shield", "kind": "shield", "pos": Vector3(2.8, 0.2, -9.0)},
+			{"id": "green_shrink", "kind": "shrink", "pos": Vector3(-2.2, 0.2, -22.5)},
+		],
+		"pads": [
+			{"pos": Vector3(0.2, 0.2, -16.5), "dir": Vector3(0.0, 0.0, -1.0), "len": 2.7, "wid": 1.5},
+			{"pos": Vector3(-0.8, 0.2, -30.5), "dir": Vector3(-0.12, 0.0, -1.0), "len": 2.4, "wid": 1.4},
+		],
 	},
 }
 
@@ -120,6 +144,37 @@ func create_lobby(lobby_name: String, is_public: bool, rounds: int = 1, mode: St
 
 func is_turn_by_turn() -> bool:
 	return game_mode == "turn_by_turn"
+
+
+func is_free_for_all() -> bool:
+	return game_mode == "free_for_all"
+
+
+func player_count() -> int:
+	return maxi(player_ids().size(), 1)
+
+
+func player_ids() -> Array[String]:
+	var ids: Array[String] = []
+	var seen: Dictionary = {}
+	var people: Variant = active_lobby.get("player_list", [])
+	if people is Array:
+		var ranked: Array = []
+		for p in people:
+			if p is Dictionary and not str(p.get("id", "")).is_empty():
+				ranked.append(p)
+		ranked.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
+			return int(a.get("joinedAt", 0)) < int(b.get("joinedAt", 0))
+		)
+		for p in ranked:
+			var id := str(p.get("id", ""))
+			if seen.has(id):
+				continue
+			seen[id] = true
+			ids.append(id)
+	if ids.is_empty() and not NetworkClient.player_id.is_empty():
+		ids.append(NetworkClient.player_id)
+	return ids
 
 
 func set_game_mode(mode: String) -> void:

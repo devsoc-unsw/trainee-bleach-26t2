@@ -46,6 +46,7 @@ export interface Room {
   players: Map<string, Player>;
   votes: Map<string, string>;
   voteDeadline: number;
+  takenPickups: Map<string, number>;
 }
 
 const rooms = new Map<string, Room>();
@@ -214,6 +215,7 @@ export function createRoom(
     players: new Map(),
     votes: new Map(),
     voteDeadline: 0,
+    takenPickups: new Map(),
   };
   const player: Player = {
     id,
@@ -611,6 +613,7 @@ function commitMatch(room: Room, mapId: string): Room {
   room.summaryPending = false;
   room.votes.clear();
   room.voteDeadline = 0;
+  room.takenPickups.clear();
   for (const p of room.players.values()) {
     p.strokes = 0;
     p.holed = false;
@@ -705,8 +708,82 @@ function clearVoteTimer(code: string): void {
   voteTimers.delete(code);
 }
 
+export function claimPickup(ws: WebSocket, pickupId: string, kind: string): string | undefined {
+  const room = roomFor(ws);
+  const from = playerFor(ws);
+  if (!room || !from || room.phase !== 'playing') {
+    return 'Not in a match';
+  }
+  if (kind !== 'shield' && kind !== 'shrink') {
+    return 'Unknown power-up';
+  }
+  if (!/^[a-z0-9_]{3,32}$/.test(pickupId)) {
+    return 'Bad pickup';
+  }
+  const readyAt = room.takenPickups.get(pickupId) ?? 0;
+  if (Date.now() < readyAt) {
+    return 'Already taken';
+  }
+  room.takenPickups.set(pickupId, Date.now() + 18_000);
+  broadcast(room, { t: 'pickup_taken', pickupId, playerId: from.id, kind });
+  return undefined;
+}
+
+export function usePower(ws: WebSocket, kind: string): string | undefined {
+  const room = roomFor(ws);
+  const from = playerFor(ws);
+  if (!room || !from || room.phase !== 'playing') {
+    return 'Not in a match';
+  }
+  if (kind !== 'shield' && kind !== 'shrink') {
+    return 'Unknown power-up';
+  }
+  broadcast(room, { t: 'power_use', playerId: from.id, kind }, ws);
+  return undefined;
+}
+
 export function snapshot(room: Room): { t: 'snapshot'; balls: BallSnap[] } {
   return { t: 'snapshot', balls: Array.from(room.players.values()).map((p) => p.ball) };
+}
+
+export function forwardBump(
+  ws: WebSocket,
+  targetId: string,
+  vx: number,
+  vy: number,
+  vz: number
+): string | undefined {
+  const room = roomFor(ws);
+  const from = playerFor(ws);
+  if (!room || !from || room.phase !== 'playing') {
+    return 'Not in a match';
+  }
+  if (targetId === from.id) {
+    return 'Cannot bump yourself';
+  }
+  let target: Player | undefined;
+  for (const p of room.players.values()) {
+    if (p.id === targetId) {
+      target = p;
+      break;
+    }
+  }
+  if (!target) {
+    return 'Player not found';
+  }
+  const cap = 28;
+  send(target.ws, {
+    t: 'bump',
+    fromId: from.id,
+    vx: clamp(vx, -cap, cap),
+    vy: clamp(vy, -cap, cap),
+    vz: clamp(vz, -cap, cap),
+  });
+  return undefined;
+}
+
+function clamp(value: number, lo: number, hi: number): number {
+  return Math.min(hi, Math.max(lo, value));
 }
 
 function emptyBall(id: string): BallSnap {

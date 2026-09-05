@@ -68,7 +68,7 @@ describe('phone remote', () => {
     phone.linkPhone(hostPhone.ws, hostPair.code);
     phone.linkPhone(guestPhone.ws, guestPair.code);
     phone.swingFrom(hostPhone.ws, 0.8, { sx: -0.4, sy: 0.9 });
-    phone.poseFrom(guestPhone.ws, { sx: 0.5, sy: 0.2, h: 1, p: 0.4 });
+    phone.poseFrom(guestPhone.ws, { sx: 0.5, sy: 0.2, h: 1, p: 0.4, lx: -0.6, ly: 0.1 });
     const hostHit = host.sent.filter((m) => m['t'] === 'phone_hit');
     const guestHit = guest.sent.filter((m) => m['t'] === 'phone_hit');
     const guestPose = guest.sent.filter((m) => m['t'] === 'phone_pose');
@@ -77,7 +77,34 @@ describe('phone remote', () => {
     assert.equal(hostHit[0]?.['sx'], -0.4);
     assert.equal(guestHit.length, 0);
     assert.equal(guestPose.length, 1);
+    assert.equal(guestPose[0]?.['lx'], -0.6);
     assert.equal(hostPose.length, 0);
+  });
+
+  it('forwards a phone power tap to that player', async () => {
+    const pc = fakeSocket();
+    const handset = fakeSocket();
+    const opened = await phone.openPair(pc.ws, 8080);
+    phone.linkPhone(handset.ws, opened.code);
+    const used = phone.powerFrom(handset.ws, 'shield');
+    assert.notEqual(typeof used, 'string');
+    const hit = pc.sent.at(-1);
+    assert.equal(hit?.['t'], 'phone_power');
+    assert.equal(hit?.['kind'], 'shield');
+    assert.equal(typeof phone.powerFrom(handset.ws, 'nope'), 'string');
+  });
+
+  it('forwards stored powers from the PC to the paired phone', async () => {
+    const pc = fakeSocket();
+    const handset = fakeSocket();
+    const opened = await phone.openPair(pc.ws, 8080);
+    phone.linkPhone(handset.ws, opened.code);
+    const sent = phone.forwardPowers(pc.ws, { leftKind: 'shrink', leftLeft: 0, rightKind: 'shield', rightLeft: 4.2 });
+    assert.notEqual(typeof sent, 'string');
+    const snap = handset.sent.at(-1);
+    assert.equal(snap?.['t'], 'phone_powers');
+    assert.equal(snap?.['leftKind'], 'shrink');
+    assert.equal(snap?.['rightLeft'], 4.2);
   });
 
   it('reads Windows IPv4 addresses from ipconfig text', () => {

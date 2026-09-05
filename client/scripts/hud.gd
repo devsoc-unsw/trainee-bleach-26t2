@@ -4,6 +4,7 @@ signal camera_pressed
 signal look_pressed
 signal settings_pressed
 signal ability_pressed
+signal power_used(kind: String)
 signal quit_pressed
 signal courses_pressed
 signal phone_link_pressed
@@ -45,6 +46,10 @@ var _style_header_closed: StyleBox
 var _roster: Array[Dictionary] = []
 var _players_box: VBoxContainer
 var _chat_card: PanelContainer
+var _chat_header: PanelContainer
+var _chat_body: Control
+var _chat_chevron: Button
+var _chat_expanded := true
 var _chat_log: VBoxContainer
 var _chat_scroll: ScrollContainer
 var _chat_input: LineEdit
@@ -69,6 +74,12 @@ var _results_title: Label
 var _results_sub: Label
 var _results_rows: VBoxContainer
 var _results_tween: Tween
+var _kickoff_dimmer: ColorRect
+var _kickoff_label: Label
+var _kickoff_tween: Tween
+var _phone_opened_ms := 0
+var _shield_slot: PowerSlot
+var _shrink_slot: PowerSlot
 
 
 func _ready() -> void:
@@ -88,8 +99,19 @@ func _ready() -> void:
 	_build_pause_menu()
 	_build_phone_panel()
 	_build_spectate_bar()
+	_build_power_hud()
 	_refresh_stats()
 	_apply_scorecard_state()
+	_apply_chat_state()
+	if not scorecard_header.gui_input.is_connected(_on_scorecard_header_input):
+		scorecard_header.gui_input.connect(_on_scorecard_header_input)
+		scorecard_header.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+	var score_header_row: Control = scorecard_header.get_node_or_null("HeaderRow")
+	if score_header_row:
+		score_header_row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var score_title: Control = scorecard_header.get_node_or_null("HeaderRow/Title")
+	if score_title:
+		score_title.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_setup_view_buttons()
 	if players_toggle.has_signal("toggled"):
 		players_toggle.toggled.connect(_on_show_players_toggled)
@@ -137,6 +159,92 @@ func start_timer() -> void:
 
 func stop_timer() -> void:
 	timer_running = false
+
+
+func show_kickoff(text: String) -> void:
+	_ensure_kickoff()
+	_kickoff_label.text = text
+	_kickoff_label.reset_size()
+	_kickoff_label.pivot_offset = _kickoff_label.get_minimum_size() * 0.5
+	_kickoff_dimmer.visible = true
+	_kickoff_label.scale = Vector2(0.72, 0.72)
+	_kickoff_label.modulate.a = 0.0
+	if _kickoff_tween:
+		_kickoff_tween.kill()
+	_kickoff_tween = create_tween()
+	_kickoff_tween.set_parallel(true)
+	_kickoff_tween.tween_property(_kickoff_label, "scale", Vector2.ONE, 0.18).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	_kickoff_tween.tween_property(_kickoff_label, "modulate:a", 1.0, 0.12)
+
+
+func set_powerups(left_kind: String = "", left_left: float = 0.0, right_kind: String = "", right_left: float = 0.0) -> void:
+	_ensure_power_hud()
+	if _shield_slot:
+		_shield_slot.set_slot(left_kind, left_left)
+	if _shrink_slot:
+		_shrink_slot.set_slot(right_kind, right_left)
+
+
+func _build_power_hud() -> void:
+	_ensure_power_hud()
+
+
+func _ensure_power_hud() -> void:
+	if _shield_slot:
+		return
+	_shield_slot = _bind_power_slot($Root/Abilities/Slot1)
+	_shrink_slot = _bind_power_slot($Root/Abilities/Slot2)
+	var leftover := $Root/Abilities.get_node_or_null("AbilityButton")
+	if leftover:
+		leftover.visible = false
+		leftover.queue_free()
+	var bar: Control = $Root/Abilities
+	bar.offset_left = -146.0
+
+
+func _bind_power_slot(host: Control) -> PowerSlot:
+	host.add_theme_stylebox_override("panel", StyleBoxEmpty.new())
+	host.mouse_filter = Control.MOUSE_FILTER_STOP
+	var slot := PowerSlot.new()
+	slot.kind = ""
+	slot.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	slot.pressed.connect(func() -> void:
+		if slot.kind != "":
+			power_used.emit(slot.kind)
+	)
+	host.add_child(slot)
+	return slot
+
+
+func hide_kickoff() -> void:
+	if _kickoff_dimmer:
+		_kickoff_dimmer.visible = false
+	if _kickoff_tween:
+		_kickoff_tween.kill()
+		_kickoff_tween = null
+
+
+func _ensure_kickoff() -> void:
+	if _kickoff_dimmer:
+		return
+	_kickoff_dimmer = ColorRect.new()
+	_kickoff_dimmer.color = Color(0.08, 0.07, 0.06, 0.22)
+	_kickoff_dimmer.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_kickoff_dimmer.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_kickoff_dimmer.visible = false
+	$Root.add_child(_kickoff_dimmer)
+	var center := CenterContainer.new()
+	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	center.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_kickoff_dimmer.add_child(center)
+	_kickoff_label = Label.new()
+	_kickoff_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_kickoff_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	_kickoff_label.pivot_offset = Vector2(160, 48)
+	UiStyle.apply_font(_kickoff_label, true, 88, Color("F6C84C"))
+	_kickoff_label.add_theme_color_override("font_outline_color", Color(0.28, 0.16, 0.05, 0.9))
+	_kickoff_label.add_theme_constant_override("outline_size", 16)
+	center.add_child(_kickoff_label)
 
 
 func reset_timer() -> void:
@@ -415,14 +523,35 @@ func _make_chat_card() -> PanelContainer:
 	card.add_child(layout)
 
 	var header := PanelContainer.new()
+	_chat_header = header
 	header.add_theme_stylebox_override("panel", _style_header_open)
+	header.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+	header.gui_input.connect(_on_chat_header_input)
+	var header_row := HBoxContainer.new()
+	header_row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	header_row.add_theme_constant_override("separation", 8)
+	header.add_child(header_row)
 	var title := Label.new()
 	title.text = "CHAT"
+	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	title.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	UiStyle.apply_font(title, true, 18, Color("F6F1E6"))
-	header.add_child(title)
+	header_row.add_child(title)
+	_chat_chevron = Button.new()
+	_chat_chevron.custom_minimum_size = Vector2(34, 34)
+	_chat_chevron.pivot_offset = Vector2(17, 17)
+	_chat_chevron.focus_mode = Control.FOCUS_NONE
+	_chat_chevron.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+	_chat_chevron.icon = chevron_button.icon
+	_chat_chevron.expand_icon = true
+	_chat_chevron.icon_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_copy_chevron_look(_chat_chevron)
+	_chat_chevron.pressed.connect(_toggle_chat)
+	header_row.add_child(_chat_chevron)
 	layout.add_child(header)
 
 	var body := MarginContainer.new()
+	_chat_body = body
 	body.add_theme_constant_override("margin_left", 12)
 	body.add_theme_constant_override("margin_top", 8)
 	body.add_theme_constant_override("margin_right", 12)
@@ -463,6 +592,7 @@ func _make_chat_card() -> PanelContainer:
 	send.add_theme_stylebox_override("pressed", UiStyle.pill(UiStyle.TEAL_PRESS, 12, 8))
 	send.pressed.connect(func() -> void: _on_chat_submit(_chat_input.text))
 	composer.add_child(send)
+	_apply_chat_state()
 	return card
 
 
@@ -519,9 +649,7 @@ func _build_pause_menu() -> void:
 	_courses_btn.custom_minimum_size = Vector2(0, 46)
 	_courses_btn.focus_mode = Control.FOCUS_NONE
 	UiStyle.apply_font(_courses_btn, true, 16, UiStyle.BROWN)
-	_courses_btn.add_theme_stylebox_override("normal", UiStyle.ghost_pill())
-	_courses_btn.add_theme_stylebox_override("hover", UiStyle.ghost_pill())
-	_courses_btn.add_theme_stylebox_override("pressed", UiStyle.ghost_pill())
+	UiStyle.apply_ghost_button(_courses_btn)
 	_courses_btn.visible = not GameSession.online
 	_courses_btn.pressed.connect(func() -> void:
 		_set_pause_open(false)
@@ -541,8 +669,8 @@ func _build_pause_menu() -> void:
 	phone.add_theme_stylebox_override("pressed", UiStyle.pill(UiStyle.TEAL_PRESS, 18, 12))
 	phone.pressed.connect(func() -> void:
 		_set_aim_mode(true, false)
-		_set_pause_open(false)
 		phone_link_pressed.emit()
+		_set_pause_open(false)
 	)
 	col.add_child(phone)
 
@@ -551,9 +679,7 @@ func _build_pause_menu() -> void:
 	resume.custom_minimum_size = Vector2(0, 46)
 	resume.focus_mode = Control.FOCUS_NONE
 	UiStyle.apply_font(resume, true, 16, UiStyle.BROWN)
-	resume.add_theme_stylebox_override("normal", UiStyle.ghost_pill())
-	resume.add_theme_stylebox_override("hover", UiStyle.ghost_pill())
-	resume.add_theme_stylebox_override("pressed", UiStyle.ghost_pill())
+	UiStyle.apply_ghost_button(resume)
 	resume.pressed.connect(func() -> void: _set_pause_open(false))
 	col.add_child(resume)
 
@@ -569,6 +695,8 @@ func _set_pause_open(on: bool) -> void:
 func show_phone_panel(on: bool) -> void:
 	if _phone_dimmer:
 		_phone_dimmer.visible = on
+	if on:
+		_phone_opened_ms = Time.get_ticks_msec()
 
 
 func set_phone_waiting() -> void:
@@ -647,6 +775,8 @@ func _build_phone_panel() -> void:
 		if event is InputEventMouseButton:
 			var mouse := event as InputEventMouseButton
 			if mouse.pressed and mouse.button_index == MOUSE_BUTTON_LEFT:
+				if Time.get_ticks_msec() - _phone_opened_ms < 280:
+					return
 				show_phone_panel(false)
 	)
 	$Root.add_child(_phone_dimmer)
@@ -704,9 +834,7 @@ func _build_phone_panel() -> void:
 	close.custom_minimum_size = Vector2(0, 44)
 	close.focus_mode = Control.FOCUS_NONE
 	UiStyle.apply_font(close, true, 15, UiStyle.BROWN)
-	close.add_theme_stylebox_override("normal", UiStyle.ghost_pill())
-	close.add_theme_stylebox_override("hover", UiStyle.ghost_pill())
-	close.add_theme_stylebox_override("pressed", UiStyle.ghost_pill())
+	UiStyle.apply_ghost_button(close)
 	close.pressed.connect(func() -> void: show_phone_panel(false))
 	col.add_child(close)
 	_refresh_aim_mode_buttons()
@@ -752,9 +880,9 @@ func _set_aim_mode(phone: bool, open_panel: bool) -> void:
 	GameSession.aim_with_phone = phone
 	_refresh_aim_mode_buttons()
 	aim_mode_changed.emit(phone)
-	if phone and open_panel and not PhoneLink.is_linked():
-		_set_pause_open(false)
+	if phone and open_panel:
 		phone_link_pressed.emit()
+		_set_pause_open(false)
 
 
 func _refresh_aim_mode_buttons() -> void:
@@ -781,7 +909,7 @@ func set_spectate_mode(follow: bool) -> void:
 
 func set_spectate_target_name(player_name: String) -> void:
 	if _spectate_name:
-		_spectate_name.text = player_name if not player_name.is_empty() else "FREE ROAM — right-drag to look"
+		_spectate_name.text = player_name if not player_name.is_empty() else "FREE ROAM"
 
 
 func _build_spectate_bar() -> void:
@@ -885,6 +1013,53 @@ func _on_ability_pressed() -> void:
 	ability_pressed.emit()
 
 
+func _on_chat_header_input(event: InputEvent) -> void:
+	if event is InputEventMouseButton:
+		var mouse := event as InputEventMouseButton
+		if mouse.pressed and mouse.button_index == MOUSE_BUTTON_LEFT:
+			_toggle_chat()
+
+
+func _on_scorecard_header_input(event: InputEvent) -> void:
+	if event is InputEventMouseButton:
+		var mouse := event as InputEventMouseButton
+		if mouse.pressed and mouse.button_index == MOUSE_BUTTON_LEFT:
+			_on_chevron_pressed()
+
+
+func _copy_chevron_look(btn: Button) -> void:
+	for name in ["normal", "pressed", "hover", "hover_pressed", "focus"]:
+		var box := chevron_button.get_theme_stylebox(name)
+		if box:
+			btn.add_theme_stylebox_override(name, box)
+
+
+func _toggle_chat() -> void:
+	_chat_expanded = not _chat_expanded
+	_apply_chat_state()
+
+
+func _apply_chat_state() -> void:
+	if _chat_body:
+		_chat_body.visible = _chat_expanded
+	if _chat_card:
+		_chat_card.custom_minimum_size = Vector2(0, 168 if _chat_expanded else 0)
+		if _chat_expanded:
+			_chat_card.add_theme_stylebox_override("panel", _style_card_open)
+		else:
+			_chat_card.add_theme_stylebox_override("panel", _style_card_closed)
+	if _chat_header:
+		if _chat_expanded:
+			_chat_header.add_theme_stylebox_override("panel", _style_header_open)
+		else:
+			_chat_header.add_theme_stylebox_override("panel", _style_header_closed)
+	if _chat_chevron:
+		_chat_chevron.pivot_offset = Vector2(17, 17)
+		_chat_chevron.rotation_degrees = 0.0 if _chat_expanded else 180.0
+	if not _chat_expanded and _chat_input and _chat_input.has_focus():
+		_chat_input.release_focus()
+
+
 func _on_chevron_pressed() -> void:
 	scorecard_expanded = not scorecard_expanded
 	_apply_scorecard_state()
@@ -906,7 +1081,7 @@ func _on_show_players_toggled(enabled: bool) -> void:
 	show_players_changed.emit(enabled)
 
 
-func show_round_results(hole_index: int, last_hole: bool, results: Array, par: int) -> void:
+func show_round_results(hole_index: int, last_hole: bool, results: Array, hole_par: int) -> void:
 	_ensure_results_overlay()
 	_results_title.text = "HOLE %d RESULTS" % (hole_index + 1)
 	_results_sub.text = "Final results incoming..." if last_hole else "Next hole starting soon"
@@ -921,18 +1096,18 @@ func show_round_results(hole_index: int, last_hole: bool, results: Array, par: i
 	var prev := -1
 	for i in ranked.size():
 		var r: Dictionary = ranked[i]
-		var strokes := int(r.get("strokes", 0))
-		if i > 0 and strokes != prev:
+		var hole_strokes := int(r.get("strokes", 0))
+		if i > 0 and hole_strokes != prev:
 			place = i + 1
-		prev = strokes
+		prev = hole_strokes
 		rows.append(_result_row_data(
 			place,
 			String(r.get("name", "Player")),
 			String(r.get("playerId", "")),
 			UiStyle.to_color(r.get("color", "#E23B3B")),
-			str(strokes),
-			_rel_text(strokes - par, bool(r.get("holed", true))),
-			str(int(r.get("total", strokes)))
+			str(hole_strokes),
+			_rel_text(hole_strokes - hole_par, bool(r.get("holed", true))),
+			str(int(r.get("total", hole_strokes)))
 		))
 	_play_result_rows(rows)
 

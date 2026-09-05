@@ -57,12 +57,12 @@ export function createHttpsServer(): https.Server | null {
 export function tryPhoneApi(req: http.IncomingMessage, res: http.ServerResponse): boolean {
   const url = new URL(req.url ?? '/', 'https://localhost');
   const pathName = url.pathname;
-  if (req.method === 'OPTIONS' && (pathName === '/pose' || pathName === '/hit' || pathName === '/swing')) {
+  if (req.method === 'OPTIONS' && (pathName === '/pose' || pathName === '/hit' || pathName === '/swing' || pathName === '/power')) {
     res.writeHead(204, { 'Access-Control-Allow-Origin': '*' });
     res.end();
     return true;
   }
-  if (req.method === 'POST' && (pathName === '/pose' || pathName === '/hit' || pathName === '/swing')) {
+  if (req.method === 'POST' && (pathName === '/pose' || pathName === '/hit' || pathName === '/swing' || pathName === '/power')) {
     proxyGodot(req, res, pathName);
     return true;
   }

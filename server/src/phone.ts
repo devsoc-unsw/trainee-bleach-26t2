@@ -207,7 +207,39 @@ export function poseFrom(phoneWs: WebSocket, data: Record<string, unknown>): Pai
     a: Number(data['a'] ?? 0),
     al: Number(data['al'] ?? 0),
     c: Number(data['c'] ?? 0),
+    lx: clampAxis(data['lx']),
+    ly: clampAxis(data['ly']),
   });
+  return pair;
+}
+
+export function powerFrom(phoneWs: WebSocket, raw: unknown): Pair | string {
+  const pair = pairByPhone.get(phoneWs);
+  if (!pair) {
+    return 'Link a code first';
+  }
+  const kind = String(raw ?? '');
+  if (kind !== 'shield' && kind !== 'shrink') {
+    return 'Unknown power';
+  }
+  send(pair.playerWs, { t: 'phone_power', kind });
+  return pair;
+}
+
+export function forwardPowers(playerWs: WebSocket, data: Record<string, unknown>): Pair | string {
+  const pair = pairByPlayer.get(playerWs);
+  if (!pair) {
+    return 'No phone pair';
+  }
+  if (pair.phoneWs) {
+    send(pair.phoneWs, {
+      t: 'phone_powers',
+      leftKind: String(data['leftKind'] ?? ''),
+      leftLeft: Number(data['leftLeft'] ?? 0),
+      rightKind: String(data['rightKind'] ?? ''),
+      rightLeft: Number(data['rightLeft'] ?? 0),
+    });
+  }
   return pair;
 }
 

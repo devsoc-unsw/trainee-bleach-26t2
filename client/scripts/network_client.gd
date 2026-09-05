@@ -17,8 +17,12 @@ signal phone_ready(code: String, urls: PackedStringArray, qr: String)
 signal phone_linked
 signal phone_gone
 signal phone_hit(power: float, stick_x: float, stick_y: float)
-signal phone_pose(beta: float, gamma: float, holding: bool, stick_x: float, stick_y: float, lift: float, power: float, accel: float, yaw: float, recenter: bool)
+signal phone_pose(beta: float, gamma: float, holding: bool, stick_x: float, stick_y: float, lift: float, power: float, accel: float, yaw: float, recenter: bool, look_x: float, look_y: float)
+signal phone_power(kind: String)
 signal cursor_received(player_id: String, uv: Vector2, on: bool)
+signal bump_received(from_id: String, velocity: Vector3)
+signal pickup_taken(pickup_id: String, player_id: String, kind: String)
+signal power_used(player_id: String, kind: String)
 
 var player_id := ""
 var socket_open := false
@@ -132,6 +136,15 @@ func _handle_packet(packet: PackedByteArray) -> void:
 			)
 		"snapshot":
 			snapshot_received.emit(data.get("balls", []))
+		"bump":
+			bump_received.emit(
+				str(data.get("fromId", "")),
+				Vector3(float(data.get("vx", 0.0)), float(data.get("vy", 0.0)), float(data.get("vz", 0.0)))
+			)
+		"pickup_taken":
+			pickup_taken.emit(str(data.get("pickupId", "")), str(data.get("playerId", "")), str(data.get("kind", "")))
+		"power_use":
+			power_used.emit(str(data.get("playerId", "")), str(data.get("kind", "")))
 		"stroke_update":
 			stroke_updated.emit(str(data.get("playerId", "")), int(data.get("strokes", 0)))
 		"player_holed":
@@ -178,8 +191,12 @@ func _handle_packet(packet: PackedByteArray) -> void:
 				clampf(float(data.get("p", 0.0)), 0.0, 1.0),
 				float(data.get("a", 0.0)),
 				float(data.get("al", 0.0)),
-				bool(data.get("c", 0))
+				bool(data.get("c", 0)),
+				clampf(float(data.get("lx", 0.0)), -1.0, 1.0),
+				clampf(float(data.get("ly", 0.0)), -1.0, 1.0)
 			)
+		"phone_power":
+			phone_power.emit(str(data.get("kind", "")))
 		_:
 			pass
 
@@ -231,6 +248,24 @@ func send_shot() -> void:
 	_send({ "t": "shot" })
 
 
+func send_pickup(pickup_id: String, kind: String) -> void:
+	_send({ "t": "pickup", "pickupId": pickup_id, "kind": kind })
+
+
+func send_power_use(kind: String) -> void:
+	_send({ "t": "power_use", "kind": kind })
+
+
+func send_bump(target_id: String, velocity: Vector3) -> void:
+	_send({
+		"t": "bump",
+		"targetId": target_id,
+		"vx": velocity.x,
+		"vy": velocity.y,
+		"vz": velocity.z,
+	})
+
+
 func send_ball_state(pos: Vector3, vel: Vector3, at_rest: bool) -> void:
 	_send({
 		"t": "ball_state",
@@ -250,6 +285,16 @@ func send_oob() -> void:
 
 func send_phone_open() -> void:
 	_send({ "t": "phone_open" })
+
+
+func send_phone_powers(left_kind: String, left_left: float, right_kind: String, right_left: float) -> void:
+	_send({
+		"t": "phone_powers",
+		"leftKind": left_kind,
+		"leftLeft": left_left,
+		"rightKind": right_kind,
+		"rightLeft": right_left,
+	})
 
 
 func send_cursor(uv: Vector2, on: bool) -> void:

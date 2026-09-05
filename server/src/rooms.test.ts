@@ -268,4 +268,42 @@ describe('rooms', () => {
     assert.equal((changed as rooms.Room).gameMode, 'free_for_all');
     assert.equal(rooms.lobbyState(room).gameMode, 'free_for_all');
   });
+
+  it('forwards a free-for-all bump to the other player only', () => {
+    const a = fakeSocket();
+    const b = fakeSocket();
+    rooms.register(a.ws);
+    const guestId = rooms.register(b.ws);
+    const room = rooms.createRoom(a.ws, 'Bump', true, 'Host', 1, 'free_for_all');
+    rooms.joinRoom(b.ws, room.code, 'Guest');
+    rooms.startMatch(a.ws, 'rainbow_stairs');
+    a.sent.length = 0;
+    b.sent.length = 0;
+    const err = rooms.forwardBump(a.ws, guestId, 4, 0.2, -1);
+    assert.equal(err, undefined);
+    assert.equal(a.sent.length, 0);
+    assert.equal(b.sent.length, 1);
+    const hit = b.sent[0] as { t: string; vx: number; vz: number };
+    assert.equal(hit.t, 'bump');
+    assert.equal(hit.vx, 4);
+    assert.equal(hit.vz, -1);
+  });
+
+  it('awards a pickup to the first player and rejects a second claim', () => {
+    const a = fakeSocket();
+    const b = fakeSocket();
+    rooms.register(a.ws);
+    rooms.register(b.ws);
+    const room = rooms.createRoom(a.ws, 'Powers', true, 'Host', 1, 'free_for_all');
+    rooms.joinRoom(b.ws, room.code, 'Guest');
+    rooms.startMatch(a.ws, 'village_green');
+    a.sent.length = 0;
+    b.sent.length = 0;
+    assert.equal(rooms.claimPickup(a.ws, 'green_shield', 'shield'), undefined);
+    assert.equal(rooms.claimPickup(b.ws, 'green_shield', 'shield'), 'Already taken');
+    const taken = a.sent.find((m) => m.t === 'pickup_taken') as { kind: string; pickupId: string };
+    assert.equal(taken.kind, 'shield');
+    assert.equal(taken.pickupId, 'green_shield');
+    assert.equal(b.sent.some((m) => m.t === 'pickup_taken'), true);
+  });
 });

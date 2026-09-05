@@ -281,7 +281,7 @@ wss.on('connection', (ws: WebSocket) => {
 });
 
 async function route(ws: WebSocket, type: string, msg: Record<string, unknown>): Promise<void> {
-  if (phone.isPhoneSocket(ws) && type !== 'swing' && type !== 'pose' && type !== 'ping' && type !== 'phone_link') {
+  if (phone.isPhoneSocket(ws) && type !== 'swing' && type !== 'pose' && type !== 'ping' && type !== 'phone_link' && type !== 'power') {
     return;
   }
   switch (type) {
@@ -318,6 +318,17 @@ async function route(ws: WebSocket, type: string, msg: Record<string, unknown>):
       if (typeof posed === 'string') {
         sendError(ws, 'PHONE_FAILED', posed);
       }
+      break;
+    }
+    case 'power': {
+      const used = phone.powerFrom(ws, msg['kind']);
+      if (typeof used === 'string') {
+        sendError(ws, 'PHONE_FAILED', used);
+      }
+      break;
+    }
+    case 'phone_powers': {
+      phone.forwardPowers(ws, msg);
       break;
     }
     case 'list':
@@ -423,6 +434,34 @@ async function route(ws: WebSocket, type: string, msg: Record<string, unknown>):
       }
       player.strokes += 1;
       rooms.broadcast(room, { t: 'stroke_update', playerId: player.id, strokes: player.strokes });
+      break;
+    }
+    case 'power_use': {
+      const used = rooms.usePower(ws, String(msg['kind'] ?? ''));
+      if (typeof used === 'string') {
+        return;
+      }
+      break;
+    }
+    case 'pickup': {
+      const claimed = rooms.claimPickup(ws, String(msg['pickupId'] ?? ''), String(msg['kind'] ?? ''));
+      if (typeof claimed === 'string') {
+        sendError(ws, 'PICKUP_TAKEN', claimed);
+        return;
+      }
+      break;
+    }
+    case 'bump': {
+      const bumped = rooms.forwardBump(
+        ws,
+        String(msg['targetId'] ?? ''),
+        num(msg['vx']),
+        num(msg['vy']),
+        num(msg['vz'])
+      );
+      if (typeof bumped === 'string') {
+        return;
+      }
       break;
     }
     case 'ball_state': {
