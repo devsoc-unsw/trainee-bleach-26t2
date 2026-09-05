@@ -40,7 +40,6 @@ var my_player_id: String = ""
 var game_mode: String = MODE_TURN_BY_TURN
 var players: Dictionary = {}
 var local_holed: bool = false
-var hole_count: int = 0
 
 
 func _get_server_url() -> String:
@@ -117,8 +116,6 @@ func _route_message(data: Dictionary) -> void:
 			lobby_updated.emit(data["players"])
 		"match_start":
 			_apply_game_mode(data)
-			if data.has("holes"):
-				hole_count = (data["holes"] as Array).size()
 			_set_state(GameState.COUNTDOWN)
 			match_started.emit(data["courseId"], data["holes"])
 		"hole_start":

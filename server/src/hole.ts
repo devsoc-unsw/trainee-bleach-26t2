@@ -4,7 +4,7 @@ import { broadcast, sendTo } from './rooms.js';
 
 const COUNTDOWN_MS = 3 * 1000;
 const HOLE_TIMER_MS = 90 * 1000;
-const HOLE_SUMMARY_PAUSE_MS = 8 * 1000;
+const HOLE_SUMMARY_PAUSE_MS = 5 * 1000;
 const MAX_STROKES = 10;
 const SNAPSHOT_MS = 1000 / 15;
 
@@ -14,8 +14,6 @@ interface HoleEndResult {
   colour: string;
   strokes: number;
   relToPar: number;
-  total: number;
-  completed: boolean;
 }
 
 export function startCountdown(room: Room, holeIndex: number) {
@@ -67,18 +65,8 @@ function finaliseHole(room: Room, holeIndex: number): HoleEndResult[] | null {
   const results: HoleEndResult[] = [];
   for (const p of room.players.values()) {
     if (!p.holedThisHole) p.strokes = Math.max(p.strokes, MAX_STROKES);
-    const completed = p.holedThisHole;
-    p.holeResults.push({ holeIndex, strokes: p.strokes, par: hole.par, completed });
-    const total = p.holeResults.reduce((sum, r) => sum + r.strokes, 0);
-    results.push({
-      playerId: p.id,
-      name: p.name,
-      colour: p.colour,
-      strokes: p.strokes,
-      relToPar: p.strokes - hole.par,
-      total,
-      completed,
-    });
+    p.holeResults.push({ holeIndex, strokes: p.strokes, par: hole.par, completed: p.holedThisHole });
+    results.push({ playerId: p.id, name: p.name, colour: p.colour, strokes: p.strokes, relToPar: p.strokes - hole.par });
     p.strokes = 0;
     p.holedThisHole = false;
   }
