@@ -94,17 +94,59 @@ describe('phone remote', () => {
     assert.equal(typeof phone.powerFrom(handset.ws, 'nope'), 'string');
   });
 
+  it('forwards typed text from the phone to the PC', async () => {
+    const pc = fakeSocket();
+    const handset = fakeSocket();
+    const opened = await phone.openPair(pc.ws, 8080);
+    phone.linkPhone(handset.ws, opened.code);
+    const sent = phone.typeFrom(handset.ws, { text: 'Birdie', done: true });
+    assert.notEqual(typeof sent, 'string');
+    const snap = pc.sent.at(-1);
+    assert.equal(snap?.['t'], 'phone_type');
+    assert.equal(snap?.['text'], 'Birdie');
+    assert.equal(snap?.['done'], true);
+  });
+
+  it('opens the phone keyboard from the PC', async () => {
+    const pc = fakeSocket();
+    const handset = fakeSocket();
+    const opened = await phone.openPair(pc.ws, 8080);
+    phone.linkPhone(handset.ws, opened.code);
+    const sent = phone.forwardType(pc.ws, {
+      typeOn: true,
+      typeText: 'Putt',
+      typeHint: 'Your name',
+      typeMax: 16,
+    });
+    assert.notEqual(typeof sent, 'string');
+    const snap = handset.sent.at(-1);
+    assert.equal(snap?.['t'], 'phone_type');
+    assert.equal(snap?.['typeOn'], true);
+    assert.equal(snap?.['typeText'], 'Putt');
+    assert.equal(snap?.['typeHint'], 'Your name');
+    assert.equal(snap?.['typeMax'], 16);
+  });
+
   it('forwards stored powers from the PC to the paired phone', async () => {
     const pc = fakeSocket();
     const handset = fakeSocket();
     const opened = await phone.openPair(pc.ws, 8080);
     phone.linkPhone(handset.ws, opened.code);
-    const sent = phone.forwardPowers(pc.ws, { leftKind: 'shrink', leftLeft: 0, rightKind: 'shield', rightLeft: 4.2 });
+    const sent = phone.forwardPowers(pc.ws, {
+      leftKind: 'shrink',
+      leftLeft: 0,
+      rightKind: 'shield',
+      rightLeft: 4.2,
+      rank: 2,
+      rankText: '2nd',
+    });
     assert.notEqual(typeof sent, 'string');
     const snap = handset.sent.at(-1);
     assert.equal(snap?.['t'], 'phone_powers');
     assert.equal(snap?.['leftKind'], 'shrink');
     assert.equal(snap?.['rightLeft'], 4.2);
+    assert.equal(snap?.['rank'], 2);
+    assert.equal(snap?.['rankText'], '2nd');
   });
 
   it('reads Windows IPv4 addresses from ipconfig text', () => {

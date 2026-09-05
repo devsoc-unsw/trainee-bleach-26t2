@@ -281,7 +281,7 @@ wss.on('connection', (ws: WebSocket) => {
 });
 
 async function route(ws: WebSocket, type: string, msg: Record<string, unknown>): Promise<void> {
-  if (phone.isPhoneSocket(ws) && type !== 'swing' && type !== 'pose' && type !== 'ping' && type !== 'phone_link' && type !== 'power') {
+  if (phone.isPhoneSocket(ws) && type !== 'swing' && type !== 'pose' && type !== 'ping' && type !== 'phone_link' && type !== 'power' && type !== 'type') {
     return;
   }
   switch (type) {
@@ -329,6 +329,17 @@ async function route(ws: WebSocket, type: string, msg: Record<string, unknown>):
     }
     case 'phone_powers': {
       phone.forwardPowers(ws, msg);
+      break;
+    }
+    case 'phone_type': {
+      phone.forwardType(ws, msg);
+      break;
+    }
+    case 'type': {
+      const typed = phone.typeFrom(ws, msg);
+      if (typeof typed === 'string') {
+        sendError(ws, 'PHONE_FAILED', typed);
+      }
       break;
     }
     case 'list':
@@ -483,6 +494,18 @@ async function route(ws: WebSocket, type: string, msg: Record<string, unknown>):
       rooms.broadcast(room, rooms.snapshot(room), ws);
       break;
     }
+    case 'skip_results': {
+      const skipped = rooms.skipHoleSummary(ws);
+      if (typeof skipped === 'string') {
+        sendError(ws, 'SKIP_FAILED', skipped);
+        return;
+      }
+      if (skipped.result === 'standings') {
+        rooms.scheduleHoleAdvance(skipped.room, onHoleAdvance);
+      }
+      onHoleAdvance(skipped.room, skipped.result, skipped.endsAt);
+      break;
+    }
     case 'holed': {
       const player = rooms.playerFor(ws);
       const marked = rooms.markHoled(ws);
@@ -574,7 +597,15 @@ function sendError(ws: WebSocket, code: string, message: string): void {
   rooms.send(ws, response);
 }
 
-function onHoleAdvance(room: rooms.Room, result: 'vote' | 'over'): void {
+function onHoleAdvance(room: rooms.Room, result: rooms.SummaryAdvance, endsAt?: number): void {
+  if (result === 'standings') {
+    rooms.broadcast(room, {
+      t: 'results_next',
+      lastHole: room.roundIndex + 1 >= room.rounds,
+      endsAt: endsAt ?? Date.now() + rooms.HOLE_SUMMARY_MS,
+    });
+    return;
+  }
   if (result === 'vote') {
     rooms.broadcast(room, rooms.voteState(room));
     broadcastLobbyList();

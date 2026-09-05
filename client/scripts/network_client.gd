@@ -10,7 +10,8 @@ signal snapshot_received(balls: Array)
 signal stroke_updated(player_id: String, strokes: int)
 signal player_holed(player_id: String, strokes: int)
 signal match_over(placings: Array)
-signal hole_ended(hole_index: int, last_hole: bool, results: Array)
+signal hole_ended(hole_index: int, last_hole: bool, results: Array, ends_at: float)
+signal results_next(last_hole: bool, ends_at: float)
 signal chat_received(payload: Dictionary)
 signal error_received(code: String, message: String)
 signal phone_ready(code: String, urls: PackedStringArray, qr: String)
@@ -19,6 +20,7 @@ signal phone_gone
 signal phone_hit(power: float, stick_x: float, stick_y: float)
 signal phone_pose(beta: float, gamma: float, holding: bool, stick_x: float, stick_y: float, lift: float, power: float, accel: float, yaw: float, recenter: bool, look_x: float, look_y: float)
 signal phone_power(kind: String)
+signal phone_typed(text: String, done: bool, closing: bool)
 signal cursor_received(player_id: String, uv: Vector2, on: bool)
 signal bump_received(from_id: String, velocity: Vector3)
 signal pickup_taken(pickup_id: String, player_id: String, kind: String)
@@ -153,8 +155,11 @@ func _handle_packet(packet: PackedByteArray) -> void:
 			hole_ended.emit(
 				int(data.get("holeIndex", 0)),
 				bool(data.get("lastHole", false)),
-				data.get("results", []) if data.get("results", []) is Array else []
+				data.get("results", []) if data.get("results", []) is Array else [],
+				float(data.get("endsAt", 0))
 			)
+		"results_next":
+			results_next.emit(bool(data.get("lastHole", false)), float(data.get("endsAt", 0)))
 		"match_over":
 			var raw: Variant = data.get("placings", [])
 			match_over.emit(raw if raw is Array else [])
@@ -197,6 +202,8 @@ func _handle_packet(packet: PackedByteArray) -> void:
 			)
 		"phone_power":
 			phone_power.emit(str(data.get("kind", "")))
+		"phone_type":
+			phone_typed.emit(str(data.get("text", "")), bool(data.get("done", false)), bool(data.get("close", false)))
 		_:
 			pass
 
@@ -253,6 +260,10 @@ func send_quick_start() -> void:
 	_send({ "t": "quick_start" })
 
 
+func send_skip_results() -> void:
+	_send({ "t": "skip_results" })
+
+
 func send_shot() -> void:
 	_send({ "t": "shot" })
 
@@ -296,13 +307,32 @@ func send_phone_open() -> void:
 	_send({ "t": "phone_open" })
 
 
-func send_phone_powers(left_kind: String, left_left: float, right_kind: String, right_left: float) -> void:
+func send_phone_powers(
+	left_kind: String,
+	left_left: float,
+	right_kind: String,
+	right_left: float,
+	rank: int = 0,
+	rank_text: String = ""
+) -> void:
 	_send({
 		"t": "phone_powers",
 		"leftKind": left_kind,
 		"leftLeft": left_left,
 		"rightKind": right_kind,
 		"rightLeft": right_left,
+		"rank": rank,
+		"rankText": rank_text,
+	})
+
+
+func send_phone_type(on: bool, text: String = "", hint: String = "", max_len: int = 32) -> void:
+	_send({
+		"t": "phone_type",
+		"typeOn": on,
+		"typeText": text,
+		"typeHint": hint,
+		"typeMax": max_len,
 	})
 
 

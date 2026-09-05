@@ -5,6 +5,7 @@ signal hit_received(power: float, stick_x: float, stick_y: float)
 signal urls_changed
 signal pose_received(beta: float, gamma: float, holding: bool, stick_x: float, stick_y: float, lift: float, power: float, accel: float, yaw: float, recenter: bool, look_x: float, look_y: float)
 signal power_used(kind: String)
+signal type_received(text: String, done: bool, closing: bool)
 
 const HTML_PATH := "res://ui/phone_remote.html"
 const PORT := 27351
@@ -39,6 +40,12 @@ var _left_kind := ""
 var _left_left := 0.0
 var _right_kind := ""
 var _right_left := 0.0
+var _rank := 0
+var _rank_text := ""
+var _type_on := false
+var _type_text := ""
+var _type_hint := ""
+var _type_max := 32
 
 
 func _ready() -> void:
@@ -62,6 +69,18 @@ func set_powers(left_kind: String, left_left: float, right_kind: String, right_l
 	_left_left = maxf(left_left, 0.0)
 	_right_kind = right_kind
 	_right_left = maxf(right_left, 0.0)
+
+
+func set_rank(place: int, label: String = "") -> void:
+	_rank = maxi(place, 0)
+	_rank_text = label if not label.is_empty() else _ordinal(_rank)
+
+
+func set_type(on: bool, text: String = "", hint: String = "", max_len: int = 32) -> void:
+	_type_on = on
+	_type_text = text
+	_type_hint = hint
+	_type_max = maxi(max_len, 1)
 
 
 func ensure_listening() -> Error:
@@ -349,6 +368,13 @@ func _try_handle(index: int) -> bool:
 		_close(index)
 		_drop(index)
 		return true
+	if method == "POST" and path == "/type":
+		var typed := _stick_from_body(body)
+		type_received.emit(str(typed.get("text", "")), bool(typed.get("done", false)), bool(typed.get("close", false)))
+		_respond(peer, 200, "application/json", "{\"ok\":true}", true)
+		_close(index)
+		_drop(index)
+		return true
 	if method == "OPTIONS":
 		_respond(peer, 204, "text/plain; charset=utf-8", "", true)
 	elif method == "GET" or method == "HEAD":
@@ -389,7 +415,29 @@ func _powers_json() -> String:
 		"leftLeft": _left_left,
 		"rightKind": _right_kind,
 		"rightLeft": _right_left,
+		"rank": _rank,
+		"rankText": _rank_text,
+		"typeOn": _type_on,
+		"typeText": _type_text,
+		"typeHint": _type_hint,
+		"typeMax": _type_max,
 	})
+
+
+func _ordinal(place: int) -> String:
+	if place < 1:
+		return ""
+	var tens := place % 100
+	var ones := place % 10
+	if tens >= 11 and tens <= 13:
+		return "%dth" % place
+	if ones == 1:
+		return "%dst" % place
+	if ones == 2:
+		return "%dnd" % place
+	if ones == 3:
+		return "%drd" % place
+	return "%dth" % place
 
 
 func _emit_pose(body: PackedByteArray) -> void:

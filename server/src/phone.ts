@@ -226,6 +226,37 @@ export function powerFrom(phoneWs: WebSocket, raw: unknown): Pair | string {
   return pair;
 }
 
+export function typeFrom(phoneWs: WebSocket, data: Record<string, unknown>): Pair | string {
+  const pair = pairByPhone.get(phoneWs);
+  if (!pair) {
+    return 'Link a code first';
+  }
+  send(pair.playerWs, {
+    t: 'phone_type',
+    text: String(data['text'] ?? ''),
+    done: Boolean(data['done']),
+    close: Boolean(data['close']),
+  });
+  return pair;
+}
+
+export function forwardType(playerWs: WebSocket, data: Record<string, unknown>): Pair | string {
+  const pair = pairByPlayer.get(playerWs);
+  if (!pair) {
+    return 'No phone pair';
+  }
+  if (pair.phoneWs) {
+    send(pair.phoneWs, {
+      t: 'phone_type',
+      typeOn: Boolean(data['typeOn']),
+      typeText: String(data['typeText'] ?? ''),
+      typeHint: String(data['typeHint'] ?? ''),
+      typeMax: Number(data['typeMax'] ?? 32),
+    });
+  }
+  return pair;
+}
+
 export function forwardPowers(playerWs: WebSocket, data: Record<string, unknown>): Pair | string {
   const pair = pairByPlayer.get(playerWs);
   if (!pair) {
@@ -238,6 +269,8 @@ export function forwardPowers(playerWs: WebSocket, data: Record<string, unknown>
       leftLeft: Number(data['leftLeft'] ?? 0),
       rightKind: String(data['rightKind'] ?? ''),
       rightLeft: Number(data['rightLeft'] ?? 0),
+      rank: Number(data['rank'] ?? 0),
+      rankText: String(data['rankText'] ?? ''),
     });
   }
   return pair;

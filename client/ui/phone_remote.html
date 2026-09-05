@@ -169,39 +169,119 @@
     .pslot.charged.tiny .sigil-tiny,
     .pslot.active.tiny .sigil-tiny { opacity: 1; }
     .pslot.charged { cursor: pointer; }
-    #swing {
-      width: 100%;
-      height: 132px;
-      border-radius: 20px;
-      border: 4px solid #e4dcce;
-      background: #fffbf5;
-      position: relative;
-      overflow: hidden;
-      touch-action: none;
-      box-shadow: 0 8px 18px rgba(58, 50, 44, 0.12);
-    }
-    #swing.back { border-color: var(--teal); }
-    #swing.hit { border-color: #e23b3b; }
-    #swing-fill {
-      position: absolute;
-      left: 0;
-      right: 0;
-      bottom: 0;
-      height: 0%;
-      background: #d9f0ed;
-    }
-    #swing.back #swing-fill { background: #b7e4de; }
-    #swing-label {
-      position: absolute;
+    #rank-view {
+      display: none;
+      position: fixed;
       inset: 0;
-      display: flex;
+      z-index: 8;
+      flex-direction: column;
       align-items: center;
       justify-content: center;
-      font-size: 17px;
+      background: var(--cream);
+      pointer-events: none;
+    }
+    #rank-view.show { display: flex; }
+    #type-view {
+      display: none;
+      position: fixed;
+      inset: 0;
+      z-index: 12;
+      align-items: flex-end;
+      justify-content: center;
+      background: rgba(58, 50, 44, 0.35);
+      padding: 12px 12px calc(12px + env(safe-area-inset-bottom));
+      touch-action: manipulation;
+      user-select: text;
+    }
+    #type-view.show { display: flex; }
+    #type-card {
+      width: min(460px, 100%);
+      background: #fffbf5;
+      border: 3px solid #e4dcce;
+      border-radius: 22px;
+      padding: 14px 14px 12px;
+      box-shadow: 0 16px 36px rgba(58, 50, 44, 0.22);
+    }
+    #type-hint {
+      font-size: 12px;
+      font-weight: 800;
+      letter-spacing: 0.14em;
+      color: var(--brown);
+      margin-bottom: 8px;
+    }
+    #type-input {
+      width: 100%;
+      border: 2px solid #e4dcce;
+      border-radius: 14px;
+      background: #fff;
+      color: var(--ink);
+      font: inherit;
+      font-size: 20px;
+      font-weight: 700;
+      padding: 12px 14px;
+      outline: none;
+      touch-action: manipulation;
+      user-select: text;
+      -webkit-user-select: text;
+    }
+    #type-input:focus { border-color: var(--teal); }
+    #type-keys {
+      margin-top: 10px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    #type-keys.hidden { display: none; }
+    .krow {
+      display: flex;
+      gap: 5px;
+    }
+    .krow button {
+      flex: 1 1 0;
+      min-height: 42px;
+      border: none;
+      border-radius: 10px;
+      background: #efe7d8;
+      color: var(--ink);
+      font-family: inherit;
+      font-size: 16px;
+      font-weight: 800;
+      touch-action: manipulation;
+    }
+    .krow button.wide { flex: 1.4 1 0; }
+    .krow button.space { flex: 4 1 0; }
+    .krow button.accent { background: var(--teal); color: #fff; }
+    #type-actions {
+      display: flex;
+      gap: 8px;
+      margin-top: 10px;
+    }
+    #type-actions button {
+      flex: 1;
+      min-height: 44px;
+      border: none;
+      border-radius: 999px;
+      font-family: inherit;
+      font-size: 15px;
       font-weight: 800;
       letter-spacing: 0.08em;
+      touch-action: manipulation;
+    }
+    #type-cancel { background: #efe7d8; color: var(--ink); }
+    #type-done { background: var(--teal); color: #fff; }
+    #rank-place {
+      font-size: min(28vw, 140px);
+      font-weight: 800;
+      letter-spacing: 0.02em;
+      line-height: 0.95;
       color: var(--ink);
-      pointer-events: none;
+    }
+    #rank-cap {
+      margin-top: 12px;
+      font-size: 15px;
+      font-weight: 800;
+      letter-spacing: 0.16em;
+      color: var(--brown);
     }
     #sensors {
       width: 100%;
@@ -255,6 +335,21 @@
   </style>
 </head>
 <body>
+  <div id="rank-view">
+    <div id="rank-place">1st</div>
+    <div id="rank-cap">YOUR PLACE</div>
+  </div>
+  <div id="type-view">
+    <div id="type-card">
+      <div id="type-hint">TYPE HERE</div>
+      <input id="type-input" type="text" enterkeyhint="done" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" />
+      <div id="type-keys"></div>
+      <div id="type-actions">
+        <button type="button" id="type-cancel">CANCEL</button>
+        <button type="button" id="type-done">DONE</button>
+      </div>
+    </div>
+  </div>
   <div id="play">
     <h1>PHONE REMOTE</h1>
     <p id="status">Drag AIM for power and direction. Then swing the phone up and down.</p>
@@ -292,7 +387,6 @@
         </svg>
       </button>
     </div>
-    <div id="swing"><div id="swing-fill"></div><div id="swing-label">SWING BAR (backup)</div></div>
     <div id="tune">
       <button id="calibrate" type="button">CALIBRATE</button>
       <label for="sens">Swing effort <span id="sens-val">5</span></label>
@@ -323,16 +417,19 @@
     const sPhase = document.getElementById("s-phase");
     const sPeak = document.getElementById("s-peak");
     const sFill = document.getElementById("s-fill");
-    const swing = document.getElementById("swing");
-    const swingFill = document.getElementById("swing-fill");
-    const swingLabel = document.getElementById("swing-label");
-    const BACK_PX = 46;
-    const DOWN_PX = 54;
-    let lanePointer = null;
-    let laneStartY = 0;
-    let laneUp = 0;
-    let laneUpAt = 0;
-    let laneBack = false;
+    const rankView = document.getElementById("rank-view");
+    const rankPlace = document.getElementById("rank-place");
+    const typeView = document.getElementById("type-view");
+    const typeHint = document.getElementById("type-hint");
+    const typeInput = document.getElementById("type-input");
+    const typeKeys = document.getElementById("type-keys");
+    const typeCancel = document.getElementById("type-cancel");
+    const typeDone = document.getElementById("type-done");
+    let typingOpen = false;
+    let typeShift = false;
+    let typeDigits = false;
+    let typeSendAt = 0;
+    let typeClosing = false;
     const calibrateBtn = document.getElementById("calibrate");
     const sensInput = document.getElementById("sens");
     const sensVal = document.getElementById("sens-val");
@@ -407,10 +504,162 @@
       if (data.leftKind != null || data.rightKind != null) {
         paintSlot(slotLeft, data.leftKind, data.leftLeft);
         paintSlot(slotRight, data.rightKind, data.rightLeft);
+      } else {
+        paintSlot(slotLeft, data.shield ? "shield" : "", data.shieldLeft);
+        paintSlot(slotRight, data.shrink ? "shrink" : "", data.shrinkLeft);
+      }
+      applyRank(data);
+      applyType(data);
+    }
+
+    function ordinal(place) {
+      const n = Math.max(0, Math.floor(Number(place) || 0));
+      if (n < 1) return "";
+      const tens = n % 100;
+      const ones = n % 10;
+      if (tens >= 11 && tens <= 13) return n + "th";
+      if (ones === 1) return n + "st";
+      if (ones === 2) return n + "nd";
+      if (ones === 3) return n + "rd";
+      return n + "th";
+    }
+
+    function applyRank(data) {
+      if (!data || !rankView || !rankPlace) return;
+      if (data.rank == null && !data.rankText) return;
+      const place = Math.max(0, Math.floor(Number(data.rank) || 0));
+      const text = String(data.rankText || "").trim() || ordinal(place);
+      if (place > 0 && text) {
+        rankPlace.textContent = text;
+        rankView.classList.add("show");
+      } else {
+        rankView.classList.remove("show");
+      }
+    }
+
+    function applyType(data) {
+      if (!data || data.typeOn == null || !typeView || !typeInput) return;
+      if (data.typeOn) {
+        if (typeClosing) return;
+        if (typeHint) typeHint.textContent = String(data.typeHint || "Type here").toUpperCase();
+        const limit = Math.max(1, Number(data.typeMax) || 32);
+        typeInput.maxLength = limit;
+        if (!typingOpen) {
+          typeInput.value = String(data.typeText || "");
+        }
+        showType(true);
+      } else {
+        typeClosing = false;
+        if (typingOpen) showType(false);
+      }
+    }
+
+    function showType(on) {
+      typingOpen = !!on;
+      typeView.classList.toggle("show", typingOpen);
+      if (typingOpen) {
+        resetSwing();
+        holding = false;
+        pad.classList.remove("held");
+        focusType();
+      } else {
+        typeInput.blur();
+        typeShift = false;
+        typeDigits = false;
+        paintKeys();
+      }
+    }
+
+    function focusType() {
+      try {
+        typeInput.focus({ preventScroll: true });
+        const end = typeInput.value.length;
+        typeInput.setSelectionRange(end, end);
+      } catch (_) {}
+    }
+
+    function sendType(done, closing) {
+      const payload = { text: typeInput.value || "", done: done ? 1 : 0, close: closing ? 1 : 0 };
+      const now = performance.now();
+      if (!done && !closing && now - typeSendAt < 80) return;
+      typeSendAt = now;
+      if (done || closing) typeClosing = true;
+      if (pairCode && pairWs && pairWs.readyState === 1) {
+        try {
+          pairWs.send(JSON.stringify(Object.assign({ t: "type" }, payload)));
+        } catch (_) {}
         return;
       }
-      paintSlot(slotLeft, data.shield ? "shield" : "", data.shieldLeft);
-      paintSlot(slotRight, data.shrink ? "shrink" : "", data.shrinkLeft);
+      fetch("/type", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+        keepalive: true,
+      }).catch(() => {});
+    }
+
+    function insertType(chunk) {
+      const limit = typeInput.maxLength > 0 ? typeInput.maxLength : 120;
+      const next = (typeInput.value + chunk).slice(0, limit);
+      typeInput.value = next;
+      sendType(false);
+    }
+
+    function paintKeys() {
+      if (!typeKeys) return;
+      typeKeys.innerHTML = "";
+      const rows = typeDigits
+        ? ["1234567890", "-/:;()$&@\"", ".,?!'_+=#"]
+        : ["qwertyuiop", "asdfghjkl", "zxcvbnm"];
+      rows.forEach((row, index) => {
+        const line = document.createElement("div");
+        line.className = "krow";
+        if (index === 2 && !typeDigits) {
+          line.appendChild(keyButton(typeShift ? "abc" : "ABC", "wide", () => {
+            typeShift = !typeShift;
+            paintKeys();
+          }));
+        }
+        for (const ch of row) {
+          const glyph = typeDigits || typeShift ? ch.toUpperCase() : ch;
+          line.appendChild(keyButton(glyph, "", () => {
+            insertType(glyph);
+            if (typeShift && !typeDigits) {
+              typeShift = false;
+              paintKeys();
+            }
+          }));
+        }
+        if (index === 2) {
+          line.appendChild(keyButton("⌫", "wide", () => {
+            typeInput.value = typeInput.value.slice(0, -1);
+            sendType(false);
+          }));
+        }
+        typeKeys.appendChild(line);
+      });
+      const extras = document.createElement("div");
+      extras.className = "krow";
+      extras.appendChild(keyButton(typeDigits ? "ABC" : "123", "wide", () => {
+        typeDigits = !typeDigits;
+        paintKeys();
+      }));
+      extras.appendChild(keyButton("space", "space", () => insertType(" ")));
+      extras.appendChild(keyButton("DONE", "wide accent", () => sendType(true)));
+      typeKeys.appendChild(extras);
+    }
+
+    function keyButton(label, cls, onPress) {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.textContent = label;
+      if (cls) btn.className = cls;
+      btn.addEventListener("pointerdown", (ev) => {
+        ev.preventDefault();
+        ev.stopPropagation();
+        onPress();
+      });
+      return btn;
     }
 
     function paintSlot(el, kind, left) {
@@ -482,6 +731,9 @@
           }
           if (msg.t === "phone_powers") {
             applyPowers(msg);
+          }
+          if (msg.t === "phone_type") {
+            applyType(msg);
           }
           if (msg.t === "buzz") {
             buzzHit(msg.power);
@@ -616,6 +868,7 @@
     }
 
     function lookStart(ev) {
+      if (typingOpen) return;
       ev.preventDefault();
       ev.stopPropagation();
       if (ev.pointerId != null && lookPad.setPointerCapture) {
@@ -655,8 +908,6 @@
     }
 
     function phaseLabel() {
-      if (laneBack) return "bar: now down";
-      if (lanePointer !== null) return "bar: take it back";
       if (motionHits === 0) return "no motion yet";
       if (calibrating) return "calibrating";
       if (!calibrated) return "tap CALIBRATE";
@@ -738,75 +989,6 @@
       sendHit(0);
     }
 
-    function laneReset(label) {
-      lanePointer = null;
-      laneBack = false;
-      laneUp = 0;
-      swing.classList.remove("back");
-      swingFill.style.height = "0%";
-      swingLabel.textContent = label;
-    }
-
-    function laneDown(ev) {
-      ev.preventDefault();
-      if (ev.pointerId != null && swing.setPointerCapture) {
-        try { swing.setPointerCapture(ev.pointerId); } catch (_) {}
-      }
-      askSensors();
-      armHaptics();
-      lanePointer = ev.pointerId != null ? ev.pointerId : 0;
-      laneStartY = ev.clientY;
-      laneUp = 0;
-      laneBack = false;
-      fired = false;
-      lastTouchAt = performance.now();
-      swing.classList.remove("hit");
-      swingLabel.textContent = "TAKE IT BACK";
-      showAimStatus();
-      sendPose();
-    }
-
-    function laneMove(ev) {
-      if (lanePointer === null || fired) return;
-      ev.preventDefault();
-      lastTouchAt = performance.now();
-      const up = laneStartY - ev.clientY;
-      if (up > laneUp) {
-        laneUp = up;
-        laneUpAt = performance.now();
-      }
-      swingFill.style.height = Math.min(100, Math.round((laneUp / BACK_PX) * 100)) + "%";
-      if (!laneBack && laneUp >= BACK_PX) {
-        laneBack = true;
-        swing.classList.add("back");
-        swingLabel.textContent = "NOW SWING DOWN";
-        showAimStatus();
-      }
-      if (laneBack && laneUp - up >= DOWN_PX) {
-        const dt = Math.max(1, performance.now() - laneUpAt);
-        laneFire((laneUp - up) / dt);
-      }
-    }
-
-    function laneUpEvent(ev) {
-      if (ev) ev.preventDefault();
-      if (lanePointer === null) return;
-      const took = laneBack;
-      laneReset("SWING");
-      if (!fired && !took) {
-        status.textContent = "Swipe further up, then flick down.";
-      }
-    }
-
-    function laneFire(speed) {
-      if (fired) return;
-      fired = true;
-      firedAt = performance.now();
-      laneReset("HIT");
-      swing.classList.add("hit");
-      sendHit(speed);
-    }
-
     function motionReason() {
       if (motionHits > 0) {
         return hasLinear ? "on (linear)" : "on (gravity)";
@@ -879,7 +1061,7 @@
       calibrateBtn.disabled = false;
       calibrateBtn.textContent = "CALIBRATE";
       if (calSamples < 5) {
-        status.textContent = "No sensor readings during calibration. Use the SWING bar.";
+        status.textContent = "No sensor readings during calibration. Hold still and retry.";
         return;
       }
       gravX = calX / calSamples;
@@ -966,7 +1148,7 @@
         calibrateBtn.disabled = false;
         calibrateBtn.textContent = "CALIBRATE";
         if (!calibrated) {
-          status.textContent = "This phone reports no gravity reading. Use the SWING bar to putt.";
+          status.textContent = "This phone reports no gravity reading. Open the secure page and retry calibrate.";
         }
       }
       sOrigin.textContent = location.origin + (window.isSecureContext ? " (secure)" : " (NOT secure)");
@@ -974,8 +1156,8 @@
       if (motionHits === 0 && performance.now() > 2500 && !motionWarned) {
         motionWarned = true;
         status.textContent = window.isSecureContext
-          ? "No motion events. Check Chrome site settings > Motion sensors, or use the SWING bar."
-          : "This is the plain http page, so Chrome blocks the motion sensor. Re-scan the QR in the game to open the secure https page, then swinging works. Or use the SWING bar.";
+          ? "No motion events. Check Chrome site settings > Motion sensors."
+          : "This is the plain http page, so Chrome blocks the motion sensor. Re-scan the QR in the game to open the secure https page, then swinging works.";
       }
       const arrow = vertical > 0.03 ? "up " : (vertical < -0.03 ? "down " : "");
       sAcc.textContent = arrow + Math.abs(vertical).toFixed(2) + " g";
@@ -996,6 +1178,7 @@
     // sequence, each with a minimum duration, is what stops a random shake from
     // registering, since a shake never holds a direction long enough.
     function maybeSwing(score) {
+      if (typingOpen) return;
       const now = performance.now();
       if (fired) {
         if (now - firedAt > REARM_MS) {
@@ -1075,6 +1258,7 @@
     }
 
     function holdStart(ev) {
+      if (typingOpen) return;
       ev.preventDefault();
       if (ev.pointerId != null && pad.setPointerCapture) {
         try { pad.setPointerCapture(ev.pointerId); } catch (_) {}
@@ -1087,9 +1271,8 @@
       resetSwing();
       pad.classList.add("held");
       knob.textContent = "AIM";
-      swing.classList.remove("hit");
       stickFromEvent(ev);
-      status.textContent = "Drag to aim, then swipe the SWING bar.";
+      status.textContent = "Drag to aim, then swing the phone up and down.";
       sendPose();
       startPoseStream();
     }
@@ -1124,6 +1307,24 @@
       maybeSwing(score);
     }, { passive: true, capture: true });
 
+    typeInput.addEventListener("input", () => sendType(false));
+    typeInput.addEventListener("keydown", (ev) => {
+      if (ev.key === "Enter") {
+        ev.preventDefault();
+        sendType(true);
+      }
+    });
+    typeCancel.addEventListener("click", (ev) => {
+      ev.preventDefault();
+      sendType(false, true);
+      showType(false);
+    });
+    typeDone.addEventListener("click", (ev) => {
+      ev.preventDefault();
+      sendType(true);
+    });
+    typeView.addEventListener("pointerdown", (ev) => ev.stopPropagation());
+    paintKeys();
     pad.addEventListener("pointerdown", holdStart);
     pad.addEventListener("pointermove", holdMove);
     pad.addEventListener("pointerup", holdEnd);
@@ -1132,10 +1333,6 @@
     lookPad.addEventListener("pointermove", lookMove);
     lookPad.addEventListener("pointerup", lookEnd);
     lookPad.addEventListener("pointercancel", lookEnd);
-    swing.addEventListener("pointerdown", laneDown);
-    swing.addEventListener("pointermove", laneMove);
-    swing.addEventListener("pointerup", laneUpEvent);
-    swing.addEventListener("pointercancel", laneUpEvent);
     document.addEventListener("visibilitychange", () => {
       if (document.hidden) {
         holding = false;
@@ -1145,7 +1342,6 @@
         lookKnob.style.transform = "translate(-50%, -50%)";
         lx = 0;
         ly = 0;
-        laneReset("SWING");
         stopPoseStream();
       } else {
         startPoseStream();

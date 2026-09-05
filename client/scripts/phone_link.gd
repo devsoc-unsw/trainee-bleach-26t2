@@ -30,6 +30,9 @@ var _hover: Control
 var _ghosts: Dictionary = {}
 var _send_acc := 0.0
 var _sent_off := true
+var _typing: Control
+var _type_scene: Node
+var _type_key := ""
 
 
 func _ready() -> void:
@@ -39,11 +42,11 @@ func _ready() -> void:
 	add_child(server)
 	server.hit_received.connect(func(power: float, sx: float, sy: float) -> void:
 		hit_received.emit(power, sx, sy)
-		if not _in_course():
-			_try_click()
+		_try_click()
 	)
 	server.pose_received.connect(_on_pose)
 	server.power_used.connect(func(kind: String) -> void: power_used.emit(kind))
+	server.type_received.connect(_on_type_from_phone)
 	server.urls_changed.connect(func() -> void: urls_changed.emit())
 	_cursor = (load("res://scripts/wii_pointer.gd") as GDScript).new()
 	add_child(_cursor)
@@ -51,6 +54,12 @@ func _ready() -> void:
 		NetworkClient.cursor_received.connect(_on_remote_cursor)
 	if not NetworkClient.lobby_state_received.is_connected(_on_lobby_for_cursors):
 		NetworkClient.lobby_state_received.connect(_on_lobby_for_cursors)
+	if not NetworkClient.phone_pose.is_connected(_apply_pose):
+		NetworkClient.phone_pose.connect(_apply_pose)
+	if not NetworkClient.phone_hit.is_connected(_on_net_hit):
+		NetworkClient.phone_hit.connect(_on_net_hit)
+	if not NetworkClient.phone_typed.is_connected(_on_type_from_phone):
+		NetworkClient.phone_typed.connect(_on_type_from_phone)
 	ensure_listening()
 
 
@@ -74,12 +83,31 @@ func local_url() -> String:
 
 
 func is_linked() -> bool:
-	return _session_live
+	if _last_pose_ms <= 0:
+		return false
+	return Time.get_ticks_msec() - _last_pose_ms <= STALE_MS
+
+
+func mark_unlinked() -> void:
+	_session_live = false
+	_last_pose_ms = 0
 
 
 func set_powers(left_kind: String, left_left: float, right_kind: String, right_left: float) -> void:
 	if server:
 		server.set_powers(left_kind, left_left, right_kind, right_left)
+
+
+func set_rank(place: int, label: String = "") -> void:
+	if server:
+		server.set_rank(place, label)
+
+
+func set_type(on: bool, text: String = "", hint: String = "", max_len: int = 32) -> void:
+	if server:
+		server.set_type(on, text, hint, max_len)
+	if GameSession.online:
+		NetworkClient.send_phone_type(on, text, hint, max_len)
 
 
 func pointer_live() -> bool:
@@ -147,6 +175,7 @@ func _process(delta: float) -> void:
 		_set_hover(null)
 	_tick_remotes(delta, share)
 	_send_cursor(delta, share)
+	_tick_type()
 
 
 func _steer_phone(delta: float) -> void:
@@ -289,6 +318,10 @@ func _cursor_drive() -> Vector2:
 
 func _on_pose(beta: float, gamma: float, holding: bool, stick_x: float, stick_y: float, lift: float, power: float, accel: float = 0.0, yaw: float = 0.0, recenter: bool = false, look_x: float = 0.0, look_y: float = 0.0) -> void:
 	pose_received.emit(beta, gamma, holding, stick_x, stick_y, lift, power, accel, yaw, recenter, look_x, look_y)
+	_apply_pose(beta, gamma, holding, stick_x, stick_y, lift, power, accel, yaw, recenter, look_x, look_y)
+
+
+func _apply_pose(beta: float, gamma: float, holding: bool, stick_x: float, stick_y: float, lift: float, power: float, accel: float = 0.0, yaw: float = 0.0, recenter: bool = false, look_x: float = 0.0, look_y: float = 0.0) -> void:
 	_session_live = true
 	_last_pose_ms = Time.get_ticks_msec()
 	var raw := Vector2(stick_x, stick_y)
@@ -296,8 +329,13 @@ func _on_pose(beta: float, gamma: float, holding: bool, stick_x: float, stick_y:
 	_holding = holding
 
 
+func _on_net_hit(_power: float, _stick_x: float, _stick_y: float) -> void:
+	_try_click()
+
+
 func _try_click() -> void:
-	if _in_course():
+	var hit := _clickable_at(get_tree().root, _screen_pos())
+	if _in_course() and not _is_text_field(hit):
 		return
 	var now := Time.get_ticks_msec()
 	if now - _last_click_ms < 400:
@@ -309,7 +347,12 @@ func _try_click() -> void:
 func _click_under_cursor() -> void:
 	var hit := _clickable_at(get_tree().root, _screen_pos())
 	if hit == null:
+		_close_type()
 		return
+	if _is_text_field(hit):
+		_open_type(hit)
+		return
+	_close_type()
 	if hit.has_signal("hovered"):
 		hit.emit_signal("hovered")
 	if hit.has_signal("chosen"):
@@ -344,11 +387,127 @@ func _clickable_at(node: Node, pos: Vector2) -> Control:
 		return null
 	if node.get("locked") == true:
 		return null
+	if node is LineEdit or node is TextEdit:
+		return control
 	if node is BaseButton:
 		return control
 	if control.has_signal("chosen") or control.has_signal("pressed") or control.has_signal("toggled"):
 		return control
 	return null
+
+
+func _is_text_field(node: Control) -> bool:
+	return node != null and is_instance_valid(node) and (node is LineEdit or node is TextEdit)
+
+
+func _open_type(edit: Control) -> void:
+	if not _is_text_field(edit):
+		return
+	_typing = edit
+	_type_scene = get_tree().current_scene
+	if edit.has_method("grab_focus"):
+		edit.grab_focus()
+	if edit is LineEdit:
+		var line := edit as LineEdit
+		line.caret_column = line.text.length()
+	_type_key = ""
+	_push_type_state()
+
+
+func _close_type() -> void:
+	if _typing == null and _type_key.is_empty():
+		return
+	if _typing != null and is_instance_valid(_typing) and _typing.has_focus():
+		_typing.release_focus()
+	_typing = null
+	_type_scene = null
+	_type_key = ""
+	set_type(false)
+
+
+func _tick_type() -> void:
+	if _typing == null:
+		return
+	if not is_instance_valid(_typing) or not _typing.is_visible_in_tree():
+		_close_type()
+		return
+	if _type_scene != null and get_tree().current_scene != _type_scene:
+		_close_type()
+
+
+func _push_type_state() -> void:
+	var on := _is_text_field(_typing)
+	var text := _field_text(_typing) if on else ""
+	var hint := _field_hint(_typing) if on else ""
+	var max_len := _field_max(_typing) if on else 32
+	var key := "%s|%s|%s|%d" % [on, text, hint, max_len]
+	if key == _type_key:
+		return
+	_type_key = key
+	set_type(on, text, hint, max_len)
+
+
+func _on_type_from_phone(text: String, done: bool, closing: bool = false) -> void:
+	if not _is_text_field(_typing):
+		return
+	var clipped := text
+	var limit := _field_max(_typing)
+	if clipped.length() > limit:
+		clipped = clipped.substr(0, limit)
+	_set_field_text(_typing, clipped)
+	_type_key = "%s|%s|%s|%d" % [true, clipped, _field_hint(_typing), limit]
+	if closing:
+		_close_type()
+		return
+	if done:
+		_submit_field(_typing)
+		_close_type()
+
+
+func _field_text(edit: Control) -> String:
+	if edit is LineEdit:
+		return (edit as LineEdit).text
+	if edit is TextEdit:
+		return (edit as TextEdit).text
+	return ""
+
+
+func _field_hint(edit: Control) -> String:
+	if edit is LineEdit:
+		var line := edit as LineEdit
+		if not line.placeholder_text.is_empty():
+			return line.placeholder_text
+	return "Type here"
+
+
+func _field_max(edit: Control) -> int:
+	if edit is LineEdit:
+		var line := edit as LineEdit
+		if line.max_length > 0:
+			return line.max_length
+	return 120
+
+
+func _set_field_text(edit: Control, text: String) -> void:
+	if edit is LineEdit:
+		var line := edit as LineEdit
+		if line.text == text:
+			line.caret_column = text.length()
+			return
+		line.text = text
+		line.caret_column = text.length()
+		line.text_changed.emit(text)
+		return
+	if edit is TextEdit:
+		var box := edit as TextEdit
+		if box.text != text:
+			box.text = text
+
+
+func _submit_field(edit: Control) -> void:
+	if edit is LineEdit:
+		var line := edit as LineEdit
+		line.text_submitted.emit(line.text)
 
 
 func _screen_pos() -> Vector2:
