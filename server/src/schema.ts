@@ -60,6 +60,7 @@ export interface WelcomeMessage {
 export interface MatchStartMessage {
   t: 'match_start';
   mapId: string;
+  holeEndsAt: number;
 }
 
 export interface BallSnap {

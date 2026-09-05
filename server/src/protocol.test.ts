@@ -162,8 +162,8 @@ describe('websocket protocol', () => {
     host.send({ t: 'quick_start' });
     const hostStart = await host.wait('match_start');
     const guestStart = await guest.wait('match_start');
-    assert.equal(hostStart['mapId'], 'village_green');
-    assert.equal(guestStart['mapId'], 'village_green');
+    assert.ok(['village_green', 'main_walk'].includes(String(hostStart['mapId'])));
+    assert.equal(guestStart['mapId'], hostStart['mapId']);
 
     host.send({ t: 'ball_state', x: 2.5, y: 0.2, z: -6, vx: 0, vy: 0, vz: 0, atRest: true });
     const snap = await guest.wait('snapshot');

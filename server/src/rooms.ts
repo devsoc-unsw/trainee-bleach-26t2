@@ -21,12 +21,17 @@ export const BALL_COLORS = [
 const COLORS = BALL_COLORS;
 const MAX_PLAYERS = 4;
 export const MAP_IDS = ['rainbow_stairs', 'main_walk', 'village_green'] as const;
+const POWER_KINDS = new Set(['shield', 'shrink', 'gust']);
 export const VOTE_MS = 30_000;
 
 export type Phase = 'lobby' | 'selecting' | 'playing';
 export type MapId = (typeof MAP_IDS)[number];
 export type GameMode = 'turn_by_turn' | 'free_for_all';
 export const HOLE_SUMMARY_MS = 10_000;
+export const FFA_HOLE_MS = 3 * 60 * 1000 + 30 * 1000;
+export const FFA_KICKOFF_MS = 3_000;
+export const FFA_PUTT_MAX = 10;
+export const FFA_FINISH_BONUS = [7, 5, 3, 1] as const;
 
 export interface Player {
   id: string;
@@ -39,6 +44,9 @@ export interface Player {
   holed: boolean;
   holeTime: number;
   totalTime: number;
+  holePoints: number;
+  totalPoints: number;
+  holeFinishOrder: number;
   joinedAt: number;
   ball: BallSnap;
 }
@@ -56,6 +64,7 @@ export interface Room {
   summaryPending: boolean;
   summaryPhase: 'hole' | 'standings' | '';
   holeStartedAt: number;
+  holeEndsAt: number;
   joinSeq: number;
   players: Map<string, Player>;
   votes: Map<string, string>;
@@ -68,11 +77,25 @@ const socketRoom = new Map<WebSocket, string>();
 const socketIds = new WeakMap<WebSocket, string>();
 const voteTimers = new Map<string, ReturnType<typeof setTimeout>>();
 const holeAdvanceTimers = new Map<string, ReturnType<typeof setTimeout>>();
+const holePlayTimers = new Map<string, ReturnType<typeof setTimeout>>();
 let playerSeq = 0;
 let onVoteEnded: ((room: Room) => void) | undefined;
+let onHoleExpired: ((room: Room) => void) | undefined;
 
 export function setVoteEndedHandler(handler: ((room: Room) => void) | undefined): void {
   onVoteEnded = handler;
+}
+
+export function setHoleExpiredHandler(handler: ((room: Room) => void) | undefined): void {
+  onHoleExpired = handler;
+}
+
+export function ffaPuttPoints(strokes: number): number {
+  return Math.max(0, FFA_PUTT_MAX - Math.max(0, Math.max(1, strokes) - 1));
+}
+
+export function ffaFinishBonus(placeIndex: number): number {
+  return FFA_FINISH_BONUS[placeIndex] ?? 0;
 }
 
 export function resetForTests(): void {
@@ -84,6 +107,10 @@ export function resetForTests(): void {
     clearTimeout(timer);
   }
   holeAdvanceTimers.clear();
+  for (const timer of holePlayTimers.values()) {
+    clearTimeout(timer);
+  }
+  holePlayTimers.clear();
   rooms.clear();
   socketRoom.clear();
   playerSeq = 0;
@@ -229,6 +256,7 @@ export function createRoom(
     summaryPending: false,
     summaryPhase: '',
     holeStartedAt: 0,
+    holeEndsAt: 0,
     joinSeq: 0,
     players: new Map(),
     votes: new Map(),
@@ -246,6 +274,9 @@ export function createRoom(
     holed: false,
     holeTime: 0,
     totalTime: 0,
+    holePoints: 0,
+    totalPoints: 0,
+    holeFinishOrder: 0,
     joinedAt: ++room.joinSeq,
     ball: emptyBall(id),
   };
@@ -279,6 +310,9 @@ export function joinRoom(ws: WebSocket, code: string, playerName: string): Room 
     holed: false,
     holeTime: 0,
     totalTime: 0,
+    holePoints: 0,
+    totalPoints: 0,
+    holeFinishOrder: 0,
     joinedAt: ++room.joinSeq,
     ball: emptyBall(id),
   };
@@ -312,6 +346,7 @@ export function leave(ws: WebSocket): Room | undefined {
   if (room.players.size === 0) {
     clearVoteTimer(code);
     clearHoleAdvance(code);
+    clearHolePlayTimer(code);
     rooms.delete(code);
     return undefined;
   }
@@ -377,6 +412,9 @@ export function beginSelect(ws: WebSocket): Room | string {
       p.strokes = 0;
       p.holeTime = 0;
       p.totalTime = 0;
+      p.holePoints = 0;
+      p.totalPoints = 0;
+      p.holeFinishOrder = 0;
       p.holed = false;
     }
   }
@@ -467,12 +505,14 @@ export function holeEndPayload(room: Room): {
     name: string;
     color: string;
     strokes: number;
+    points: number;
     total: number;
     time: number;
     totalTime: number;
     holed: boolean;
   }>;
 } {
+  const ffa = room.gameMode === 'free_for_all';
   return {
     t: 'hole_end',
     holeIndex: room.roundIndex,
@@ -483,11 +523,20 @@ export function holeEndPayload(room: Room): {
       name: p.name,
       color: p.color,
       strokes: p.strokes,
-      total: p.totalStrokes,
+      points: p.holePoints,
+      total: ffa ? p.totalPoints : p.totalStrokes,
       time: p.holeTime,
-      totalTime: p.totalTime,
+      totalTime: ffa ? p.totalPoints : p.totalTime,
       holed: p.holed,
     })),
+  };
+}
+
+export function matchStartPayload(room: Room): { t: 'match_start'; mapId: string; holeEndsAt: number } {
+  return {
+    t: 'match_start',
+    mapId: room.mapId,
+    holeEndsAt: room.holeEndsAt,
   };
 }
 
@@ -519,8 +568,8 @@ export function matchPlacings(room: Room): Array<{
       playerId: p.id,
       name: p.name,
       color: p.color,
-      total: p.totalStrokes,
-      time: p.totalTime,
+      total: ffa ? p.totalPoints : p.totalStrokes,
+      time: ffa ? p.totalPoints : p.totalTime,
       place,
     });
   });
@@ -529,11 +578,8 @@ export function matchPlacings(room: Room): Array<{
 
 function compareMatchScore(a: Player, b: Player, ffa: boolean): number {
   if (ffa) {
-    if (a.totalTime !== b.totalTime) {
-      return a.totalTime - b.totalTime;
-    }
-    if (a.totalStrokes !== b.totalStrokes) {
-      return a.totalStrokes - b.totalStrokes;
+    if (a.totalPoints !== b.totalPoints) {
+      return b.totalPoints - a.totalPoints;
     }
   } else if (a.totalStrokes !== b.totalStrokes) {
     return a.totalStrokes - b.totalStrokes;
@@ -543,7 +589,10 @@ function compareMatchScore(a: Player, b: Player, ffa: boolean): number {
   return a.name.localeCompare(b.name);
 }
 
-function sameMatchPlace(a: Player, b: Player, _ffa: boolean): boolean {
+function sameMatchPlace(a: Player, b: Player, ffa: boolean): boolean {
+  if (ffa) {
+    return a.totalPoints === b.totalPoints;
+  }
   return a.totalStrokes === b.totalStrokes && a.totalTime === b.totalTime;
 }
 
@@ -553,8 +602,12 @@ export function markHoled(ws: WebSocket): { room: Room; result: 'player' | 'summ
   if (!room || !player) {
     return 'You are not in a lobby';
   }
-  if (room.phase !== 'playing') {
+  if (room.phase !== 'playing' || room.summaryPending) {
     return 'That game is not in play';
+  }
+  if (!player.holed) {
+    player.holeFinishOrder =
+      [...room.players.values()].filter((p) => p.holed).length + 1;
   }
   player.holed = true;
   player.ball.atRest = true;
@@ -574,13 +627,49 @@ export function tryFinishHole(room: Room): 'summary' | null {
       return null;
     }
   }
+  return closeHole(room);
+}
+
+export function expireHole(room: Room): 'summary' | null {
+  if (room.phase !== 'playing' || room.summaryPending) {
+    return null;
+  }
+  return closeHole(room);
+}
+
+function closeHole(room: Room): 'summary' {
+  scoreClosedHole(room);
+  clearHolePlayTimer(room.code);
+  room.summaryPending = true;
+  room.summaryPhase = 'hole';
+  return 'summary';
+}
+
+function scoreClosedHole(room: Room): void {
+  if (room.gameMode === 'free_for_all') {
+    const finishers = [...room.players.values()]
+      .filter((p) => p.holed)
+      .sort((a, b) => {
+        if (a.holeFinishOrder !== b.holeFinishOrder) {
+          return a.holeFinishOrder - b.holeFinishOrder;
+        }
+        return a.holeTime - b.holeTime;
+      });
+    for (const p of room.players.values()) {
+      if (!p.holed) {
+        p.holePoints = 0;
+      } else {
+        const place = finishers.findIndex((other) => other.id === p.id);
+        p.holePoints = ffaPuttPoints(p.strokes) + ffaFinishBonus(place);
+      }
+      p.totalPoints += p.holePoints;
+    }
+    return;
+  }
   for (const p of room.players.values()) {
     p.totalStrokes += p.strokes;
     p.totalTime += p.holeTime;
   }
-  room.summaryPending = true;
-  room.summaryPhase = 'hole';
-  return 'summary';
 }
 
 export function continueAfterHole(room: Room): 'vote' | 'over' {
@@ -730,10 +819,36 @@ function commitMatch(room: Room, mapId: string): Room {
   for (const p of room.players.values()) {
     p.strokes = 0;
     p.holeTime = 0;
+    p.holePoints = 0;
+    p.holeFinishOrder = 0;
     p.holed = false;
     p.ball = emptyBall(p.id);
   }
+  startHoleClock(room);
   return room;
+}
+
+function startHoleClock(room: Room): void {
+  clearHolePlayTimer(room.code);
+  room.holeEndsAt = 0;
+  if (room.gameMode !== 'free_for_all') {
+    return;
+  }
+  const duration = FFA_KICKOFF_MS + FFA_HOLE_MS;
+  room.holeEndsAt = Date.now() + duration;
+  holePlayTimers.set(
+    room.code,
+    setTimeout(() => {
+      holePlayTimers.delete(room.code);
+      const live = rooms.get(room.code);
+      if (!live || live.phase !== 'playing' || live.summaryPending) {
+        return;
+      }
+      if (expireHole(live) === 'summary') {
+        onHoleExpired?.(live);
+      }
+    }, duration)
+  );
 }
 
 function startVote(room: Room): void {
@@ -783,6 +898,14 @@ function clearHoleAdvance(code: string): void {
   holeAdvanceTimers.delete(code);
 }
 
+function clearHolePlayTimer(code: string): void {
+  const timer = holePlayTimers.get(code);
+  if (timer) {
+    clearTimeout(timer);
+  }
+  holePlayTimers.delete(code);
+}
+
 function clampRounds(value: number): number {
   if (!Number.isFinite(value)) {
     return 1;
@@ -810,11 +933,10 @@ function winningMap(room: Room): string {
       tied.push(id);
     }
   }
-  const hostVote = room.votes.get(room.hostId);
-  if (hostVote && tied.includes(hostVote)) {
-    return hostVote;
+  if (tied.length === 0) {
+    return MAP_IDS[0] ?? 'rainbow_stairs';
   }
-  return tied[0] ?? MAP_IDS[0] ?? 'rainbow_stairs';
+  return tied[Math.floor(Math.random() * tied.length)] ?? MAP_IDS[0] ?? 'rainbow_stairs';
 }
 
 function normalizeMapId(mapId: string): string {
@@ -835,7 +957,7 @@ export function claimPickup(ws: WebSocket, pickupId: string, kind: string): stri
   if (!room || !from || room.phase !== 'playing') {
     return 'Not in a match';
   }
-  if (kind !== 'shield' && kind !== 'shrink') {
+  if (!POWER_KINDS.has(kind)) {
     return 'Unknown power-up';
   }
   if (!/^[a-z0-9_]{3,32}$/.test(pickupId)) {
@@ -856,7 +978,7 @@ export function usePower(ws: WebSocket, kind: string): string | undefined {
   if (!room || !from || room.phase !== 'playing') {
     return 'Not in a match';
   }
-  if (kind !== 'shield' && kind !== 'shrink') {
+  if (!POWER_KINDS.has(kind)) {
     return 'Unknown power-up';
   }
   broadcast(room, { t: 'power_use', playerId: from.id, kind }, ws);

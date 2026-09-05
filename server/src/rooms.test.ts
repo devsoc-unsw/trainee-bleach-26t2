@@ -173,7 +173,7 @@ describe('rooms', () => {
     assert.equal((started as rooms.Room).mapId, 'village_green');
   });
 
-  it('breaks a vote tie with the host pick, or Rainbow Stairs if nobody voted', () => {
+  it('picks at random among the maps with the most votes', () => {
     const a = fakeSocket();
     const b = fakeSocket();
     rooms.register(a.ws);
@@ -184,7 +184,7 @@ describe('rooms', () => {
     rooms.castVote(a.ws, 'village_green');
     rooms.castVote(b.ws, 'main_walk');
     const tied = rooms.quickStart(a.ws) as rooms.Room;
-    assert.equal(tied.mapId, 'village_green');
+    assert.ok(['village_green', 'main_walk'].includes(tied.mapId));
 
     const c = fakeSocket();
     const d = fakeSocket();
@@ -194,7 +194,7 @@ describe('rooms', () => {
     rooms.joinRoom(d.ws, empty.code, 'Guest');
     rooms.beginSelect(c.ws);
     const fallback = rooms.quickStart(c.ws) as rooms.Room;
-    assert.equal(fallback.mapId, 'rainbow_stairs');
+    assert.ok(rooms.MAP_IDS.includes(fallback.mapId as (typeof rooms.MAP_IDS)[number]));
   });
 
   it('relays chat and announces when a player quits mid-match', () => {
@@ -278,7 +278,7 @@ describe('rooms', () => {
     assert.equal(room.summaryPending, false);
   });
 
-  it('ranks free-for-all by time, then putts', () => {
+  it('scores free-for-all by putt points plus finish order, and ranks by points', () => {
     const a = fakeSocket();
     const b = fakeSocket();
     rooms.register(a.ws);
@@ -286,22 +286,68 @@ describe('rooms', () => {
     const room = rooms.createRoom(a.ws, 'Race', true, 'Host', 1, 'free_for_all');
     rooms.joinRoom(b.ws, room.code, 'Guest');
     rooms.startMatch(a.ws, 'rainbow_stairs');
-    rooms.markHoled(a.ws);
-    rooms.markHoled(b.ws);
+    assert.ok(room.holeEndsAt > Date.now());
     const host = [...room.players.values()].find((p) => p.host);
     const guest = [...room.players.values()].find((p) => !p.host);
     assert.ok(host && guest);
-    host.totalStrokes = 8;
-    host.totalTime = 12;
-    guest.totalStrokes = 3;
-    guest.totalTime = 20;
+    host.strokes = 1;
+    rooms.markHoled(a.ws);
+    guest.strokes = 3;
+    const last = rooms.markHoled(b.ws) as { result: string };
+    assert.equal(last.result, 'summary');
+    assert.equal(host.holePoints, 17);
+    assert.equal(guest.holePoints, 13);
+    assert.equal(host.totalPoints, 17);
+    assert.equal(guest.totalPoints, 13);
+    const payload = rooms.holeEndPayload(room);
+    const hostRow = payload.results.find((row) => row.playerId === host.id);
+    const guestRow = payload.results.find((row) => row.playerId === guest.id);
+    assert.equal(hostRow?.points, 17);
+    assert.equal(guestRow?.points, 13);
     const places = rooms.matchPlacings(room);
     assert.equal(places[0]?.playerId, host.id);
     assert.equal(places[0]?.place, 1);
-    assert.equal(places[0]?.time, 12);
-    assert.equal(places[0]?.total, 8);
+    assert.equal(places[0]?.total, 17);
     assert.equal(places[1]?.playerId, guest.id);
     assert.equal(places[1]?.place, 2);
+    assert.equal(places[1]?.total, 13);
+  });
+
+  it('gives zero free-for-all points if you miss the cup when time expires', () => {
+    const a = fakeSocket();
+    const b = fakeSocket();
+    rooms.register(a.ws);
+    rooms.register(b.ws);
+    const room = rooms.createRoom(a.ws, 'Clock', true, 'Host', 1, 'free_for_all');
+    rooms.joinRoom(b.ws, room.code, 'Guest');
+    rooms.startMatch(a.ws, 'rainbow_stairs');
+    const host = [...room.players.values()].find((p) => p.host);
+    const guest = [...room.players.values()].find((p) => !p.host);
+    assert.ok(host && guest);
+    host.strokes = 2;
+    rooms.markHoled(a.ws);
+    guest.strokes = 6;
+    const finished = rooms.expireHole(room);
+    assert.equal(finished, 'summary');
+    assert.equal(host.holePoints, 16);
+    assert.equal(guest.holePoints, 0);
+    assert.equal(guest.holed, false);
+    assert.equal(host.totalPoints, 16);
+    assert.equal(guest.totalPoints, 0);
+    const places = rooms.matchPlacings(room);
+    assert.equal(places[0]?.playerId, host.id);
+    assert.equal(places[1]?.playerId, guest.id);
+    assert.equal(places[1]?.total, 0);
+  });
+
+  it('awards 10 putt points for a hole in one and drops one point per extra putt', () => {
+    assert.equal(rooms.ffaPuttPoints(1), 10);
+    assert.equal(rooms.ffaPuttPoints(2), 9);
+    assert.equal(rooms.ffaPuttPoints(11), 0);
+    assert.equal(rooms.ffaFinishBonus(0), 7);
+    assert.equal(rooms.ffaFinishBonus(1), 5);
+    assert.equal(rooms.ffaFinishBonus(2), 3);
+    assert.equal(rooms.ffaFinishBonus(3), 1);
   });
 
   it('ranks turn-by-turn by putts, then time', () => {
@@ -380,6 +426,9 @@ describe('rooms', () => {
     assert.equal(taken.kind, 'shield');
     assert.equal(taken.pickupId, 'green_shield');
     assert.equal(b.sent.some((m) => m.t === 'pickup_taken'), true);
+    assert.equal(rooms.claimPickup(a.ws, 'green_gust', 'gust'), undefined);
+    assert.equal(rooms.usePower(a.ws, 'gust'), undefined);
+    assert.equal(rooms.usePower(a.ws, 'nope'), 'Unknown power-up');
   });
 
   it('lets a player rename and claim a free ball colour in the lobby', () => {
