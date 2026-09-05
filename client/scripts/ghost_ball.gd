@@ -1,12 +1,14 @@
 extends RigidBody3D
 
 var player_id := ""
+var display_name := ""
 var target := Vector3.ZERO
 var color := Color.WHITE
 
 
-func setup(id: String, tint: Color, pos: Vector3) -> void:
+func setup(id: String, tint: Color, pos: Vector3, player_name: String = "") -> void:
 	player_id = id
+	display_name = player_name
 	color = tint
 	target = pos
 	global_position = pos
@@ -20,6 +22,15 @@ func setup(id: String, tint: Color, pos: Vector3) -> void:
 	if has_node("Shadow"):
 		$Shadow.visible = true
 	_tint()
+	if not player_name.is_empty() and get_node_or_null("NameTag") == null:
+		var tag := Label3D.new()
+		tag.name = "NameTag"
+		tag.text = player_name
+		tag.position = Vector3(0, 0.32, 0)
+		tag.font_size = 28
+		tag.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+		tag.modulate = tint
+		add_child(tag)
 
 
 func _tint() -> void:

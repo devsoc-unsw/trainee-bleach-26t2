@@ -16,6 +16,7 @@ var my_color := Color("E23B3B")
 var last_error := ""
 var show_players := true
 var aim_with_phone := false
+var game_mode := "turn_by_turn"
 var vote_deadline_ms := 0.0
 var vote_counts: Dictionary = {}
 var my_vote := ""
@@ -93,6 +94,7 @@ func open_title() -> void:
 	active_lobby = {}
 	hosting = false
 	online = false
+	game_mode = "turn_by_turn"
 	vote_deadline_ms = 0.0
 	vote_counts = {}
 	my_vote = ""
@@ -109,10 +111,19 @@ func public_lobbies() -> Array[Dictionary]:
 	return lobbies
 
 
-func create_lobby(lobby_name: String, is_public: bool, rounds: int = 1) -> void:
+func create_lobby(lobby_name: String, is_public: bool, rounds: int = 1, mode: String = "turn_by_turn") -> void:
 	last_error = ""
+	game_mode = mode
 	NetworkClient.ensure_connected()
-	NetworkClient.send_create(lobby_name, is_public, player_name, rounds)
+	NetworkClient.send_create(lobby_name, is_public, player_name, rounds, mode)
+
+
+func is_turn_by_turn() -> bool:
+	return game_mode == "turn_by_turn"
+
+
+func set_game_mode(mode: String) -> void:
+	NetworkClient.send_set_mode(mode)
 
 
 func join_lobby(raw_code: String) -> String:
@@ -129,6 +140,7 @@ func leave_lobby() -> void:
 	NetworkClient.send_leave()
 	active_lobby = {}
 	hosting = false
+	game_mode = "turn_by_turn"
 	vote_deadline_ms = 0.0
 	vote_counts = {}
 	my_vote = ""
@@ -156,6 +168,7 @@ func _on_lobby_list(rooms: Array) -> void:
 func _on_lobby_state(lobby: Dictionary) -> void:
 	active_lobby = _room_from_net(lobby)
 	hosting = str(lobby.get("hostId", "")) == NetworkClient.player_id
+	game_mode = str(active_lobby.get("gameMode", game_mode))
 	var mine := _my_player()
 	if not mine.is_empty():
 		my_color = UiStyle.to_color(mine.get("color", "#E23B3B"))
@@ -199,6 +212,7 @@ func _room_from_net(raw: Dictionary) -> Dictionary:
 		"mapId": str(raw.get("mapId", "")),
 		"rounds": int(raw.get("rounds", 1)),
 		"roundIndex": int(raw.get("roundIndex", 0)),
+		"gameMode": str(raw.get("gameMode", "turn_by_turn")),
 		"player_list": people,
 	}
 
@@ -287,10 +301,14 @@ func _on_match_started(id: String) -> void:
 	_play_with_fade(COURSE_SCENE)
 
 
-func _on_match_over() -> void:
+func _on_match_over(placings: Array = []) -> void:
 	if not online:
 		return
 	vote_deadline_ms = 0.0
+	var scene := get_tree().current_scene
+	if scene and scene.has_method("present_match_results"):
+		scene.call("present_match_results", placings)
+		return
 	return_to_lobby()
 
 

@@ -31,6 +31,12 @@ var _waiting_for_room := false
 var _poll := 0.0
 var _rounds := 3
 var _rounds_label: Label
+var _create_mode := "turn_by_turn"
+var _turn_btn: Button
+var _ffa_btn: Button
+var _room_mode_label: Label
+var _room_turn_btn: Button
+var _room_ffa_btn: Button
 
 
 func _ready() -> void:
@@ -44,6 +50,8 @@ func _ready() -> void:
 	_make_player_list()
 	_make_status()
 	_make_rounds_picker()
+	_make_mode_picker()
+	_make_room_mode_controls()
 	create_dimmer.gui_input.connect(func(e: InputEvent) -> void: _dimmer_close(e, create_dimmer))
 	join_dimmer.gui_input.connect(func(e: InputEvent) -> void: _dimmer_close(e, join_dimmer))
 	join_edit.text_changed.connect(_on_join_code_typed)
@@ -169,13 +177,16 @@ func _show_room() -> void:
 	room_title.text = str(lobby.get("name", "Lobby"))
 	room_code.text = str(lobby.get("code", "----"))
 	var vis := "PUBLIC" if lobby.get("is_public", true) else "PRIVATE"
-	room_meta.text = "%s  ·  %d / %d players  ·  %d rounds" % [
+	var mode := _mode_label(str(lobby.get("gameMode", "turn_by_turn")))
+	room_meta.text = "%s  ·  %d / %d players  ·  %d rounds  ·  %s" % [
 		vis,
 		int(lobby.get("players", 1)),
 		int(lobby.get("max_players", 4)),
 		int(lobby.get("rounds", 1)),
+		mode,
 	]
 	start_btn.visible = GameSession.hosting
+	_refresh_room_mode_ui()
 	_fill_players(lobby.get("player_list", []))
 
 
@@ -328,8 +339,8 @@ func _make_rounds_picker() -> void:
 	var layout: VBoxContainer = $UI/Root/CreateDimmer/Card/Layout
 	var vis: Control = $UI/Root/CreateDimmer/Card/Layout/Visibility
 	var card: PanelContainer = $UI/Root/CreateDimmer/Card
-	card.offset_top = -260.0
-	card.offset_bottom = 260.0
+	card.offset_top = -310.0
+	card.offset_bottom = 310.0
 	var caption := Label.new()
 	caption.text = "ROUNDS"
 	UiStyle.apply_font(caption, true, 13, UiStyle.INK)
@@ -379,12 +390,94 @@ func _set_rounds(value: int) -> void:
 		_rounds_label.text = "%d round%s" % [_rounds, "" if _rounds == 1 else "s"]
 
 
+func _mode_label(mode: String) -> String:
+	return "Free for All" if mode == "free_for_all" else "Turn by Turn"
+
+
+func _make_mode_picker() -> void:
+	var layout: VBoxContainer = $UI/Root/CreateDimmer/Card/Layout
+	var caption := Label.new()
+	caption.text = "MODE"
+	UiStyle.apply_font(caption, true, 13, UiStyle.INK)
+	layout.add_child(caption)
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 10)
+	layout.add_child(row)
+	_turn_btn = Button.new()
+	_turn_btn.text = "Turn by Turn"
+	_turn_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_turn_btn.custom_minimum_size = Vector2(0, 44)
+	_turn_btn.focus_mode = Control.FOCUS_NONE
+	_turn_btn.pressed.connect(func() -> void: _set_create_mode("turn_by_turn"))
+	row.add_child(_turn_btn)
+	_ffa_btn = Button.new()
+	_ffa_btn.text = "Free for All"
+	_ffa_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_ffa_btn.custom_minimum_size = Vector2(0, 44)
+	_ffa_btn.focus_mode = Control.FOCUS_NONE
+	_ffa_btn.pressed.connect(func() -> void: _set_create_mode("free_for_all"))
+	row.add_child(_ffa_btn)
+	var confirm: Control = $UI/Root/CreateDimmer/Card/Layout/Confirm
+	layout.move_child(caption, confirm.get_index())
+	layout.move_child(row, confirm.get_index())
+	_set_create_mode(_create_mode)
+
+
+func _set_create_mode(mode: String) -> void:
+	_create_mode = mode
+	if _turn_btn:
+		_style_choice(_turn_btn, mode == "turn_by_turn")
+	if _ffa_btn:
+		_style_choice(_ffa_btn, mode == "free_for_all")
+
+
+func _make_room_mode_controls() -> void:
+	var layout: VBoxContainer = $UI/Root/Content/RoomView/Card/Layout
+	_room_mode_label = Label.new()
+	_room_mode_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	UiStyle.apply_font(_room_mode_label, true, 14, UiStyle.TEAL)
+	layout.add_child(_room_mode_label)
+	var row := HBoxContainer.new()
+	row.name = "ModeRow"
+	row.add_theme_constant_override("separation", 10)
+	layout.add_child(row)
+	_room_turn_btn = Button.new()
+	_room_turn_btn.text = "Turn by Turn"
+	_room_turn_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_room_turn_btn.custom_minimum_size = Vector2(0, 40)
+	_room_turn_btn.focus_mode = Control.FOCUS_NONE
+	_room_turn_btn.pressed.connect(func() -> void: GameSession.set_game_mode("turn_by_turn"))
+	row.add_child(_room_turn_btn)
+	_room_ffa_btn = Button.new()
+	_room_ffa_btn.text = "Free for All"
+	_room_ffa_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_room_ffa_btn.custom_minimum_size = Vector2(0, 40)
+	_room_ffa_btn.focus_mode = Control.FOCUS_NONE
+	_room_ffa_btn.pressed.connect(func() -> void: GameSession.set_game_mode("free_for_all"))
+	row.add_child(_room_ffa_btn)
+	layout.move_child(_room_mode_label, start_btn.get_index())
+	layout.move_child(row, start_btn.get_index())
+
+
+func _refresh_room_mode_ui() -> void:
+	var mode := str(GameSession.active_lobby.get("gameMode", GameSession.game_mode))
+	if _room_mode_label:
+		_room_mode_label.text = "Mode: %s" % _mode_label(mode)
+	if _room_turn_btn:
+		_room_turn_btn.get_parent().visible = GameSession.hosting
+		_style_choice(_room_turn_btn, mode == "turn_by_turn")
+		_room_turn_btn.disabled = mode == "turn_by_turn"
+	if _room_ffa_btn:
+		_style_choice(_room_ffa_btn, mode == "free_for_all")
+		_room_ffa_btn.disabled = mode == "free_for_all"
+
+
 func _on_confirm_create() -> void:
 	var lobby_name := name_edit.text.strip_edges()
 	if lobby_name.is_empty():
 		lobby_name = "Putt Party"
 	_waiting_for_room = true
-	GameSession.create_lobby(lobby_name, _public_visibility, _rounds)
+	GameSession.create_lobby(lobby_name, _public_visibility, _rounds, _create_mode)
 
 
 func _on_confirm_join(_text: String = "") -> void:
