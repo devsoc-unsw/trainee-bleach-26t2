@@ -34,10 +34,10 @@ func _ready() -> void:
 
 func set_ball(ball: Node3D) -> void:
 	_ball = ball
-	if _viewport == null or ball == null or not is_instance_valid(ball):
+	if not is_inside_tree() or _viewport == null or ball == null or not is_instance_valid(ball):
 		return
 	var host := ball.get_parent()
-	if host and _viewport.get_parent() != host:
+	if host and is_instance_valid(host) and host.is_inside_tree() and _viewport.get_parent() != host:
 		_viewport.reparent(host, false)
 	_viewport.own_world_3d = false
 	_viewport.render_target_update_mode = SubViewport.UPDATE_ALWAYS
@@ -114,7 +114,13 @@ func _well_rect() -> Rect2:
 	return Rect2(center - Vector2(radius, radius), Vector2(radius * 2.0, radius * 2.0))
 
 
+func _exit_tree() -> void:
+	_ball = null
+
+
 func _process(delta: float) -> void:
+	if not is_inside_tree():
+		return
 	_time += delta
 	if state == State.OOB and _oob_until >= 0.0 and _time >= _oob_until:
 		_oob_until = -1.0

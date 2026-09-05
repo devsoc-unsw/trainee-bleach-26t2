@@ -6,6 +6,8 @@ signal settings_pressed
 signal ability_pressed
 signal quit_pressed
 signal courses_pressed
+signal phone_link_pressed
+signal aim_mode_changed(phone: bool)
 signal chat_submitted(text: String)
 signal spectate_follow_pressed
 signal spectate_free_pressed
@@ -53,6 +55,15 @@ var _spectate_name: Label
 var _follow_btn: Button
 var _free_btn: Button
 var _cycle_row: HBoxContainer
+var _phone_dimmer: ColorRect
+var _phone_code: Label
+var _phone_urls: Label
+var _phone_local: Label
+var _phone_qr: TextureRect
+var _phone_status: Label
+var _phone_qr_data := ""
+var _aim_mouse_btns: Array[Button] = []
+var _aim_phone_btns: Array[Button] = []
 
 
 func _ready() -> void:
@@ -70,6 +81,7 @@ func _ready() -> void:
 		header_closed.shadow_offset = Vector2(0, 2)
 	_build_left_dock()
 	_build_pause_menu()
+	_build_phone_panel()
 	_build_spectate_bar()
 	_refresh_stats()
 	_apply_scorecard_state()
@@ -138,6 +150,8 @@ func set_ball_preview(ball: Node3D) -> void:
 
 
 func set_aim_preview(world_dir: Vector3, power: float) -> void:
+	if not is_inside_tree():
+		return
 	if ball_status == null or not ball_status.has_method("set_aim"):
 		return
 	ball_status.set_aim(_world_dir_to_hud(world_dir), power)
@@ -159,7 +173,7 @@ func set_roster(people: Array) -> void:
 		_roster.append({
 			"id": id,
 			"name": str(p.get("name", "Player")),
-			"color": Color(str(p.get("color", "#E23B3B"))),
+			"color": UiStyle.to_color(p.get("color", "#E23B3B")),
 			"strokes": int(p.get("strokes", 0)),
 			"holed": bool(p.get("holed", false)),
 		})
@@ -189,7 +203,7 @@ func append_chat(payload: Dictionary) -> void:
 		UiStyle.apply_font(line, false, 13, UiStyle.BROWN_SOFT)
 	else:
 		line.text = "%s: %s" % [str(payload.get("name", "Player")), str(payload.get("text", ""))]
-		var tint := Color(str(payload.get("color", "#3A322C")))
+		var tint := UiStyle.to_color(payload.get("color", "#3A322C"), UiStyle.INK)
 		UiStyle.apply_font(line, false, 13, tint.darkened(0.12))
 	_chat_log.add_child(line)
 	while _chat_log.get_child_count() > 40:
@@ -204,8 +218,17 @@ func _scroll_chat() -> void:
 
 
 func _world_dir_to_hud(world_dir: Vector3) -> Vector2:
-	var cam := get_viewport().get_camera_3d()
-	if cam == null:
+	# Phone poses come from an autoload, so this can run while a course swap is
+	# tearing the 3D world down. The viewport or camera may already be gone.
+	if not is_inside_tree():
+		return Vector2.UP
+	var viewport := get_viewport()
+	if viewport == null or not is_instance_valid(viewport):
+		return Vector2.UP
+	if not viewport.has_method("get_camera_3d"):
+		return Vector2.UP
+	var cam: Camera3D = viewport.get_camera_3d()
+	if cam == null or not is_instance_valid(cam):
 		return Vector2.UP
 	var right := cam.global_transform.basis.x
 	var fwd := -cam.global_transform.basis.z
@@ -268,7 +291,7 @@ func _add_roster_row(player_name: String, color: Variant, player_strokes: int, h
 	row.add_theme_constant_override("separation", 8)
 	var swatch := ColorRect.new()
 	swatch.custom_minimum_size = Vector2(10, 10)
-	swatch.color = color if color is Color else Color(str(color))
+	swatch.color = UiStyle.to_color(color)
 	swatch.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	var name_label := Label.new()
 	var caption := player_name if not mine else "%s (you)" % player_name
@@ -501,6 +524,23 @@ func _build_pause_menu() -> void:
 	)
 	col.add_child(_courses_btn)
 
+	_add_aim_mode_row(col, true)
+
+	var phone := Button.new()
+	phone.text = "LINK PHONE"
+	phone.custom_minimum_size = Vector2(0, 46)
+	phone.focus_mode = Control.FOCUS_NONE
+	UiStyle.apply_font(phone, true, 16, Color.WHITE)
+	phone.add_theme_stylebox_override("normal", UiStyle.pill(UiStyle.TEAL, 18, 12))
+	phone.add_theme_stylebox_override("hover", UiStyle.pill(UiStyle.TEAL_HOVER, 18, 12))
+	phone.add_theme_stylebox_override("pressed", UiStyle.pill(UiStyle.TEAL_PRESS, 18, 12))
+	phone.pressed.connect(func() -> void:
+		_set_aim_mode(true, false)
+		_set_pause_open(false)
+		phone_link_pressed.emit()
+	)
+	col.add_child(phone)
+
 	var resume := Button.new()
 	resume.text = "RESUME"
 	resume.custom_minimum_size = Vector2(0, 46)
@@ -517,6 +557,207 @@ func _set_pause_open(on: bool) -> void:
 	_pause_dimmer.visible = on
 	if _courses_btn:
 		_courses_btn.visible = not GameSession.online
+	if on:
+		_refresh_aim_mode_buttons()
+
+
+func show_phone_panel(on: bool) -> void:
+	if _phone_dimmer:
+		_phone_dimmer.visible = on
+
+
+func set_phone_waiting() -> void:
+	if _phone_code:
+		_phone_code.text = ""
+		_phone_code.visible = false
+	if _phone_urls:
+		_phone_urls.text = ""
+		_phone_urls.visible = false
+	if _phone_local:
+		_phone_local.text = ""
+		_phone_local.visible = false
+	if _phone_qr:
+		_phone_qr.visible = false
+		_phone_qr.texture = null
+	if _phone_status:
+		_phone_status.text = "Starting phone remote..."
+
+
+func set_phone_urls(urls: PackedStringArray, local_url: String = "") -> void:
+	if _phone_urls:
+		_phone_urls.text = "\n".join(urls)
+		_phone_urls.visible = not urls.is_empty()
+	if _phone_local:
+		_phone_local.text = "This PC: %s" % local_url if not local_url.is_empty() else ""
+		_phone_local.visible = not local_url.is_empty()
+
+
+func set_phone_status(text: String) -> void:
+	if _phone_status:
+		_phone_status.text = text
+
+
+func set_phone_qr_png(bytes: PackedByteArray) -> void:
+	if _phone_qr == null or bytes.is_empty():
+		return
+	var img := Image.new()
+	if img.load_png_from_buffer(bytes) != OK:
+		return
+	_phone_qr.texture = ImageTexture.create_from_image(img)
+	_phone_qr.visible = true
+
+
+func set_phone_info(code: String, linked: bool, qr: String = "") -> void:
+	if _phone_code:
+		_phone_code.text = code if not code.is_empty() else "...."
+		_phone_code.visible = not code.is_empty()
+	if not qr.is_empty():
+		_phone_qr_data = qr
+		_apply_phone_qr(qr)
+	if _phone_status:
+		_phone_status.text = "Phone linked. Hold to aim, then swing. Menus: swing to select." if linked else "Scan to link your phone."
+
+
+func _apply_phone_qr(data_url: String) -> void:
+	if _phone_qr == null:
+		return
+	var marker := "base64,"
+	var at := data_url.find(marker)
+	if at < 0:
+		return
+	var bytes := Marshalls.base64_to_raw(data_url.substr(at + marker.length()))
+	var img := Image.new()
+	if img.load_png_from_buffer(bytes) != OK:
+		return
+	_phone_qr.texture = ImageTexture.create_from_image(img)
+	_phone_qr.visible = true
+
+
+func _build_phone_panel() -> void:
+	_phone_dimmer = ColorRect.new()
+	_phone_dimmer.visible = false
+	_phone_dimmer.color = Color(0.08, 0.1, 0.09, 0.55)
+	_phone_dimmer.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_phone_dimmer.gui_input.connect(func(event: InputEvent) -> void:
+		if event is InputEventMouseButton:
+			var mouse := event as InputEventMouseButton
+			if mouse.pressed and mouse.button_index == MOUSE_BUTTON_LEFT:
+				show_phone_panel(false)
+	)
+	$Root.add_child(_phone_dimmer)
+	var center := CenterContainer.new()
+	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	center.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_phone_dimmer.add_child(center)
+	var card := PanelContainer.new()
+	card.add_theme_stylebox_override("panel", UiStyle.card(24))
+	card.custom_minimum_size = Vector2(360, 0)
+	center.add_child(card)
+	var col := VBoxContainer.new()
+	col.add_theme_constant_override("separation", 10)
+	card.add_child(col)
+	var title := Label.new()
+	title.text = "PHONE REMOTE"
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	UiStyle.apply_font(title, true, 20, UiStyle.INK)
+	col.add_child(title)
+	_add_aim_mode_row(col, false)
+	_phone_qr = TextureRect.new()
+	_phone_qr.custom_minimum_size = Vector2(220, 220)
+	_phone_qr.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	_phone_qr.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	_phone_qr.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	_phone_qr.visible = false
+	col.add_child(_phone_qr)
+	_phone_code = Label.new()
+	_phone_code.text = ""
+	_phone_code.visible = false
+	_phone_code.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	UiStyle.apply_font(_phone_code, true, 28, UiStyle.TEAL)
+	col.add_child(_phone_code)
+	_phone_urls = Label.new()
+	_phone_urls.visible = false
+	_phone_urls.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_phone_urls.autowrap_mode = TextServer.AUTOWRAP_OFF
+	UiStyle.apply_font(_phone_urls, false, 13, UiStyle.TEAL)
+	col.add_child(_phone_urls)
+	_phone_local = Label.new()
+	_phone_local.visible = false
+	_phone_local.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_phone_local.autowrap_mode = TextServer.AUTOWRAP_OFF
+	UiStyle.apply_font(_phone_local, false, 13, UiStyle.BROWN_SOFT)
+	col.add_child(_phone_local)
+	_phone_status = Label.new()
+	_phone_status.text = "Scan the code on the same Wi-Fi. No app or setup needed."
+	_phone_status.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_phone_status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_phone_status.custom_minimum_size = Vector2(280, 0)
+	UiStyle.apply_font(_phone_status, false, 14, UiStyle.INK)
+	col.add_child(_phone_status)
+	var close := Button.new()
+	close.text = "CLOSE"
+	close.custom_minimum_size = Vector2(0, 44)
+	close.focus_mode = Control.FOCUS_NONE
+	UiStyle.apply_font(close, true, 15, UiStyle.BROWN)
+	close.add_theme_stylebox_override("normal", UiStyle.ghost_pill())
+	close.add_theme_stylebox_override("hover", UiStyle.ghost_pill())
+	close.add_theme_stylebox_override("pressed", UiStyle.ghost_pill())
+	close.pressed.connect(func() -> void: show_phone_panel(false))
+	col.add_child(close)
+	_refresh_aim_mode_buttons()
+
+
+func _add_aim_mode_row(parent: Control, open_phone_on_pick: bool) -> void:
+	var column := VBoxContainer.new()
+	column.add_theme_constant_override("separation", 6)
+	parent.add_child(column)
+	var label := Label.new()
+	label.text = "AIM"
+	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	UiStyle.apply_font(label, true, 13, UiStyle.BROWN)
+	column.add_child(label)
+	var row := HBoxContainer.new()
+	row.alignment = BoxContainer.ALIGNMENT_CENTER
+	row.add_theme_constant_override("separation", 8)
+	column.add_child(row)
+	var mouse := _aim_mode_button("MOUSE")
+	var phone := _aim_mode_button("PHONE")
+	mouse.pressed.connect(func() -> void: _set_aim_mode(false, false))
+	phone.pressed.connect(func() -> void: _set_aim_mode(true, open_phone_on_pick))
+	_aim_mouse_btns.append(mouse)
+	_aim_phone_btns.append(phone)
+	row.add_child(mouse)
+	row.add_child(phone)
+
+
+func _aim_mode_button(caption: String) -> Button:
+	var btn := Button.new()
+	btn.text = caption
+	btn.focus_mode = Control.FOCUS_NONE
+	btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	btn.custom_minimum_size = Vector2(0, 40)
+	UiStyle.apply_font(btn, true, 14, Color.WHITE)
+	btn.add_theme_stylebox_override("normal", UiStyle.pill(UiStyle.TEAL, 12, 8))
+	btn.add_theme_stylebox_override("hover", UiStyle.pill(UiStyle.TEAL_HOVER, 12, 8))
+	btn.add_theme_stylebox_override("pressed", UiStyle.pill(UiStyle.TEAL_PRESS, 12, 8))
+	return btn
+
+
+func _set_aim_mode(phone: bool, open_panel: bool) -> void:
+	GameSession.aim_with_phone = phone
+	_refresh_aim_mode_buttons()
+	aim_mode_changed.emit(phone)
+	if phone and open_panel and not PhoneLink.is_linked():
+		_set_pause_open(false)
+		phone_link_pressed.emit()
+
+
+func _refresh_aim_mode_buttons() -> void:
+	var phone := GameSession.aim_with_phone
+	for btn in _aim_mouse_btns:
+		btn.modulate = Color.WHITE if not phone else Color(1, 1, 1, 0.55)
+	for btn in _aim_phone_btns:
+		btn.modulate = Color.WHITE if phone else Color(1, 1, 1, 0.55)
 
 
 func show_spectate(on: bool) -> void:

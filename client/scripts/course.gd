@@ -4,6 +4,7 @@ const BALL_SCENE := preload("res://scenes/Ball.tscn")
 const GHOST_SCRIPT := preload("res://scripts/ghost_ball.gd")
 const SYNC_HZ := 15.0
 const SPECTATE_DELAY := 1.1
+const BALL_RADIUS := 0.15
 
 @onready var hud = $HUD
 @onready var aim_controller: Node3D = $AimController
@@ -19,6 +20,11 @@ var _spectating := false
 var _spectate_follow := true
 var _spectate_index := 0
 var _holed_ids: Dictionary = {}
+var _ghost_club: GhostClub
+var _stick_aim := Vector3.ZERO
+var _phone_preview := false
+var _phone_swing_fired := false
+var _phone_hit_ms := 0
 
 
 func _ready() -> void:
@@ -50,18 +56,26 @@ func _ready() -> void:
 	hud.show_players_changed.connect(_on_show_players_changed)
 	hud.quit_pressed.connect(_on_quit_pressed)
 	hud.courses_pressed.connect(_on_courses_pressed)
+	hud.phone_link_pressed.connect(_on_phone_link_pressed)
+	if hud.has_signal("aim_mode_changed"):
+		hud.aim_mode_changed.connect(_on_aim_mode_changed)
 	hud.chat_submitted.connect(_on_chat_submitted)
 	hud.spectate_follow_pressed.connect(_on_spectate_follow)
 	hud.spectate_free_pressed.connect(_on_spectate_free)
 	hud.spectate_prev_pressed.connect(func() -> void: _cycle_spectate(-1))
 	hud.spectate_next_pressed.connect(func() -> void: _cycle_spectate(1))
+	ball.freeze = true
 	ball.apply_color(GameSession.my_color)
 	_setup_scoreboard()
 	_setup_multiplayer()
+	_setup_phone()
 
 
 func _load_map() -> void:
 	var spec: Dictionary = GameSession.get_map()
+	if hud:
+		hud.set_hole(int(spec.get("hole", 1)))
+		hud.set_par(int(spec.get("par", 3)))
 	var packed: PackedScene = load(spec.scene) as PackedScene
 	if packed == null:
 		push_error("Could not load map scene: %s" % spec.scene)
@@ -88,7 +102,7 @@ func _load_map() -> void:
 
 	hud.set_hole(int(spec.hole))
 	hud.set_par(int(spec.par))
-	camera_rig.overview_zoom = float(spec.get("overview_zoom", 28.0))
+	camera_rig.overview_zoom = float(spec.get("overview_zoom", 18.0))
 	camera_rig.max_zoom = maxf(camera_rig.max_zoom, camera_rig.overview_zoom)
 
 
@@ -124,8 +138,8 @@ func _ground_snap(tee: Vector3) -> Vector3:
 	query.exclude = [ball.get_rid()]
 	var hit := space.intersect_ray(query)
 	if hit.is_empty():
-		return tee + Vector3(0.0, 0.16, 0.0)
-	return hit.position + Vector3(0.0, 0.13, 0.0)
+		return tee + Vector3(0.0, BALL_RADIUS + 0.04, 0.0)
+	return hit.position + Vector3(0.0, BALL_RADIUS + 0.02, 0.0)
 
 
 func _find_marker(marker_name: String) -> Node3D:
@@ -138,6 +152,9 @@ func _find_marker(marker_name: String) -> Node3D:
 
 
 func _process(delta: float) -> void:
+	if not is_inside_tree():
+		return
+	_update_ghost_club()
 	if not GameSession.online:
 		return
 	_sync_acc += delta
@@ -165,6 +182,252 @@ func _setup_scoreboard() -> void:
 	hud.set_chat_visible(GameSession.online)
 
 
+func _setup_phone() -> void:
+	if not PhoneLink.hit_received.is_connected(_on_phone_hit):
+		PhoneLink.hit_received.connect(_on_phone_hit)
+	if not PhoneLink.pose_received.is_connected(_on_phone_pose):
+		PhoneLink.pose_received.connect(_on_phone_pose)
+	if not PhoneLink.qr_ready.is_connected(_on_phone_qr_png):
+		PhoneLink.qr_ready.connect(_on_phone_qr_png)
+	if not NetworkClient.phone_ready.is_connected(_on_phone_ready):
+		NetworkClient.phone_ready.connect(_on_phone_ready)
+	if not NetworkClient.phone_linked.is_connected(_on_phone_linked):
+		NetworkClient.phone_linked.connect(_on_phone_linked)
+	if not NetworkClient.phone_gone.is_connected(_on_phone_gone):
+		NetworkClient.phone_gone.connect(_on_phone_gone)
+	if not NetworkClient.phone_hit.is_connected(_on_phone_hit):
+		NetworkClient.phone_hit.connect(_on_phone_hit)
+	if not NetworkClient.phone_pose.is_connected(_on_phone_pose):
+		NetworkClient.phone_pose.connect(_on_phone_pose)
+	if not NetworkClient.error_received.is_connected(_on_phone_error):
+		NetworkClient.error_received.connect(_on_phone_error)
+	PhoneLink.ensure_listening()
+	if GameSession.online:
+		NetworkClient.ensure_connected()
+		NetworkClient.send_phone_open()
+	if PhoneLink.is_linked():
+		GameSession.aim_with_phone = true
+		if hud.has_method("_refresh_aim_mode_buttons"):
+			hud._refresh_aim_mode_buttons()
+
+
+func _exit_tree() -> void:
+	_teardown_phone()
+
+
+func _teardown_phone() -> void:
+	if PhoneLink.hit_received.is_connected(_on_phone_hit):
+		PhoneLink.hit_received.disconnect(_on_phone_hit)
+	if PhoneLink.pose_received.is_connected(_on_phone_pose):
+		PhoneLink.pose_received.disconnect(_on_phone_pose)
+	if PhoneLink.qr_ready.is_connected(_on_phone_qr_png):
+		PhoneLink.qr_ready.disconnect(_on_phone_qr_png)
+	if NetworkClient.phone_ready.is_connected(_on_phone_ready):
+		NetworkClient.phone_ready.disconnect(_on_phone_ready)
+	if NetworkClient.phone_linked.is_connected(_on_phone_linked):
+		NetworkClient.phone_linked.disconnect(_on_phone_linked)
+	if NetworkClient.phone_gone.is_connected(_on_phone_gone):
+		NetworkClient.phone_gone.disconnect(_on_phone_gone)
+	if NetworkClient.phone_hit.is_connected(_on_phone_hit):
+		NetworkClient.phone_hit.disconnect(_on_phone_hit)
+	if NetworkClient.phone_pose.is_connected(_on_phone_pose):
+		NetworkClient.phone_pose.disconnect(_on_phone_pose)
+	if NetworkClient.error_received.is_connected(_on_phone_error):
+		NetworkClient.error_received.disconnect(_on_phone_error)
+
+
+func _on_phone_link_pressed() -> void:
+	hud.show_phone_panel(true)
+	if _ghost_club == null:
+		_ghost_club = GhostClub.new()
+		add_child(_ghost_club)
+	if GameSession.online:
+		NetworkClient.ensure_connected()
+		NetworkClient.send_phone_open()
+		hud.set_phone_status("Scan YOUR code. Each player gets their own phone, and their own ball.")
+		return
+	var err: Error = PhoneLink.ensure_listening()
+	if err != OK:
+		hud.set_phone_status("Phone port blocked (%s). Using the server instead." % PhoneLink.last_error())
+		NetworkClient.ensure_connected()
+		NetworkClient.send_phone_open()
+		return
+	hud.set_phone_urls(PhoneLink.public_urls(), PhoneLink.local_url())
+	var qr := PhoneLink.last_qr()
+	if not qr.is_empty():
+		hud.set_phone_qr_png(qr)
+	if PhoneLink.is_linked():
+		hud.set_phone_status("Still linked. Keep the same phone page open.")
+	else:
+		hud.set_phone_status("Same Wi-Fi. Drag AIM for power, then swing the phone like a club.")
+	PhoneLink.fetch_qr()
+
+
+func _on_phone_qr_png(bytes: PackedByteArray) -> void:
+	if not is_inside_tree() or hud == null or not is_instance_valid(hud):
+		return
+	if GameSession.online:
+		return
+	hud.set_phone_qr_png(bytes)
+	hud.set_phone_urls(PhoneLink.public_urls(), PhoneLink.local_url())
+
+
+func _on_phone_ready(code: String, urls: PackedStringArray, qr: String) -> void:
+	if not is_inside_tree() or hud == null or not is_instance_valid(hud):
+		return
+	# Online pairing is per-player. Don't hide those unique codes behind the
+	# local phone page, or every guest would swing the host's ball.
+	if not GameSession.online and PhoneLink.server != null and PhoneLink.server.is_listening():
+		return
+	hud.set_phone_info(code, false, qr)
+	hud.set_phone_urls(urls)
+	hud.show_phone_panel(true)
+
+
+func _on_phone_linked() -> void:
+	if not is_inside_tree() or hud == null or not is_instance_valid(hud):
+		return
+	if not GameSession.online and PhoneLink.server != null and PhoneLink.server.is_listening():
+		return
+	GameSession.aim_with_phone = true
+	hud.set_phone_info(_phone_code_text(), true)
+
+
+func _on_phone_gone() -> void:
+	if not is_inside_tree() or hud == null or not is_instance_valid(hud):
+		return
+	if not GameSession.online and PhoneLink.server != null and PhoneLink.server.is_listening():
+		return
+	hud.set_phone_info(_phone_code_text(), false)
+
+
+func _on_aim_mode_changed(_phone: bool) -> void:
+	_clear_phone_aim()
+
+
+func _clear_phone_aim() -> void:
+	_phone_preview = false
+	_stick_aim = Vector3.ZERO
+	_reset_phone_swing()
+	if aim_controller.has_method("clear_aim"):
+		aim_controller.clear_aim()
+	if _ghost_club:
+		_ghost_club.set_pose(75.0, 0.0, false)
+
+
+func _reset_phone_swing() -> void:
+	_phone_swing_fired = false
+
+
+func _on_phone_hit(power: float, stick_x: float = 0.0, stick_y: float = 0.0) -> void:
+	if not is_inside_tree() or hud == null or not is_instance_valid(hud):
+		return
+	if _spectating or not GameSession.aim_with_phone:
+		return
+	_phone_swing_fired = true
+	_phone_preview = false
+	_phone_hit_ms = Time.get_ticks_msec()
+	if _ghost_club:
+		_ghost_club.set_pose(75.0, 0.0, false)
+	if aim_controller.has_method("swing_from_phone"):
+		aim_controller.swing_from_phone(power, stick_x, stick_y)
+	if aim_controller.has_method("clear_aim"):
+		aim_controller.clear_aim()
+
+
+func _on_phone_pose(beta: float, gamma: float, holding: bool, stick_x: float = 0.0, stick_y: float = 0.0, lift: float = 0.0, power: float = -1.0, _accel: float = 0.0, _yaw: float = 0.0, _recenter: bool = false) -> void:
+	if not is_inside_tree() or hud == null or not is_instance_valid(hud):
+		return
+	if aim_controller == null or not is_instance_valid(aim_controller):
+		return
+	if camera_rig == null or not is_instance_valid(camera_rig):
+		return
+	if not GameSession.aim_with_phone:
+		if _ghost_club:
+			_ghost_club.set_pose(75.0, 0.0, false)
+		return
+	if _ghost_club == null:
+		_ghost_club = GhostClub.new()
+		add_child(_ghost_club)
+	var stick := Vector2(stick_x, stick_y)
+	var aiming := stick.length() > 0.04
+	if aiming:
+		_stick_aim = _world_from_stick(stick_x, stick_y)
+	_ghost_club.set_pose(beta, gamma, holding or aiming, stick_x, stick_y, lift)
+	_update_ghost_club()
+	if _phone_swing_fired:
+		if aim_controller.has_method("clear_aim"):
+			aim_controller.clear_aim()
+		if _ghost_club:
+			_ghost_club.set_pose(75.0, 0.0, false)
+		var settled: bool = ball != null and not ball.is_moving
+		if not holding and settled and Time.get_ticks_msec() - _phone_hit_ms > 600:
+			_reset_phone_swing()
+		return
+	if not aim_controller.has_method("preview_from_phone"):
+		return
+	if aiming:
+		_phone_preview = true
+		var pulled := power if power >= 0.0 else stick.length()
+		aim_controller.preview_from_phone(stick_x, stick_y, pulled)
+	elif _phone_preview:
+		_phone_preview = false
+		aim_controller.preview_from_phone(0.0, 0.0, 0.0)
+
+
+func _world_from_stick(stick_x: float, stick_y: float) -> Vector3:
+	var cam: Camera3D = camera_rig.camera if camera_rig else null
+	if cam == null:
+		return Vector3.FORWARD
+	var cam_right: Vector3 = cam.global_transform.basis.x
+	var cam_fwd: Vector3 = -cam.global_transform.basis.z
+	cam_right.y = 0.0
+	cam_fwd.y = 0.0
+	if cam_right.length_squared() > 0.0001:
+		cam_right = cam_right.normalized()
+	if cam_fwd.length_squared() > 0.0001:
+		cam_fwd = cam_fwd.normalized()
+	else:
+		cam_fwd = Vector3.FORWARD
+	var world := cam_right * stick_x + cam_fwd * stick_y
+	if world.length_squared() < 0.0001:
+		return cam_fwd
+	return world.normalized()
+
+
+func _update_ghost_club() -> void:
+	if _ghost_club == null:
+		return
+	_ghost_club.follow(ball, _phone_aim())
+
+
+func _phone_aim() -> Vector3:
+	if _stick_aim.length_squared() > 0.0001:
+		return _stick_aim
+	var cam: Camera3D = camera_rig.camera if camera_rig else null
+	if cam == null:
+		return Vector3.FORWARD
+	var aim: Vector3 = -cam.global_transform.basis.z
+	aim.y = 0.0
+	if aim.length_squared() < 0.0001:
+		return Vector3.FORWARD
+	return aim.normalized()
+
+
+func _on_phone_error(code: String, _message: String) -> void:
+	if code != "PHONE_FAILED":
+		return
+	if PhoneLink.server != null and PhoneLink.server.is_listening():
+		return
+	hud.set_phone_info(_phone_code_text(), false)
+
+
+func _phone_code_text() -> String:
+	if hud._phone_code:
+		return hud._phone_code.text
+	return ""
+
+
 func _setup_multiplayer() -> void:
 	if not GameSession.online:
 		return
@@ -182,7 +445,7 @@ func _setup_multiplayer() -> void:
 			var id := str(p.get("id", ""))
 			if id.is_empty() or id == NetworkClient.player_id:
 				continue
-			_ensure_ghost(id, Color(str(p.get("color", "#4CB8B0"))), ball.global_position)
+			_ensure_ghost(id, UiStyle.to_color(p.get("color", "#4CB8B0"), UiStyle.TEAL), ball.global_position)
 
 
 func _on_snapshot(balls: Array) -> void:
@@ -202,7 +465,7 @@ func _color_for(id: String) -> Color:
 	if people is Array:
 		for p in people:
 			if p is Dictionary and str(p.get("id", "")) == id:
-				return Color(str(p.get("color", "#4CB8B0")))
+				return UiStyle.to_color(p.get("color", "#4CB8B0"), UiStyle.TEAL)
 	return Color("4CB8B0")
 
 
@@ -250,6 +513,8 @@ func _on_aiming_changed(is_aiming: bool) -> void:
 
 
 func _on_aim_updated(direction: Vector3, power: float) -> void:
+	if not is_inside_tree() or hud == null or not is_instance_valid(hud):
+		return
 	hud.set_aim_preview(direction, power)
 
 

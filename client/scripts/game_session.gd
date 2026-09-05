@@ -15,6 +15,7 @@ var online := false
 var my_color := Color("E23B3B")
 var last_error := ""
 var show_players := true
+var aim_with_phone := false
 var vote_deadline_ms := 0.0
 var vote_counts: Dictionary = {}
 var my_vote := ""
@@ -30,7 +31,7 @@ const MAPS := {
 		"hole": 1,
 		"accent": Color("E23B3B"),
 		"scene": "res://scenes/maps/rainbow_stairs.tscn",
-		"overview_zoom": 36.0,
+		"overview_zoom": 22.0,
 		"preview": "res://assets/previews/rainbow_stairs.png",
 		"preview_from": Vector3(14.0, 12.0, 8.0),
 		"preview_look": Vector3(0.5, 1.2, -18.0),
@@ -43,7 +44,7 @@ const MAPS := {
 		"hole": 2,
 		"accent": Color("4CB8B0"),
 		"scene": "res://scenes/maps/main_walk.tscn",
-		"overview_zoom": 48.0,
+		"overview_zoom": 28.0,
 		"preview": "res://assets/previews/main_walk.png",
 		"preview_from": Vector3(18.0, 16.0, 8.0),
 		"preview_look": Vector3(0.0, 0.6, -28.0),
@@ -56,7 +57,7 @@ const MAPS := {
 		"hole": 3,
 		"accent": Color("5BBF5B"),
 		"scene": "res://scenes/maps/village_green.tscn",
-		"overview_zoom": 40.0,
+		"overview_zoom": 24.0,
 		"preview": "res://assets/previews/village_green.png",
 		"preview_from": Vector3(16.0, 13.0, 8.0),
 		"preview_look": Vector3(0.0, 0.6, -20.0),
@@ -157,7 +158,7 @@ func _on_lobby_state(lobby: Dictionary) -> void:
 	hosting = str(lobby.get("hostId", "")) == NetworkClient.player_id
 	var mine := _my_player()
 	if not mine.is_empty():
-		my_color = Color(str(mine.get("color", "#E23B3B")))
+		my_color = UiStyle.to_color(mine.get("color", "#E23B3B"))
 
 
 func _on_net_error(_code: String, message: String) -> void:
@@ -224,6 +225,38 @@ func begin_course_vote() -> void:
 func quick_start_match() -> void:
 	if hosting:
 		NetworkClient.send_quick_start()
+
+
+func is_loading() -> bool:
+	return _loading
+
+
+func player_slot(player_id: String) -> int:
+	var people: Variant = active_lobby.get("player_list", [])
+	if not people is Array:
+		return 1
+	var ranked: Array = []
+	for p in people:
+		if p is Dictionary and not str(p.get("id", "")).is_empty():
+			ranked.append(p)
+	ranked.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
+		return int(a.get("joinedAt", 0)) < int(b.get("joinedAt", 0))
+	)
+	for i in ranked.size():
+		if str(ranked[i].get("id", "")) == player_id:
+			return i + 1
+	return ranked.size() + 1
+
+
+func player_tint(player_id: String) -> Color:
+	if player_id == NetworkClient.player_id:
+		return my_color
+	var people: Variant = active_lobby.get("player_list", [])
+	if people is Array:
+		for p in people:
+			if p is Dictionary and str(p.get("id", "")) == player_id:
+				return UiStyle.to_color(p.get("color", "#E23B3B"))
+	return UiStyle.INK
 
 
 func vote_seconds_left() -> float:

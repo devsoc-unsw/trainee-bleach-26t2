@@ -15,6 +15,17 @@ const FONT_BOLD: FontFile = preload("res://ui/fonts/Montserrat-Bold.ttf")
 const FONT_EXTRA: FontFile = preload("res://ui/fonts/Montserrat-ExtraBold.ttf")
 
 
+static func to_color(value: Variant, fallback: Color = Color("E23B3B")) -> Color:
+	if value is Color:
+		return value
+	var text := str(value).strip_edges()
+	if text.is_empty():
+		return fallback
+	if Color.html_is_valid(text.trim_prefix("#")):
+		return Color(text)
+	return fallback
+
+
 static func pill(color: Color, hpad: float = 22.0, vpad: float = 14.0) -> StyleBoxFlat:
 	var style := StyleBoxFlat.new()
 	style.bg_color = color

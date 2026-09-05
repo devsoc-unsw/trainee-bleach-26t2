@@ -70,6 +70,8 @@ func _set_aiming(value: bool) -> void:
 
 
 func _unhandled_input(event: InputEvent) -> void:
+	if GameSession.aim_with_phone:
+		return
 	if event is InputEventMouseButton:
 		var mouse := event as InputEventMouseButton
 		if mouse.button_index == MOUSE_BUTTON_LEFT:
@@ -92,6 +94,8 @@ func _unhandled_input(event: InputEvent) -> void:
 
 
 func _process(_delta: float) -> void:
+	if GameSession.aim_with_phone:
+		return
 	if aiming and _can_aim():
 		_update_trajectory_preview(get_viewport().get_mouse_position())
 	elif aiming and not _can_aim():
@@ -153,6 +157,7 @@ func _update_trajectory_preview(mouse_pos: Vector2) -> void:
 
 
 func _draw_aim_arrow(start: Vector3, dir: Vector3, length: float, tip_color: Color) -> void:
+	immediate_mesh.clear_surfaces()
 	var right := dir.cross(Vector3.UP)
 	if right.length_squared() < 0.0001:
 		right = Vector3.RIGHT
@@ -232,3 +237,80 @@ func _release_shot(end_screen: Vector2) -> void:
 	ball.hit(direction, shot.power)
 	if ball.is_moving:
 		shot_taken.emit(direction, shot.power)
+
+
+func clear_aim() -> void:
+	if immediate_mesh:
+		immediate_mesh.clear_surfaces()
+	_set_aiming(false)
+
+
+func swing_from_phone(power: float, stick_x: float = 0.0, stick_y: float = 0.0) -> void:
+	if not is_inside_tree() or not GameSession.aim_with_phone:
+		return
+	if camera == null or not is_instance_valid(camera) or ball == null or not is_instance_valid(ball):
+		return
+	if ball.is_holed:
+		return
+	if ball.is_moving:
+		return
+	if ball.freeze:
+		ball.freeze = false
+	ball.sleeping = false
+	clear_aim()
+	var clamped := clampf(power, 0.08, 1.0)
+	var direction := _world_from_stick(stick_x, stick_y)
+	direction = _apply_yaw_deviation(direction, clamped * clamped * max_deviation_degrees)
+	ball.hit(direction, clamped)
+	if ball.is_moving:
+		shot_taken.emit(direction, clamped)
+
+
+func preview_from_phone(stick_x: float, stick_y: float, power: float = -1.0) -> void:
+	if not is_inside_tree():
+		return
+	if not GameSession.aim_with_phone:
+		clear_aim()
+		return
+	if camera == null or not is_instance_valid(camera) or ball == null or not is_instance_valid(ball):
+		return
+	if not _can_aim():
+		clear_aim()
+		return
+	var pulled := clampf(power, 0.0, 1.0) if power >= 0.0 else clampf(Vector2(stick_x, stick_y).length(), 0.0, 1.0)
+	if pulled < 0.02:
+		if aiming:
+			_set_aiming(false)
+		return
+	_set_aiming(true)
+	var direction := _world_from_stick(stick_x, stick_y)
+	_draw_phone_arrow(direction, pulled)
+	aim_updated.emit(direction, pulled)
+
+
+func _draw_phone_arrow(direction: Vector3, power: float) -> void:
+	var length := lerpf(0.35, arrow_max_length, power)
+	var old_width := arrow_width
+	var old_head_w := arrow_head_width
+	arrow_width = lerpf(0.04, 0.09, power)
+	arrow_head_width = lerpf(0.11, 0.2, power)
+	_draw_aim_arrow(ball.global_position, direction, length, _power_color(power))
+	arrow_width = old_width
+	arrow_head_width = old_head_w
+
+
+func _world_from_stick(stick_x: float, stick_y: float) -> Vector3:
+	var cam_right: Vector3 = camera.global_transform.basis.x
+	var cam_fwd: Vector3 = -camera.global_transform.basis.z
+	cam_right.y = 0.0
+	cam_fwd.y = 0.0
+	if cam_right.length_squared() > 0.0001:
+		cam_right = cam_right.normalized()
+	if cam_fwd.length_squared() > 0.0001:
+		cam_fwd = cam_fwd.normalized()
+	else:
+		cam_fwd = Vector3.FORWARD
+	var world := cam_right * stick_x + cam_fwd * stick_y
+	if world.length_squared() < 0.0001:
+		return cam_fwd
+	return world.normalized()

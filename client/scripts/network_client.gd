@@ -12,6 +12,12 @@ signal player_holed(player_id: String, strokes: int)
 signal match_over
 signal chat_received(payload: Dictionary)
 signal error_received(code: String, message: String)
+signal phone_ready(code: String, urls: PackedStringArray, qr: String)
+signal phone_linked
+signal phone_gone
+signal phone_hit(power: float, stick_x: float, stick_y: float)
+signal phone_pose(beta: float, gamma: float, holding: bool, stick_x: float, stick_y: float, lift: float, power: float, accel: float, yaw: float, recenter: bool)
+signal cursor_received(player_id: String, uv: Vector2, on: bool)
 
 var player_id := ""
 var socket_open := false
@@ -135,6 +141,37 @@ func _handle_packet(packet: PackedByteArray) -> void:
 			chat_received.emit(data)
 		"error":
 			error_received.emit(str(data.get("code", "")), str(data.get("message", "Something went wrong")))
+		"phone_ready":
+			phone_ready.emit(_phone_code(data), _phone_urls(data), str(data.get("qr", "")))
+		"phone_linked":
+			phone_linked.emit()
+		"phone_gone":
+			phone_gone.emit()
+		"phone_hit":
+			phone_hit.emit(
+				clampf(float(data.get("power", 0.0)), 0.0, 1.0),
+				clampf(float(data.get("sx", 0.0)), -1.0, 1.0),
+				clampf(float(data.get("sy", 0.0)), -1.0, 1.0)
+			)
+		"cursor":
+			cursor_received.emit(
+				str(data.get("playerId", "")),
+				Vector2(clampf(float(data.get("x", 0.5)), 0.0, 1.0), clampf(float(data.get("y", 0.5)), 0.0, 1.0)),
+				bool(data.get("on", false))
+			)
+		"phone_pose":
+			phone_pose.emit(
+				float(data.get("b", 75.0)),
+				float(data.get("g", 0.0)),
+				bool(data.get("h", 0)),
+				clampf(float(data.get("sx", 0.0)), -1.0, 1.0),
+				clampf(float(data.get("sy", 0.0)), -1.0, 1.0),
+				float(data.get("u", 0.0)),
+				clampf(float(data.get("p", 0.0)), 0.0, 1.0),
+				float(data.get("a", 0.0)),
+				float(data.get("al", 0.0)),
+				bool(data.get("c", 0))
+			)
 		_:
 			pass
 
@@ -190,6 +227,36 @@ func send_holed() -> void:
 
 func send_oob() -> void:
 	_send({ "t": "oob" })
+
+
+func send_phone_open() -> void:
+	_send({ "t": "phone_open" })
+
+
+func send_cursor(uv: Vector2, on: bool) -> void:
+	_send({ "t": "cursor", "x": uv.x, "y": uv.y, "on": on })
+
+
+func http_base() -> String:
+	var ws := _server_url()
+	if ws.begins_with("wss://"):
+		return "https://" + ws.substr(6)
+	if ws.begins_with("ws://"):
+		return "http://" + ws.substr(5)
+	return "http://127.0.0.1:8080"
+
+
+func _phone_code(data: Dictionary) -> String:
+	return str(data.get("code", ""))
+
+
+func _phone_urls(data: Dictionary) -> PackedStringArray:
+	var urls := PackedStringArray()
+	var raw: Variant = data.get("urls", [])
+	if raw is Array:
+		for item in raw:
+			urls.append(str(item))
+	return urls
 
 
 func _send(payload: Dictionary) -> void:

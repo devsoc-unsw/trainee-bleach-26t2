@@ -50,6 +50,7 @@ environment = SubResource("Environment_course")
 
 [node name="Ball" parent="." instance=ExtResource("1_ball")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1, 0)
+freeze = true
 can_sleep = false
 
 [node name="CameraRig" parent="." node_paths=PackedStringArray("target") instance=ExtResource("2_cam")]
