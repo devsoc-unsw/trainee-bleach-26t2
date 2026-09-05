@@ -85,13 +85,25 @@ docker run --rm -p 8080:8080 \
 
 ### Railway
 
+Use branch **`version1.3/map-fixes`** (not `version1.1/phone-remote`). That branch has the Dockerfile, `railway.toml`, and the Godot web export in `client/build`.
+
+**From the Railway dashboard (GitHub connected):**
+
+1. New project → Deploy from GitHub → `devsoc-unsw/trainee-bleach-26t2`.
+2. Set the deploy branch to `version1.3/map-fixes`.
+3. After the first deploy, open the service → Settings → Networking → **Generate domain**.
+4. Set variable `PUTT_PUBLIC_URL` to that HTTPS origin (for example `https://YOUR_APP.up.railway.app`). Redeploy if phone QR codes still show a LAN address.
+
+**From the CLI:**
+
 ```bash
-# after railway login
-railway up
-railway variables set PUTT_PUBLIC_URL=https://YOUR_APP.up.railway.app
+railway login
+railway up -y
+railway domain
+railway variable set PUTT_PUBLIC_URL=https://YOUR_APP.up.railway.app
 ```
 
-`railway.toml` points at the repo `Dockerfile`.
+`railway.toml` builds with the repo `Dockerfile`. The server also reads `RAILWAY_PUBLIC_DOMAIN` when `PUTT_PUBLIC_URL` is unset.
 
 ### Fly.io
 
