@@ -59,6 +59,7 @@ describe('rooms', () => {
     const state = rooms.lobbyState(live);
     const colours = new Set(state.players.map((p) => p.color));
     assert.equal(colours.size, 2);
+    assert.ok(state.players[0]!.joinedAt < state.players[1]!.joinedAt);
     assert.equal(rooms.publicRooms()[0]?.players, 2);
   });
 

@@ -7,14 +7,16 @@
     "dev": "tsx watch src/index.ts",
     "build": "tsc",
     "start": "node dist/index.js",
-    "test": "tsx --test src/rooms.test.ts src/protocol.test.ts"
+    "test": "tsx --test src/rooms.test.ts src/phone.test.ts src/protocol.test.ts"
   },
   "dependencies": {
+    "qrcode": "1.5.4",
     "ws": "8.21.2",
     "zod": "3.25.67"
   },
   "devDependencies": {
     "@types/node": "22.15.30",
+    "@types/qrcode": "1.5.5",
     "@types/ws": "8.18.1",
     "tsx": "4.19.4",
     "typescript": "5.8.3"

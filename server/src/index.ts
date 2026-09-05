@@ -1,4 +1,5 @@
 import http from 'node:http';
+import net from 'node:net';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -6,12 +7,17 @@ import { WebSocketServer, WebSocket } from 'ws';
 import { envelopeSchema } from './schema.js';
 import type { ErrorResponse } from './schema.js';
 import * as rooms from './rooms.js';
+import * as phone from './phone.js';
+import * as remoteHttps from './remote_https.js';
 
 const PORT = parseInt(process.env['PORT'] ?? '8080', 10);
 const IS_PRODUCTION = process.env['NODE_ENV'] === 'production';
 const HOST = IS_PRODUCTION ? '0.0.0.0' : '0.0.0.0';
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const WEB_ROOT = process.env['WEB_ROOT'] ?? path.resolve(HERE, '../../client/build');
+const PUBLIC_DIR = path.resolve(HERE, '../public');
+const PHONE_PAGE = path.join(PUBLIC_DIR, 'phone.html');
+const REMOTE_PAGE = path.resolve(HERE, '../../client/ui/phone_remote.html');
 
 const MIME: Record<string, string> = {
   '.html': 'text/html; charset=utf-8',
@@ -38,15 +44,117 @@ function log(entry: LogEntry): void {
 
 const startTime = Date.now();
 
-function setSecurityHeaders(res: http.ServerResponse): void {
+function setSecurityHeaders(res: http.ServerResponse, embed = true): void {
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('X-Frame-Options', 'DENY');
-  res.setHeader('Cross-Origin-Opener-Policy', 'same-origin');
-  res.setHeader('Cross-Origin-Embedder-Policy', 'require-corp');
-  res.setHeader('Cross-Origin-Resource-Policy', 'same-origin');
+  if (embed) {
+    res.setHeader('Cross-Origin-Opener-Policy', 'same-origin');
+    res.setHeader('Cross-Origin-Embedder-Policy', 'require-corp');
+    res.setHeader('Cross-Origin-Resource-Policy', 'same-origin');
+  }
+}
+
+function servePhone(req: http.IncomingMessage, res: http.ServerResponse): boolean {
+  const url = new URL(req.url ?? '/', 'http://localhost');
+  if (req.method !== 'GET' && req.method !== 'HEAD') {
+    return false;
+  }
+  const remote = url.pathname === '/remote' || url.pathname === '/remote/';
+  if (url.pathname !== '/phone' && url.pathname !== '/phone/' && !remote) {
+    return false;
+  }
+  setSecurityHeaders(res, false);
+  const page = remote ? REMOTE_PAGE : PHONE_PAGE;
+  if (!fs.existsSync(page)) {
+    res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
+    res.end('Phone remote page missing');
+    return true;
+  }
+  res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+  if (req.method === 'HEAD') {
+    res.end();
+    return true;
+  }
+  fs.createReadStream(page).pipe(res);
+  return true;
+}
+
+function tryServePhoneRemote(req: http.IncomingMessage, res: http.ServerResponse): boolean {
+  const url = new URL(req.url ?? '/', 'http://localhost');
+  if (url.pathname !== '/phone/remote') {
+    return false;
+  }
+  if (req.method !== 'GET' && req.method !== 'HEAD') {
+    res.writeHead(405, { 'Content-Type': 'text/plain; charset=utf-8' });
+    res.end('method not allowed');
+    return true;
+  }
+  setSecurityHeaders(res, false);
+  const body = JSON.stringify(remoteHttps.remoteInfo(remoteHttps.httpsPort(PORT)));
+  res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
+  if (req.method === 'HEAD') {
+    res.end();
+    return true;
+  }
+  res.end(body);
+  return true;
+}
+
+function tryServePhoneQr(req: http.IncomingMessage, res: http.ServerResponse): boolean {
+  const url = new URL(req.url ?? '/', 'http://localhost');
+  if (url.pathname !== '/phone/qr') {
+    return false;
+  }
+  if (req.method !== 'GET' && req.method !== 'HEAD') {
+    res.writeHead(405, { 'Content-Type': 'text/plain; charset=utf-8' });
+    res.end('method not allowed');
+    return true;
+  }
+  setSecurityHeaders(res, false);
+  const target = phone.qrTarget(url.searchParams.get('u'));
+  if (!target) {
+    res.writeHead(400, { 'Content-Type': 'text/plain; charset=utf-8' });
+    res.end('missing url');
+    return true;
+  }
+  void phone
+    .pngForUrl(target)
+    .then((png) => {
+      if (res.writableEnded) {
+        return;
+      }
+      res.writeHead(200, {
+        'Content-Type': 'image/png',
+        'Cache-Control': 'no-store',
+      });
+      if (req.method === 'HEAD') {
+        res.end();
+        return;
+      }
+      res.end(png);
+    })
+    .catch(() => {
+      if (!res.writableEnded) {
+        res.writeHead(500, { 'Content-Type': 'text/plain; charset=utf-8' });
+        res.end('qr failed');
+      }
+    });
+  return true;
 }
 
 function serveFile(req: http.IncomingMessage, res: http.ServerResponse): void {
+  if (remoteHttps.tryPhoneApi(req, res)) {
+    return;
+  }
+  if (tryServePhoneRemote(req, res)) {
+    return;
+  }
+  if (tryServePhoneQr(req, res)) {
+    return;
+  }
+  if (servePhone(req, res)) {
+    return;
+  }
   setSecurityHeaders(res);
   const url = new URL(req.url ?? '/', 'http://localhost');
   if (req.method === 'GET' && url.pathname === '/health') {
@@ -142,10 +250,11 @@ wss.on('connection', (ws: WebSocket) => {
     const msg = result.data as Record<string, unknown>;
     const type = String(msg['t']);
     log({ ts: new Date().toISOString(), event: 'ws_message', connectionId, type });
-    route(ws, type, msg);
+    void route(ws, type, msg);
   });
 
   ws.on('close', () => {
+    phone.detach(ws);
     const notice = rooms.departureNotice(ws);
     if (notice) {
       rooms.broadcast(notice.room, notice.payload, ws);
@@ -173,8 +282,46 @@ wss.on('connection', (ws: WebSocket) => {
   });
 });
 
-function route(ws: WebSocket, type: string, msg: Record<string, unknown>): void {
+async function route(ws: WebSocket, type: string, msg: Record<string, unknown>): Promise<void> {
+  if (phone.isPhoneSocket(ws) && type !== 'swing' && type !== 'pose' && type !== 'ping' && type !== 'phone_link') {
+    return;
+  }
   switch (type) {
+    case 'phone_open': {
+      try {
+        const pair = await phone.openPair(ws, PORT);
+        rooms.send(ws, { t: 'phone_ready', code: pair.code, urls: pair.urls, qr: pair.qr });
+      } catch (err) {
+        log({
+          ts: new Date().toISOString(),
+          event: 'phone_open_failed',
+          error: err instanceof Error ? err.message : String(err),
+        });
+        sendError(ws, 'PHONE_FAILED', 'Could not start phone remote');
+      }
+      break;
+    }
+    case 'phone_link': {
+      const linked = phone.linkPhone(ws, String(msg['code'] ?? ''));
+      if (typeof linked === 'string') {
+        sendError(ws, 'PHONE_FAILED', linked);
+      }
+      break;
+    }
+    case 'swing': {
+      const swung = phone.swingFrom(ws, msg['power'], msg);
+      if (typeof swung === 'string') {
+        sendError(ws, 'PHONE_FAILED', swung);
+      }
+      break;
+    }
+    case 'pose': {
+      const posed = phone.poseFrom(ws, msg);
+      if (typeof posed === 'string') {
+        sendError(ws, 'PHONE_FAILED', posed);
+      }
+      break;
+    }
     case 'list':
       rooms.send(ws, rooms.lobbyList());
       break;
@@ -330,6 +477,25 @@ function route(ws: WebSocket, type: string, msg: Record<string, unknown>): void 
       rooms.broadcast(room, { t: 'stroke_update', playerId: player.id, strokes: player.strokes });
       break;
     }
+    case 'cursor': {
+      const player = rooms.playerFor(ws);
+      const room = rooms.roomFor(ws);
+      if (!player || !room) {
+        return;
+      }
+      rooms.broadcast(
+        room,
+        {
+          t: 'cursor',
+          playerId: player.id,
+          x: Math.min(1, Math.max(0, num(msg['x']))),
+          y: Math.min(1, Math.max(0, num(msg['y']))),
+          on: Boolean(msg['on']),
+        },
+        ws
+      );
+      break;
+    }
     case 'ping':
       rooms.send(ws, { t: 'pong' });
       break;
@@ -363,13 +529,50 @@ rooms.setVoteEndedHandler((room) => {
   broadcastLobbyList();
 });
 
-server.listen(PORT, HOST, () => {
+const secureServer = remoteHttps.createHttpsServer();
+const mux = net.createServer((socket) => {
+  socket.once('data', (data) => {
+    socket.pause();
+    socket.unshift(data);
+    if (data[0] === 0x16 && secureServer) {
+      secureServer.emit('connection', socket);
+    } else {
+      server.emit('connection', socket);
+    }
+    process.nextTick(() => {
+      socket.resume();
+    });
+  });
+});
+
+mux.listen(PORT, HOST, () => {
+  const securePort = remoteHttps.httpsPort(PORT);
   log({
     ts: new Date().toISOString(),
     event: 'server_start',
+    phone: phone.phonePageUrls(PORT),
+    remote: remoteHttps.remotePageUrls(securePort),
+    httpsPort: securePort,
+    https: secureServer != null,
     host: HOST,
     port: PORT,
     env: IS_PRODUCTION ? 'production' : 'development',
     webRoot: WEB_ROOT,
+  });
+  if (process.env['PUTT_SKIP_HOST_PROBE'] === '1') {
+    return;
+  }
+  setImmediate(() => {
+    const hosts = phone.discoverPhoneHosts();
+    phone.setPreferredHosts(hosts);
+    const shared = phone.trySharePortOnWindows(PORT);
+    log({
+      ts: new Date().toISOString(),
+      event: 'phone_lan',
+      hosts,
+      phone: phone.phonePageUrls(PORT),
+      remote: remoteHttps.remotePageUrls(remoteHttps.httpsPort(PORT)),
+      lanShare: shared || 'none',
+    });
   });
 });

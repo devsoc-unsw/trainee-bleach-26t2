@@ -3,6 +3,7 @@ import { after, before, describe, it } from 'node:test';
 import { spawn, type ChildProcess } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
+import https from 'node:https';
 import { WebSocket } from 'ws';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -56,7 +57,7 @@ let child: ChildProcess;
 before(async () => {
   child = spawn(process.execPath, ['--import', 'tsx', path.join(HERE, 'index.ts')], {
     cwd: path.join(HERE, '..'),
-    env: { ...process.env, PORT: String(PORT) },
+    env: { ...process.env, PORT: String(PORT), PUTT_SKIP_HOST_PROBE: '1' },
     stdio: ['ignore', 'pipe', 'pipe'],
   });
   let ready = false;
@@ -116,6 +117,15 @@ describe('websocket protocol', () => {
     const guestState = await guest.wait('lobby_state');
     assert.equal((hostState['players'] as unknown[]).length, 2);
     assert.equal((guestState['players'] as unknown[]).length, 2);
+    const hostPlayers = hostState['players'] as Array<{ id: string; joinedAt: number }>;
+    assert.ok(hostPlayers[0]!.joinedAt < hostPlayers[1]!.joinedAt);
+
+    host.send({ t: 'cursor', x: 0.25, y: 0.8, on: true });
+    const guestCursor = await guest.wait('cursor');
+    assert.equal(guestCursor['playerId'], welcome['playerId']);
+    assert.equal(guestCursor['x'], 0.25);
+    assert.equal(guestCursor['y'], 0.8);
+    assert.equal(guestCursor['on'], true);
 
     guest.send({ t: 'start', mapId: 'rainbow_stairs' });
     const denied = await guest.wait('error');
@@ -188,5 +198,64 @@ describe('websocket protocol', () => {
     const err = await client.wait('error');
     assert.equal(err['code'], 'JOIN_FAILED');
     client.close();
+  });
+
+  it('serves the phone remote page and relays a swing', async () => {
+    const page = await fetch(`http://127.0.0.1:${PORT}/phone`);
+    assert.equal(page.status, 200);
+    const html = await page.text();
+    assert.match(html, /Hold HIT and swing/);
+
+    const remote = await fetch(`http://127.0.0.1:${PORT}/phone/remote`);
+    assert.equal(remote.status, 200);
+    const remoteInfo = (await remote.json()) as { urls: string[]; local: string };
+    assert.ok(Array.isArray(remoteInfo.urls));
+    assert.match(remoteInfo.local, /^https:\/\//);
+
+    const secureHealth = await new Promise<number>((resolve, reject) => {
+      https
+        .get({ hostname: '127.0.0.1', port: PORT, path: '/health', rejectUnauthorized: false }, (res) => {
+          res.resume();
+          resolve(res.statusCode ?? 0);
+        })
+        .on('error', reject);
+    });
+    assert.equal(secureHealth, 200);
+
+    const qr = await fetch(
+      `http://127.0.0.1:${PORT}/phone/qr?u=${encodeURIComponent('http://192.168.1.8:8090/')}`
+    );
+    assert.equal(qr.status, 200);
+    assert.equal(qr.headers.get('content-type'), 'image/png');
+    const png = Buffer.from(await qr.arrayBuffer());
+    assert.equal(png[0], 0x89);
+    assert.equal(png[1], 0x50);
+
+    const pc = new Client();
+    const handset = new Client();
+    await pc.open();
+    await handset.open();
+    await pc.wait('welcome');
+    await pc.wait('lobby_list');
+    await handset.wait('welcome');
+    await handset.wait('lobby_list');
+
+    pc.send({ t: 'phone_open' });
+    const ready = await pc.wait('phone_ready');
+    const code = String(ready['code']);
+    assert.equal(code.length, 4);
+    assert.match(String(ready['qr'] ?? ''), /^data:image\/png;base64,/);
+
+    handset.send({ t: 'phone_link', code });
+    const ok = await handset.wait('phone_ok');
+    assert.equal(ok['code'], code);
+    await pc.wait('phone_linked');
+
+    handset.send({ t: 'swing', power: 0.55 });
+    const hit = await pc.wait('phone_hit');
+    assert.equal(hit['power'], 0.55);
+
+    pc.close();
+    handset.close();
   });
 });

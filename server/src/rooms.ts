@@ -107,8 +107,10 @@ export function lobbyState(room: Room): LobbyStateMessage {
       host: p.host,
       strokes: p.strokes,
       holed: p.holed,
+      joinedAt: p.joinedAt,
     });
   }
+  players.sort((a, b) => a.joinedAt - b.joinedAt);
   return {
     t: 'lobby_state',
     code: room.code,

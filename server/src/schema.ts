@@ -21,6 +21,7 @@ export interface PlayerPublic {
   host: boolean;
   strokes: number;
   holed: boolean;
+  joinedAt: number;
 }
 
 export interface RoomPublic {
