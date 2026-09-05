@@ -489,11 +489,12 @@ static func dress_quad_facade(
 
 	var win := louver_glass()
 	var frame := dark
-	for storey in [4.15, 6.55]:
+	var storeys: Array[float] = [4.15, 6.55]
+	for storey in storeys:
 		var wx := -half + 1.35
 		while wx <= half - 1.2:
-			var skip_door := with_entrance and storey < 5.0 and absf(wx) < door_w * 0.55
-			var skip_bay := with_entrance and storey > 5.5 and absf(wx) < 2.4
+			var skip_door: bool = with_entrance and storey < 5.0 and absf(wx) < door_w * 0.55
+			var skip_bay: bool = with_entrance and storey > 5.5 and absf(wx) < 2.4
 			if not skip_door and not skip_bay:
 				box(combo, Vector3(0.5, 1.55, 0.05), Vector3(wx, storey + 0.78, 0.05), frame, CSGShape3D.OPERATION_UNION, false)
 				box(combo, Vector3(0.4, 1.42, 0.04), Vector3(wx, storey + 0.78, 0.08), win, CSGShape3D.OPERATION_UNION, false)
