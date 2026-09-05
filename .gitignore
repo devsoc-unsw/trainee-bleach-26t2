@@ -23,3 +23,8 @@ Thumbs.db
 .env
 .env.local
 .env.*.local
+
+# Local TLS private keys
+**/*key.pem
+**/*.key
+server/certs/
