@@ -485,6 +485,16 @@ func _make_profile_controls() -> void:
 		btn.tooltip_text = "Claim this ball colour"
 		btn.set_meta("hex", hex)
 		btn.pressed.connect(_pick_colour.bind(hex))
+		var lock := Label.new()
+		lock.name = "Lock"
+		lock.text = "✕"
+		lock.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		lock.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		lock.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		lock.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		lock.visible = false
+		UiStyle.apply_font(lock, true, 16, Color(1, 1, 1, 0.92))
+		btn.add_child(lock)
 		_colour_row.add_child(btn)
 		_colour_buttons.append(btn)
 	_profile_error = Label.new()
@@ -508,22 +518,27 @@ func _refresh_profile_ui(people: Variant) -> void:
 	if _preview_ball and _preview_ball.has_method("apply_color"):
 		_preview_ball.call("apply_color", GameSession.my_color)
 	var taken: Dictionary = {}
-	var mine := GameSession.my_color.to_html(false).to_upper()
+	var mine := GameSession.color_hex(GameSession.my_color.to_html(false))
 	if people is Array:
 		for p in people:
 			if not p is Dictionary:
 				continue
-			var hex := str(p.get("color", "")).trim_prefix("#").to_upper()
+			var hex := GameSession.color_hex(p.get("color", ""))
 			if str(p.get("id", "")) == NetworkClient.player_id:
 				mine = hex
-			else:
+			elif not hex.is_empty():
 				taken[hex] = true
 	for btn in _colour_buttons:
-		var hex := str(btn.get_meta("hex", "")).trim_prefix("#").to_upper()
+		var hex := GameSession.color_hex(btn.get_meta("hex", ""))
 		var chosen := hex == mine
 		var busy := taken.has(hex)
 		btn.disabled = busy
-		btn.modulate = Color(1, 1, 1, 0.28) if busy else Color.WHITE
+		btn.modulate = Color(0.55, 0.55, 0.55, 0.55) if busy else Color.WHITE
+		btn.tooltip_text = "Taken" if busy else ("Your colour" if chosen else "Claim this ball colour")
+		btn.mouse_default_cursor_shape = Control.CURSOR_ARROW if busy else Control.CURSOR_POINTING_HAND
+		var lock := btn.get_node_or_null("Lock") as Label
+		if lock:
+			lock.visible = busy
 		var style := StyleBoxFlat.new()
 		style.bg_color = Color("#%s" % hex)
 		style.set_corner_radius_all(10)
@@ -556,9 +571,15 @@ func _commit_name() -> void:
 
 
 func _pick_colour(hex: String) -> void:
-	var current := "#%s" % GameSession.my_color.to_html(false)
-	if hex.to_upper() == current.to_upper():
+	var current := GameSession.color_hex(GameSession.my_color.to_html(false))
+	if GameSession.color_hex(hex) == current:
 		return
+	if GameSession.is_color_taken(hex):
+		if _profile_error:
+			_profile_error.text = "That colour is already taken"
+		return
+	if _profile_error:
+		_profile_error.text = ""
 	GameSession.set_profile("", hex)
 
 
