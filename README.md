@@ -78,6 +78,21 @@ The server hosts the WebSocket game and serves the Godot web export from `client
 
 Desktop Godot clients connect to `ws://127.0.0.1:8080` unless `PUTT_SERVER` is set.
 
+## Phone remote
+
+The game on the PC hosts the remote. Your phone only needs the same Wi-Fi.
+
+1. In Godot, open a hole (solo or multiplayer).
+2. Gear, then **LINK PHONE**. Scan the QR, or type the phone address shown under it.
+3. To test on this laptop, open the **This PC** address (it looks like `http://127.0.0.1:27351/`) in your browser. You should see a HIT button.
+4. Aim with the PC camera. Hold **HIT** and swing the phone.
+
+If Windows Firewall asks, allow Godot. Guest/isolated Wi-Fi will not work.
+
+`npm run dev` is only needed so the QR image can generate. The address still works if the QR is missing.
+
+Android on `http` is the reliable path. iPhone often needs motion permission on the first press, and some iOS versions refuse motion sensors on plain `http`.
+
 ## Running the Godot editor
 
 1. Install Godot 4.7.1
