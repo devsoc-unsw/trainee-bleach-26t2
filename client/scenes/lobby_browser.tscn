@@ -291,7 +291,7 @@ layout_mode = 2
 mouse_filter = 2
 
 [node name="Card" type="PanelContainer" parent="UI/Root/Content/RoomView"]
-custom_minimum_size = Vector2(420, 0)
+custom_minimum_size = Vector2(460, 0)
 layout_mode = 2
 theme_override_styles/panel = SubResource("StyleBoxFlat_card")
 
@@ -306,6 +306,8 @@ theme_override_font_sizes/font_size = 24
 theme_override_colors/font_color = Color(0.227, 0.196, 0.173, 1)
 text = "Lobby"
 horizontal_alignment = 1
+clip_text = true
+text_overrun_behavior = 3
 
 [node name="Code" type="Label" parent="UI/Root/Content/RoomView/Card/Layout"]
 layout_mode = 2
@@ -321,6 +323,8 @@ theme_override_fonts/font = ExtResource("5_bold")
 theme_override_font_sizes/font_size = 16
 text = "PUBLIC  ·  1 / 4 players"
 horizontal_alignment = 1
+clip_text = true
+text_overrun_behavior = 3
 
 [node name="Start" type="Button" parent="UI/Root/Content/RoomView/Card/Layout"]
 unique_name_in_owner = true

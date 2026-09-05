@@ -13,8 +13,7 @@ var voted := false
 var _frame: PanelContainer
 var _name_panel: PanelContainer
 var _name_label: Label
-var _badge: PanelContainer
-var _badge_label: Label
+var _voters: HBoxContainer
 
 
 func _ready() -> void:
@@ -70,11 +69,16 @@ func set_voted(on: bool) -> void:
 	_apply()
 
 
-func set_vote_count(n: int) -> void:
-	if _badge == null or _badge_label == null:
+func set_voters(people: Array) -> void:
+	if _voters == null:
 		return
-	_badge.visible = n > 0
-	_badge_label.text = str(n)
+	for child in _voters.get_children():
+		child.queue_free()
+	_voters.visible = not people.is_empty()
+	for person in people:
+		if not person is Dictionary:
+			continue
+		_voters.add_child(_voter_chip(int(person.get("slot", 1)), UiStyle.to_color(person.get("color", UiStyle.TEAL))))
 
 
 func _build_chrome(caption: String) -> void:
@@ -132,35 +136,31 @@ func _paint_preview(spec: Dictionary) -> void:
 
 
 func _make_badge(host: Control) -> void:
-	_badge = PanelContainer.new()
-	_badge.visible = false
-	_badge.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_badge.set_anchors_preset(Control.PRESET_TOP_RIGHT)
-	_badge.anchor_left = 1.0
-	_badge.anchor_right = 1.0
-	_badge.grow_horizontal = Control.GROW_DIRECTION_BEGIN
-	_badge.offset_left = -40.0
-	_badge.offset_top = 8.0
-	_badge.offset_right = -8.0
-	_badge.offset_bottom = 36.0
-	var chip := StyleBoxFlat.new()
-	chip.bg_color = UiStyle.CREAM
-	chip.set_corner_radius_all(999)
-	chip.set_border_width_all(2)
-	chip.border_color = UiStyle.TEAL
-	chip.content_margin_left = 8
-	chip.content_margin_right = 8
-	chip.content_margin_top = 3
-	chip.content_margin_bottom = 3
-	_badge.add_theme_stylebox_override("panel", chip)
-	host.add_child(_badge)
+	_voters = HBoxContainer.new()
+	_voters.visible = false
+	_voters.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_voters.alignment = BoxContainer.ALIGNMENT_END
+	_voters.add_theme_constant_override("separation", 4)
+	_voters.set_anchors_preset(Control.PRESET_TOP_RIGHT)
+	_voters.anchor_left = 1.0
+	_voters.anchor_right = 1.0
+	_voters.grow_horizontal = Control.GROW_DIRECTION_BEGIN
+	_voters.offset_left = -132.0
+	_voters.offset_top = 8.0
+	_voters.offset_right = -8.0
+	_voters.offset_bottom = 36.0
+	host.add_child(_voters)
 
-	_badge_label = Label.new()
-	_badge_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_badge_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	_badge_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	UiStyle.apply_font(_badge_label, true, 14, UiStyle.TEAL)
-	_badge.add_child(_badge_label)
+
+func _voter_chip(slot: int, tint: Color) -> Control:
+	var chip := Control.new()
+	chip.set_script(preload("res://scripts/voter_chip.gd"))
+	chip.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	chip.custom_minimum_size = Vector2(28, 28)
+	chip.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	chip.set("slot", maxi(slot, 1))
+	chip.set("tint", tint)
+	return chip
 
 
 func _load_preview(path: String) -> Texture2D:

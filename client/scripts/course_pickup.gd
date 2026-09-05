@@ -44,6 +44,20 @@ func _build() -> void:
 	if kind == "shrink":
 		_add_ball(_orb, 0.16, Color("F2D04B"), Color("C9A22A"))
 		_add_ball(_orb, 0.09, Color("FFF4C2"), Color("E6C04A"), Vector3(0, 0.22, 0))
+	elif kind == "gust":
+		_add_ball(_orb, 0.15, Color("4CB8B0"), Color("2A8A84"))
+		for i in 2:
+			var swirl := MeshInstance3D.new()
+			var torus := TorusMesh.new()
+			torus.inner_radius = 0.16
+			torus.outer_radius = 0.24
+			torus.rings = 16
+			torus.ring_segments = 12
+			swirl.mesh = torus
+			swirl.material_override = MapKit.toon(Color("7ED8D0"), Color("3A9A94"))
+			swirl.rotation_degrees = Vector3(70.0 if i == 0 else -40.0, 20.0 * float(i), 0.0)
+			swirl.scale = Vector3.ONE * (1.0 if i == 0 else 0.72)
+			_orb.add_child(swirl)
 	else:
 		_add_ball(_orb, 0.2, Color("9A9690"), Color("6E6A66"))
 		var ring := MeshInstance3D.new()
@@ -64,10 +78,15 @@ func _build() -> void:
 	disc.radial_segments = 16
 	glow.mesh = disc
 	glow.position = Vector3(0, -0.22, 0)
-	glow.material_override = MapKit.toon(
-		Color("F2D04B") if kind == "shrink" else Color("B8B4AE"),
-		Color("C9A22A") if kind == "shrink" else Color("7A7672")
-	)
+	var glow_lit := Color("B8B4AE")
+	var glow_shade := Color("7A7672")
+	if kind == "shrink":
+		glow_lit = Color("F2D04B")
+		glow_shade = Color("C9A22A")
+	elif kind == "gust":
+		glow_lit = Color("7ED8D0")
+		glow_shade = Color("3A9A94")
+	glow.material_override = MapKit.toon(glow_lit, glow_shade)
 	add_child(glow)
 
 

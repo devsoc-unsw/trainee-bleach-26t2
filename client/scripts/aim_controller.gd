@@ -180,12 +180,12 @@ func _emit_arrow_body(
 	shaft_len: float,
 	length: float,
 	head_len: float,
-	scale: float,
+	width_scale: float,
 	root_color: Color,
 	tip_color: Color
 ) -> void:
-	var half_w := arrow_width * 0.5 * scale
-	var head_half_w := arrow_head_width * 0.5 * scale
+	var half_w := arrow_width * 0.5 * width_scale
+	var head_half_w := arrow_head_width * 0.5 * width_scale
 	for i in range(LINE_STEPS):
 		var t0 := float(i) / float(LINE_STEPS)
 		var t1 := float(i + 1) / float(LINE_STEPS)
@@ -200,8 +200,8 @@ func _emit_arrow_body(
 		)
 
 	var head_base := start + dir * shaft_len
-	var tip := start + dir * (shaft_len + head_len * scale)
-	var mid := start + dir * (shaft_len + head_len * 0.38 * scale)
+	var tip := start + dir * (shaft_len + head_len * width_scale)
+	var mid := start + dir * (shaft_len + head_len * 0.38 * width_scale)
 	var base_color := root_color.lerp(tip_color, shaft_len / length)
 	var mid_color := root_color.lerp(tip_color, (shaft_len + head_len * 0.38) / length)
 	_add_arrow_quad(

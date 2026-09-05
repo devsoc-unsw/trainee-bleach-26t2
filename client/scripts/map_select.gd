@@ -28,6 +28,8 @@ func _ready() -> void:
 	GameSession.vote_updated.connect(_refresh_votes)
 	_refresh_votes()
 	_tick_countdown()
+	GameSession.play_music("play_menus")
+	GameSession.prewarm_maps()
 
 
 func _process(delta: float) -> void:
@@ -127,10 +129,8 @@ func _build_tiles() -> void:
 
 func _refresh_votes() -> void:
 	for tile in _tiles:
-		var n := 0
-		if _voting() and GameSession.vote_counts.has(tile.map_id):
-			n = int(GameSession.vote_counts[tile.map_id])
-		tile.set_vote_count(n)
+		var people: Array = GameSession.voters_for_map(tile.map_id) if _voting() else []
+		tile.set_voters(people)
 		tile.set_voted(_voting() and tile.map_id == GameSession.my_vote and not GameSession.my_vote.is_empty())
 	_tick_countdown()
 
@@ -162,7 +162,10 @@ func _select(index: int) -> void:
 		for tile in _tiles:
 			tile.set_selected(false)
 		return
-	_index = clampi(index, 0, _tiles.size() - 1)
+	var next := clampi(index, 0, _tiles.size() - 1)
+	if next != _index:
+		GameSession.play_sfx("hover")
+	_index = next
 	for i in _tiles.size():
 		_tiles[i].set_selected(i == _index)
 

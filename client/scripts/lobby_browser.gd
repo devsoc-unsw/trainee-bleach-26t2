@@ -1,6 +1,8 @@
 extends Node3D
 
 const BALL_SCENE := preload("res://scenes/Ball.tscn")
+const ROOM_CARD_W := 460.0
+const CREATE_CARD_W := 420.0
 
 @onready var world: Node3D = $World
 @onready var camera: Camera3D = $Camera3D
@@ -45,6 +47,7 @@ var _profile_error: Label
 
 
 func _ready() -> void:
+	GameSession.play_music("play_menus")
 	_build_backdrop()
 	_cam_base = MapKit.frame_menu_camera(camera)
 	get_viewport().size_changed.connect(_apply_responsive)
@@ -58,6 +61,8 @@ func _ready() -> void:
 	_make_mode_picker()
 	_make_room_mode_controls()
 	_make_profile_controls()
+	_lock_card_width($UI/Root/Content/RoomView/Card, ROOM_CARD_W)
+	_lock_card_width($UI/Root/CreateDimmer/Card, CREATE_CARD_W)
 	create_dimmer.gui_input.connect(func(e: InputEvent) -> void: _dimmer_close(e, create_dimmer))
 	join_dimmer.gui_input.connect(func(e: InputEvent) -> void: _dimmer_close(e, join_dimmer))
 	join_edit.text_changed.connect(_on_join_code_typed)
@@ -178,6 +183,30 @@ func _apply_responsive() -> void:
 	content.add_theme_constant_override("margin_bottom", 72)
 
 
+func _lock_card_width(card: Control, width: float) -> void:
+	card.custom_minimum_size.x = width
+	card.size.x = width
+	if card is PanelContainer:
+		(card as PanelContainer).clip_contents = false
+	_clip_card_text(card)
+
+
+func _clip_card_text(node: Node) -> void:
+	if node is Label:
+		var label := node as Label
+		label.clip_text = true
+		label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+		label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	elif node is LineEdit:
+		(node as LineEdit).size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	elif node is Button:
+		(node as Button).clip_text = true
+	elif node is BoxContainer:
+		(node as Control).size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	for child in node.get_children():
+		_clip_card_text(child)
+
+
 func _show_list() -> void:
 	list_view.visible = true
 	room_view.visible = false
@@ -221,18 +250,23 @@ func _fill_players(people: Variant) -> void:
 		if not p is Dictionary:
 			continue
 		var row := HBoxContainer.new()
-		row.add_theme_constant_override("separation", 8)
 		row.alignment = BoxContainer.ALIGNMENT_CENTER
+		row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		var cluster := HBoxContainer.new()
+		cluster.add_theme_constant_override("separation", 8)
+		cluster.alignment = BoxContainer.ALIGNMENT_CENTER
 		var swatch := ColorRect.new()
 		swatch.custom_minimum_size = Vector2(12, 12)
+		swatch.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 		swatch.color = UiStyle.to_color(p.get("color", "#E23B3B"))
 		var name_label := Label.new()
 		var suffix := "  (host)" if bool(p.get("host", false)) else ""
 		name_label.text = "%s%s" % [str(p.get("name", "Player")), suffix]
-		name_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		name_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
 		UiStyle.apply_font(name_label, true, 14, UiStyle.INK)
-		row.add_child(swatch)
-		row.add_child(name_label)
+		cluster.add_child(swatch)
+		cluster.add_child(name_label)
+		row.add_child(cluster)
 		_player_list.add_child(row)
 
 
@@ -361,8 +395,11 @@ func _make_rounds_picker() -> void:
 	var layout: VBoxContainer = $UI/Root/CreateDimmer/Card/Layout
 	var vis: Control = $UI/Root/CreateDimmer/Card/Layout/Visibility
 	var card: PanelContainer = $UI/Root/CreateDimmer/Card
+	card.offset_left = -CREATE_CARD_W * 0.5
+	card.offset_right = CREATE_CARD_W * 0.5
 	card.offset_top = -310.0
 	card.offset_bottom = 310.0
+	card.custom_minimum_size.x = CREATE_CARD_W
 	var caption := Label.new()
 	caption.text = "ROUNDS"
 	UiStyle.apply_font(caption, true, 13, UiStyle.INK)
@@ -476,11 +513,12 @@ func _make_profile_controls() -> void:
 	layout.add_child(colour_cap)
 	_colour_row = HBoxContainer.new()
 	_colour_row.alignment = BoxContainer.ALIGNMENT_CENTER
-	_colour_row.add_theme_constant_override("separation", 8)
+	_colour_row.add_theme_constant_override("separation", 10)
+	_colour_row.custom_minimum_size.y = 42
 	layout.add_child(_colour_row)
 	for hex in GameSession.BALL_COLORS:
 		var btn := Button.new()
-		btn.focus_mode = Control.FOCUS_NONE
+		btn.set_script(load("res://scripts/colour_swatch.gd"))
 		btn.custom_minimum_size = Vector2(34, 34)
 		btn.tooltip_text = "Claim this ball colour"
 		btn.set_meta("hex", hex)
@@ -533,6 +571,8 @@ func _refresh_profile_ui(people: Variant) -> void:
 		var chosen := hex == mine
 		var busy := taken.has(hex)
 		btn.disabled = busy
+		if busy and btn.has_method("_on_hover"):
+			btn.call("_on_hover", false)
 		btn.modulate = Color(0.55, 0.55, 0.55, 0.55) if busy else Color.WHITE
 		btn.tooltip_text = "Taken" if busy else ("Your colour" if chosen else "Claim this ball colour")
 		btn.mouse_default_cursor_shape = Control.CURSOR_ARROW if busy else Control.CURSOR_POINTING_HAND
@@ -586,8 +626,9 @@ func _pick_colour(hex: String) -> void:
 func _make_room_mode_controls() -> void:
 	var layout: VBoxContainer = $UI/Root/Content/RoomView/Card/Layout
 	_room_mode_label = Label.new()
+	_room_mode_label.text = "MODE"
 	_room_mode_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	UiStyle.apply_font(_room_mode_label, true, 14, UiStyle.TEAL)
+	UiStyle.apply_font(_room_mode_label, true, 13, UiStyle.INK)
 	layout.add_child(_room_mode_label)
 	var row := HBoxContainer.new()
 	row.name = "ModeRow"
@@ -613,8 +654,6 @@ func _make_room_mode_controls() -> void:
 
 func _refresh_room_mode_ui() -> void:
 	var mode := str(GameSession.active_lobby.get("gameMode", GameSession.game_mode))
-	if _room_mode_label:
-		_room_mode_label.text = "Mode: %s" % _mode_label(mode)
 	if _room_turn_btn:
 		_room_turn_btn.get_parent().visible = GameSession.hosting
 		_style_choice(_room_turn_btn, mode == "turn_by_turn")
@@ -691,15 +730,24 @@ func _sync_visibility_buttons() -> void:
 	_style_choice(private_btn, not _public_visibility)
 
 
+func _choice_pill(color: Color) -> StyleBoxFlat:
+	var style := UiStyle.pill(color, 12, 8)
+	style.shadow_size = 0
+	style.shadow_offset = Vector2.ZERO
+	return style
+
+
 func _style_choice(btn: Button, on: bool) -> void:
 	var color := UiStyle.TEAL if on else Color("E7E0D4")
 	var font := Color.WHITE if on else UiStyle.BROWN
-	btn.add_theme_stylebox_override("normal", UiStyle.pill(color, 18, 10))
-	btn.add_theme_stylebox_override("hover", UiStyle.pill(color.lightened(0.08), 18, 10))
-	btn.add_theme_stylebox_override("pressed", UiStyle.pill(color.darkened(0.08), 18, 10))
-	btn.add_theme_stylebox_override("hover_pressed", UiStyle.pill(color.darkened(0.08), 18, 10))
-	btn.add_theme_stylebox_override("focus", UiStyle.pill(color, 18, 10))
-	btn.add_theme_stylebox_override("disabled", UiStyle.pill(color, 18, 10))
+	btn.clip_text = true
+	btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	btn.add_theme_stylebox_override("normal", _choice_pill(color))
+	btn.add_theme_stylebox_override("hover", _choice_pill(color.lightened(0.08)))
+	btn.add_theme_stylebox_override("pressed", _choice_pill(color.darkened(0.08)))
+	btn.add_theme_stylebox_override("hover_pressed", _choice_pill(color.darkened(0.08)))
+	btn.add_theme_stylebox_override("focus", _choice_pill(color))
+	btn.add_theme_stylebox_override("disabled", _choice_pill(color))
 	UiStyle.apply_button_font(btn, font)
 
 

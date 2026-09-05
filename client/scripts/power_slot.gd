@@ -13,6 +13,8 @@ const SHIELD := Color("8E8A84")
 const SHIELD_LINE := Color("5A5248")
 const TINY := Color("F2D04B")
 const TINY_LINE := Color("C9A22A")
+const GUST := Color("4CB8B0")
+const GUST_LINE := Color("2A8A84")
 const FILL := Color("F6F1E6")
 
 
@@ -35,6 +37,14 @@ func set_slot(next_kind: String, seconds: float) -> void:
 	charged = charged_now
 	remaining = next
 	mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND if charged and remaining <= 0.001 else Control.CURSOR_ARROW
+	if kind == "shield":
+		tooltip_text = "Shield: bounce other balls off you"
+	elif kind == "shrink":
+		tooltip_text = "Shrink: slip through tight gaps"
+	elif kind == "gust":
+		tooltip_text = "Gust: shove nearby players away"
+	else:
+		tooltip_text = ""
 	queue_redraw()
 
 
@@ -47,7 +57,11 @@ func _gui_input(event: InputEvent) -> void:
 
 
 func _max_time() -> float:
-	return 5.0 if kind == "shield" else 10.0
+	if kind == "shield":
+		return 5.0
+	if kind == "shrink":
+		return 10.0
+	return 1.0
 
 
 func _draw() -> void:
@@ -71,20 +85,28 @@ func _draw_dotted(center: Vector2, radius: float) -> void:
 
 func _draw_ready(center: Vector2, radius: float) -> void:
 	draw_circle(center, radius - 0.5, FILL)
-	var accent := SHIELD_LINE if kind == "shield" else TINY_LINE
-	draw_arc(center, radius, 0.0, TAU, 36, accent, 2.6, true)
+	draw_arc(center, radius, 0.0, TAU, 36, _accent(), 2.6, true)
 
 
 func _draw_held(center: Vector2, radius: float) -> void:
 	draw_circle(center, radius - 0.5, FILL)
-	var accent := SHIELD_LINE if kind == "shield" else TINY_LINE
 	var sweep := clampf(remaining / _max_time(), 0.0, 1.0)
-	draw_arc(center, radius, -PI * 0.5, -PI * 0.5 + TAU * sweep, 36, accent, 2.6, true)
+	draw_arc(center, radius, -PI * 0.5, -PI * 0.5 + TAU * sweep, 36, _accent(), 2.6, true)
+
+
+func _accent() -> Color:
+	if kind == "shield":
+		return SHIELD_LINE
+	if kind == "gust":
+		return GUST_LINE
+	return TINY_LINE
 
 
 func _draw_sigil(center: Vector2) -> void:
 	if kind == "shield":
 		_draw_shield(center)
+	elif kind == "gust":
+		_draw_gust(center)
 	else:
 		_draw_tiny(center)
 
@@ -109,3 +131,14 @@ func _draw_tiny(center: Vector2) -> void:
 	draw_arc(center, 12.0, 0.0, TAU, 28, TINY_LINE, 2.1, true)
 	draw_circle(center, 5.6, TINY)
 	draw_circle(center + Vector2(-1.6, -1.6), 1.5, Color("FFF4C2"))
+
+
+func _draw_gust(center: Vector2) -> void:
+	_draw_gust_arc(center + Vector2(0, -6), 8.5, 2.2)
+	_draw_gust_arc(center + Vector2(0, 0), 10.0, 2.4)
+	_draw_gust_arc(center + Vector2(0, 6), 8.5, 2.2)
+
+
+func _draw_gust_arc(center: Vector2, radius: float, width: float) -> void:
+	draw_arc(center, radius, -2.35, 0.55, 18, GUST, width, true)
+	draw_arc(center, radius, -2.35, 0.55, 18, GUST_LINE, 1.1, true)
