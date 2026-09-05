@@ -19,6 +19,8 @@ var dragging: bool = false
 var overview: bool = false
 var free_roam: bool = false
 var move_speed: float = 14.0
+var _phone_drive := Vector2.ZERO
+var input_locked := false
 
 
 func _ready() -> void:
@@ -27,9 +29,16 @@ func _ready() -> void:
 	_update_rotation()
 
 
+func set_input_locked(on: bool) -> void:
+	input_locked = on
+	_phone_drive = Vector2.ZERO
+	dragging = false
+
+
 func _physics_process(delta: float) -> void:
 	if free_roam:
-		_move_free(delta)
+		if not input_locked:
+			_move_free(delta)
 		return
 	if target:
 		global_position = target.global_position
@@ -37,6 +46,7 @@ func _physics_process(delta: float) -> void:
 
 func set_follow(node: Node3D) -> void:
 	free_roam = false
+	_phone_drive = Vector2.ZERO
 	target = node
 	overview = false
 	spring_arm.collision_mask = 2
@@ -82,7 +92,8 @@ func toggle_overview() -> void:
 
 
 func _unhandled_input(event: InputEvent) -> void:
-	
+	if input_locked:
+		return
 	if event is InputEventMouseButton:		
 		# Mouse capabilities
 		match event.button_index:
@@ -122,7 +133,17 @@ func _unhandled_input(event: InputEvent) -> void:
 		_update_rotation()
 
 
+func set_phone_drive(stick_x: float, stick_y: float) -> void:
+	if input_locked:
+		_phone_drive = Vector2.ZERO
+		return
+	var stick := Vector2(stick_x, stick_y)
+	_phone_drive = stick if stick.length() >= 0.08 else Vector2.ZERO
+
+
 func orbit_look(look_x: float, look_y: float, delta: float) -> void:
+	if input_locked:
+		return
 	if absf(look_x) < 0.06 and absf(look_y) < 0.06:
 		return
 	yaw -= look_x * 1.7 * delta
@@ -162,6 +183,8 @@ func _move_free(delta: float) -> void:
 		wish.y += 1.0
 	if Input.is_physical_key_pressed(KEY_Q) or Input.is_physical_key_pressed(KEY_CTRL):
 		wish.y -= 1.0
+	if _phone_drive.length_squared() > 0.0001:
+		wish += fwd * _phone_drive.y + right * _phone_drive.x
 	if wish.length_squared() < 0.0001:
 		return
 	var speed := move_speed * (2.2 if Input.is_physical_key_pressed(KEY_SHIFT) else 1.0)
