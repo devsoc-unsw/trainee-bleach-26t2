@@ -10,12 +10,24 @@ signal sunk_finished
 @onready var win_menu: CanvasLayer = $WinMenu
 
 var _sunk: bool = false
+var _armed := false
 
 
 func _ready() -> void:
 	_build_funnel()
 	_build_confetti()
+	sink_area.monitoring = false
 	sink_area.body_entered.connect(_on_body_entered)
+	call_deferred("_arm")
+
+
+func _arm() -> void:
+	await get_tree().physics_frame
+	await get_tree().physics_frame
+	if not is_inside_tree():
+		return
+	sink_area.monitoring = true
+	_armed = true
 
 
 func _build_funnel() -> void:
@@ -63,7 +75,7 @@ func show_results(hole: int, par: int, strokes: int, time_text: String) -> void:
 
 
 func _on_body_entered(body: Node3D) -> void:
-	if _sunk:
+	if _sunk or not _armed:
 		return
 	if not body is RigidBody3D:
 		return

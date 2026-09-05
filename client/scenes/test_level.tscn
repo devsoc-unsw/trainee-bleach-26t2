@@ -55,7 +55,7 @@ material = SubResource("ShaderMaterial_grass")
 [node name="CupCut" type="CSGCylinder3D" parent="Ground"]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, -30)
 operation = 2
-radius = 0.2
+radius = 0.25
 height = 0.5
 sides = 20
 

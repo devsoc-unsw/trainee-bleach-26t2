@@ -24,8 +24,8 @@ shader_parameter/dimple_amount = 0.55
 shader_parameter/stripe_width = 0.07
 
 [sub_resource type="SphereMesh" id="SphereMesh_ball"]
-radius = 0.12
-height = 0.24
+radius = 0.15
+height = 0.30
 radial_segments = 32
 rings = 16
 
@@ -35,13 +35,13 @@ shader = ExtResource("3_outsh")
 shader_parameter/outline_color = Color(0.45, 0.32, 0.24, 1)
 
 [sub_resource type="SphereMesh" id="SphereMesh_outline"]
-radius = 0.12
-height = 0.24
+radius = 0.15
+height = 0.30
 radial_segments = 24
 rings = 12
 
 [sub_resource type="SphereShape3D" id="SphereShape3D_ujow2"]
-radius = 0.12
+radius = 0.15
 
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_shadow"]
 render_priority = -2
@@ -49,7 +49,7 @@ shader = ExtResource("4_shadsh")
 shader_parameter/shadow_color = Color(0.28, 0.18, 0.14, 0.34)
 
 [sub_resource type="PlaneMesh" id="PlaneMesh_shadow"]
-size = Vector2(0.48, 0.48)
+size = Vector2(0.60, 0.60)
 
 [node name="Ball" type="RigidBody3D"]
 mass = 0.05

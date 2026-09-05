@@ -23,9 +23,9 @@ const FOLIAGE := Color("4F7A3E")
 const FOLIAGE_SHADE := Color("355528")
 const GLASS := Color("7EC8E0")
 const WHITE := Color("F4F1EA")
-const CUP_INNER := 0.155
-const CUP_OUTER := 0.22
-const CUP_DEPTH := 0.16
+const CUP_INNER := 0.195
+const CUP_OUTER := 0.275
+const CUP_DEPTH := 0.18
 const MENU_CAM_POS := Vector3(0.85, 1.55, 3.45)
 const MENU_CAM_LOOK := Vector3(2.85, 0.38, -0.55)
 const MENU_CAM_FOV := 28.0
@@ -381,7 +381,7 @@ static func _add_tri(st: SurfaceTool, a: Vector3, b: Vector3, c: Vector3) -> voi
 	st.add_vertex(c)
 
 
-static func cup_cut(parent: Node3D, pos: Vector3, radius: float = 0.2) -> CSGCylinder3D:
+static func cup_cut(parent: Node3D, pos: Vector3, radius: float = 0.25) -> CSGCylinder3D:
 	return cylinder(
 		parent,
 		radius,
@@ -617,10 +617,10 @@ static func _seg_near_cup(a: Vector3, b: Vector3, cup: Vector3, radius: float) -
 static func _line_through_cup(a: Vector3, b: Vector3, cup: Vector3, radius: float) -> bool:
 	var ab := Vector2(b.x - a.x, b.z - a.z)
 	var ac := Vector2(cup.x - a.x, cup.z - a.z)
-	var len := ab.length()
-	if len < 0.001:
+	var seg_len := ab.length()
+	if seg_len < 0.001:
 		return ac.length() < radius
-	return absf(ab.x * ac.y - ab.y * ac.x) / len < radius
+	return absf(ab.x * ac.y - ab.y * ac.x) / seg_len < radius
 
 
 static func emit_void_bumpers(parent: Node3D, shared: Dictionary, cup: Vector3) -> void:

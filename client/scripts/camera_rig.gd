@@ -6,7 +6,7 @@ extends Node3D
 @export var zoom_speed: float = 1.0
 @export var min_zoom: float = 3.0
 @export var max_zoom: float = 36.0
-@export var overview_zoom: float = 28.0
+@export var overview_zoom: float = 18.0
 @export var min_pitch: float = -85.0
 @export var max_pitch: float = -10.0
 

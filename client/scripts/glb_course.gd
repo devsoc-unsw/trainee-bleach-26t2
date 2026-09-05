@@ -581,7 +581,6 @@ func _punch_cup() -> void:
 	var green := get_node_or_null("Green") as MeshInstance3D
 	if hole_point == null or green == null or green.mesh == null:
 		return
-	green.visible = false
 	var aabb: AABB = green.mesh.get_aabb()
 	var baked := green.global_transform.basis.get_scale().abs()
 	var size := Vector3(
@@ -597,15 +596,15 @@ func _punch_cup() -> void:
 	play.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	_gen(play)
 	add_child(play)
-	var basis := green.global_transform.basis.orthonormalized()
+	var green_basis := green.global_transform.basis.orthonormalized()
 	var top_local := Vector3(
 		aabb.get_center().x,
 		aabb.position.y + aabb.size.y,
 		aabb.get_center().z
 	)
 	# Sit just under pavement / road so the two surfaces do not z-fight.
-	var origin := green.to_global(top_local) - basis.y * (size.y * 0.5 + 0.02)
-	play.global_transform = Transform3D(basis, origin)
+	var origin := green.to_global(top_local) - green_basis.y * (size.y * 0.5 + 0.02)
+	play.global_transform = Transform3D(green_basis, origin)
 	play.material_override = MapKit.grass(
 		Color(0.27, 0.45, 0.28),
 		Color(0.16, 0.32, 0.2),
@@ -613,6 +612,7 @@ func _punch_cup() -> void:
 		hole_point.global_position,
 		MapKit.CUP_INNER
 	)
+	green.visible = false
 	if Engine.is_editor_hint():
 		return
 	_add_green_play_collision(play, hole_point.global_position)
@@ -809,12 +809,12 @@ func _add_green_collision(mesh_i: MeshInstance3D, phys: PhysicsMaterial) -> void
 	if cut_mesh.get_surface_count() == 0:
 		mesh_i.create_trimesh_collision()
 	else:
-		var body := StaticBody3D.new()
-		body.physics_material_override = phys
+		var cut_body := StaticBody3D.new()
+		cut_body.physics_material_override = phys
 		var col := CollisionShape3D.new()
 		col.shape = cut_mesh.create_trimesh_shape()
-		body.add_child(col)
-		mesh_i.add_child(body)
+		cut_body.add_child(col)
+		mesh_i.add_child(cut_body)
 	for child in mesh_i.get_children():
 		var body := child as StaticBody3D
 		if body != null:
@@ -841,9 +841,9 @@ func _add_building_body(mesh_i: MeshInstance3D, phys: PhysicsMaterial) -> void:
 	if volumes.is_empty():
 		mesh_i.create_trimesh_collision()
 		for child in mesh_i.get_children():
-			var body := child as StaticBody3D
-			if body != null:
-				body.physics_material_override = phys
+			var child_body := child as StaticBody3D
+			if child_body != null:
+				child_body.physics_material_override = phys
 		return
 	var body := StaticBody3D.new()
 	body.name = "%sBody" % mesh_i.name
