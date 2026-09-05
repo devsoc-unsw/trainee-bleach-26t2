@@ -104,13 +104,13 @@ fly deploy
 
 ### Temporary public tunnel (local machine)
 
-With the server already on port 8080:
+Export the web build first (`./scripts/export-web.sh`), start the server on 8080, then open a quick tunnel:
 
 ```bash
-cloudflared tunnel --url http://127.0.0.1:8080
+./scripts/public-tunnel.sh
 ```
 
-Restart the server with that trycloudflare URL:
+Copy the printed `https://....trycloudflare.com` origin and restart the server with it so phone QR codes match:
 
 ```bash
 cd server
@@ -118,11 +118,15 @@ PUTT_PUBLIC_URL=https://YOUR-SUBDOMAIN.trycloudflare.com \
 NODE_ENV=production PUTT_SKIP_HOST_PROBE=1 npm run start
 ```
 
+Open that HTTPS origin in a browser for the game. Phone remotes use `/remote?c=CODE` on the same host from any network.
+
 Desktop Godot clients can join with:
 
 ```bash
 PUTT_SERVER=wss://YOUR-SUBDOMAIN.trycloudflare.com
 ```
+
+Quick tunnels are temporary. Prefer Railway or Fly for a lasting public host.
 
 ## Server scripts
 
