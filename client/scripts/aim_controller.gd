@@ -7,11 +7,11 @@ signal aim_updated(direction: Vector3, power: float)
 @export var ball: PuttBall
 @export var camera_rig: CameraRig
 @export var max_drag_px: float = 320.0
-@export var arrow_min_length: float = 0.425
-@export var arrow_max_length: float = 5.0
-@export var arrow_width: float = 0.055
-@export var arrow_head_width: float = 0.14
-@export var arrow_head_length: float = 0.22
+@export var arrow_min_length: float = 0.7
+@export var arrow_max_length: float = 5.4
+@export var arrow_width: float = 0.12
+@export var arrow_head_width: float = 0.36
+@export var arrow_head_length: float = 0.46
 @export var max_deviation_degrees: float = 3.0
 @export var preview_deadzone_px: float = 6.0
 @export var cancel_radius_px: float = 28.0
@@ -164,20 +164,35 @@ func _draw_aim_arrow(start: Vector3, dir: Vector3, length: float, tip_color: Col
 	else:
 		right = right.normalized()
 
-	var head_len := minf(arrow_head_length, length * 0.45)
-	var shaft_len := maxf(length - head_len, 0.0)
-	var half_w := arrow_width * 0.5
-	var head_half_w := arrow_head_width * 0.5
-	start += Vector3.UP * 0.02
-
+	var head_len := minf(arrow_head_length, length * 0.5)
+	var shaft_len := maxf(length - head_len, 0.08)
+	start += Vector3.UP * 0.06
 	immediate_mesh.surface_begin(Mesh.PRIMITIVE_TRIANGLES)
+	_emit_arrow_body(start, dir, right, shaft_len, length, head_len, 1.7, Color("2A221C"), Color("2A221C"))
+	_emit_arrow_body(start, dir, right, shaft_len, length, head_len, 1.0, Color("F6F1E6"), tip_color)
+	immediate_mesh.surface_end()
+
+
+func _emit_arrow_body(
+	start: Vector3,
+	dir: Vector3,
+	right: Vector3,
+	shaft_len: float,
+	length: float,
+	head_len: float,
+	scale: float,
+	root_color: Color,
+	tip_color: Color
+) -> void:
+	var half_w := arrow_width * 0.5 * scale
+	var head_half_w := arrow_head_width * 0.5 * scale
 	for i in range(LINE_STEPS):
 		var t0 := float(i) / float(LINE_STEPS)
 		var t1 := float(i + 1) / float(LINE_STEPS)
 		var p0 := start + dir * (shaft_len * t0)
 		var p1 := start + dir * (shaft_len * t1)
-		var c0 := Color.WHITE.lerp(tip_color, t0 * (shaft_len / length))
-		var c1 := Color.WHITE.lerp(tip_color, t1 * (shaft_len / length))
+		var c0 := root_color.lerp(tip_color, t0 * (shaft_len / length))
+		var c1 := root_color.lerp(tip_color, t1 * (shaft_len / length))
 		_add_arrow_quad(
 			p0 - right * half_w, p0 + right * half_w,
 			p1 + right * half_w, p1 - right * half_w,
@@ -185,15 +200,21 @@ func _draw_aim_arrow(start: Vector3, dir: Vector3, length: float, tip_color: Col
 		)
 
 	var head_base := start + dir * shaft_len
-	var tip := start + dir * length
-	var base_color := Color.WHITE.lerp(tip_color, shaft_len / length)
-	immediate_mesh.surface_set_color(base_color)
-	immediate_mesh.surface_add_vertex(head_base - right * head_half_w)
-	immediate_mesh.surface_set_color(base_color)
-	immediate_mesh.surface_add_vertex(head_base + right * head_half_w)
+	var tip := start + dir * (shaft_len + head_len * scale)
+	var mid := start + dir * (shaft_len + head_len * 0.38 * scale)
+	var base_color := root_color.lerp(tip_color, shaft_len / length)
+	var mid_color := root_color.lerp(tip_color, (shaft_len + head_len * 0.38) / length)
+	_add_arrow_quad(
+		head_base - right * head_half_w, head_base + right * head_half_w,
+		mid + right * (head_half_w * 0.55), mid - right * (head_half_w * 0.55),
+		base_color, mid_color
+	)
+	immediate_mesh.surface_set_color(mid_color)
+	immediate_mesh.surface_add_vertex(mid - right * (head_half_w * 0.55))
+	immediate_mesh.surface_set_color(mid_color)
+	immediate_mesh.surface_add_vertex(mid + right * (head_half_w * 0.55))
 	immediate_mesh.surface_set_color(tip_color)
 	immediate_mesh.surface_add_vertex(tip)
-	immediate_mesh.surface_end()
 
 
 func _add_arrow_quad(
@@ -255,7 +276,7 @@ func swing_from_phone(power: float, stick_x: float = 0.0, stick_y: float = 0.0) 
 	if ball.is_moving:
 		return
 	if ball.freeze:
-		ball.freeze = false
+		return
 	ball.sleeping = false
 	clear_aim()
 	var clamped := clampf(power, 0.08, 1.0)
@@ -289,14 +310,8 @@ func preview_from_phone(stick_x: float, stick_y: float, power: float = -1.0) -> 
 
 
 func _draw_phone_arrow(direction: Vector3, power: float) -> void:
-	var length := lerpf(0.35, arrow_max_length, power)
-	var old_width := arrow_width
-	var old_head_w := arrow_head_width
-	arrow_width = lerpf(0.04, 0.09, power)
-	arrow_head_width = lerpf(0.11, 0.2, power)
+	var length := lerpf(arrow_min_length, arrow_max_length, power)
 	_draw_aim_arrow(ball.global_position, direction, length, _power_color(power))
-	arrow_width = old_width
-	arrow_head_width = old_head_w
 
 
 func _world_from_stick(stick_x: float, stick_y: float) -> Vector3:
