@@ -22,7 +22,6 @@ const QUAD_WIDTH := 20.0
 func _ready() -> void:
 	var ground := MapKit.combiner(self)
 	var grass := MapKit.grass()
-	var brick := MapKit.brick_wall()
 	var pavers := MapKit.pavers()
 
 	var landing_h := 0.2
@@ -70,10 +69,13 @@ func _ready() -> void:
 	MapKit.box(self, Vector3(0.28, 0.7, stairs_len + 0.4), Vector3(WIDTH * 0.5, 0.45, stairs_mid_z), rail_mat)
 
 	var back_z := quad_z - QUAD_DEPTH * 0.5 - 0.6
-	MapKit.box(self, Vector3(22, 6.5, 1.4), Vector3(0, quad_top + 3.15, back_z), brick)
-	MapKit.box(self, Vector3(1.4, 5.2, 14), Vector3(-QUAD_WIDTH * 0.5 - 0.2, quad_top + 2.5, quad_z - 2), brick)
-	MapKit.box(self, Vector3(1.4, 5.2, 14), Vector3(QUAD_WIDTH * 0.5 + 0.2, quad_top + 2.5, quad_z - 2), brick)
-	MapKit.box(self, Vector3(8.5, 2.8, 0.25), Vector3(0, quad_top + 3.4, back_z + 0.7), MapKit.toon(MapKit.GLASS, Color("4A9BB8")), CSGShape3D.OPERATION_UNION, false)
+	var tan := MapKit.quad_brick()
+	MapKit.box(self, Vector3(22, 10.8, 1.6), Vector3(0, quad_top + 5.3, back_z), tan)
+	MapKit.box(self, Vector3(1.6, 10.8, 14), Vector3(-QUAD_WIDTH * 0.5 - 0.3, quad_top + 5.3, quad_z - 2), tan)
+	MapKit.box(self, Vector3(1.6, 10.8, 14), Vector3(QUAD_WIDTH * 0.5 + 0.3, quad_top + 5.3, quad_z - 2), tan)
+	MapKit.dress_quad_facade(self, Vector3(0.0, quad_top, back_z + 0.82), QUAD_WIDTH, quad_top, 0.0, true)
+	MapKit.dress_quad_facade(self, Vector3(-QUAD_WIDTH * 0.5, quad_top, quad_z), QUAD_DEPTH, quad_top, PI * 0.5, false)
+	MapKit.dress_quad_facade(self, Vector3(QUAD_WIDTH * 0.5, quad_top, quad_z), QUAD_DEPTH, quad_top, -PI * 0.5, false)
 
 	MapKit.tree(self, Vector3(-7.2, quad_top, quad_z + 5.5), 3.2)
 	MapKit.tree(self, Vector3(7.4, quad_top, quad_z + 4.8), 3.6)
@@ -82,9 +84,6 @@ func _ready() -> void:
 	var planter := MapKit.toon(Color("C7B89A"), Color("9C8B70"))
 	MapKit.box(self, Vector3(1.6, 0.38, 1.6), Vector3(-2.2, quad_top + 0.19, quad_z + 1.5), planter)
 	MapKit.cylinder(self, 0.55, 0.7, Vector3(-2.2, quad_top + 0.7, quad_z + 1.5), MapKit.toon(MapKit.FOLIAGE, MapKit.FOLIAGE_SHADE), 10)
-
-	var title := MapKit.label(self, "THE QUAD", Vector3(0, quad_top + 5.2, back_z + 0.85), 72)
-	title.rotation.y = 0
 
 	MapKit.marker(self, "Tee", Vector3(0, landing_h + 0.02, 1.4))
 	MapKit.marker(self, "HolePoint", hole_pos)

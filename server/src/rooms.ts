@@ -8,7 +8,17 @@ import type {
 } from './schema.js';
 
 const CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-const COLORS = ['#E23B3B', '#4CB8B0', '#F2D04B', '#7B5BBF'];
+export const BALL_COLORS = [
+  '#E23B3B',
+  '#4CB8B0',
+  '#F2D04B',
+  '#7B5BBF',
+  '#E67E22',
+  '#27AE60',
+  '#2980B9',
+  '#E84393',
+];
+const COLORS = BALL_COLORS;
 const MAX_PLAYERS = 4;
 export const MAP_IDS = ['rainbow_stairs', 'main_walk', 'village_green'] as const;
 export const VOTE_MS = 30_000;
@@ -384,6 +394,34 @@ export function quickStart(ws: WebSocket): Room | string {
   return commitMatch(room, winningMap(room));
 }
 
+export function setProfile(ws: WebSocket, name?: string, color?: string): Room | string {
+  const room = roomFor(ws);
+  const player = playerFor(ws);
+  if (!room || !player) {
+    return 'You are not in a lobby';
+  }
+  if (room.phase !== 'lobby') {
+    return 'Cannot change that after the match has started';
+  }
+  if (typeof name === 'string') {
+    const cleaned = name.replace(/\s+/g, ' ').trim().slice(0, 18);
+    player.name = cleaned || 'Player';
+  }
+  if (typeof color === 'string' && color.length > 0) {
+    const hex = normalizeBallColor(color);
+    if (!hex) {
+      return 'Pick a valid ball colour';
+    }
+    for (const other of room.players.values()) {
+      if (other.id !== player.id && other.color.toLowerCase() === hex.toLowerCase()) {
+        return 'That colour is already taken';
+      }
+    }
+    player.color = hex;
+  }
+  return room;
+}
+
 export function setGameMode(ws: WebSocket, mode: string): Room | string {
   const room = roomFor(ws);
   const player = playerFor(ws);
@@ -643,6 +681,12 @@ function newestPlayer(room: Room): Player | undefined {
     }
   }
   return newest;
+}
+
+function normalizeBallColor(value: string): string | null {
+  const hex = value.trim().toUpperCase();
+  const match = COLORS.find((c) => c.toUpperCase() === hex);
+  return match ?? null;
 }
 
 function normalizeGameMode(value: string): GameMode {

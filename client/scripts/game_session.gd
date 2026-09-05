@@ -5,6 +5,17 @@ const SELECT_SCENE := "res://scenes/map_select.tscn"
 const TITLE_SCENE := "res://scenes/title.tscn"
 const LOBBY_SCENE := "res://scenes/lobby_browser.tscn"
 
+const BALL_COLORS: Array[String] = [
+	"#E23B3B",
+	"#4CB8B0",
+	"#F2D04B",
+	"#7B5BBF",
+	"#E67E22",
+	"#27AE60",
+	"#2980B9",
+	"#E84393",
+]
+
 var map_id: String = "main_walk"
 var player_name: String = "Player"
 var master_volume: float = 0.8
@@ -125,6 +136,14 @@ func set_game_mode(mode: String) -> void:
 	NetworkClient.send_set_mode(mode)
 
 
+func set_profile(new_name: String = "", color: String = "") -> void:
+	if not new_name.is_empty():
+		player_name = new_name
+	if not color.is_empty():
+		my_color = Color(color)
+	NetworkClient.send_set_profile(new_name, color)
+
+
 func join_lobby(raw_code: String) -> String:
 	var code := raw_code.strip_edges().to_upper()
 	if code.length() != 4:
@@ -170,6 +189,9 @@ func _on_lobby_state(lobby: Dictionary) -> void:
 	game_mode = str(active_lobby.get("gameMode", game_mode))
 	var mine := _my_player()
 	if not mine.is_empty():
+		var next_name := str(mine.get("name", "")).strip_edges()
+		if not next_name.is_empty():
+			player_name = next_name
 		my_color = Color(str(mine.get("color", "#E23B3B")))
 
 
