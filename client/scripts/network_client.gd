@@ -4,7 +4,7 @@ signal connection_status_changed(status: String)
 signal connected
 signal lobby_list_received(rooms: Array)
 signal lobby_state_received(lobby: Dictionary)
-signal match_started(map_id: String)
+signal match_started(map_id: String, hole_ends_at: float)
 signal vote_state_received(deadline: float, votes: Dictionary, counts: Dictionary)
 signal snapshot_received(balls: Array)
 signal stroke_updated(player_id: String, strokes: int)
@@ -18,8 +18,9 @@ signal phone_ready(code: String, urls: PackedStringArray, qr: String)
 signal phone_linked
 signal phone_gone
 signal phone_hit(power: float, stick_x: float, stick_y: float)
-signal phone_pose(beta: float, gamma: float, holding: bool, stick_x: float, stick_y: float, lift: float, power: float, accel: float, yaw: float, recenter: bool, look_x: float, look_y: float)
-signal phone_power(kind: String)
+signal phone_pose(beta: float, gamma: float, holding: bool, stick_x: float, stick_y: float, lift: float, power: float, accel: float, yaw: float, recenter: bool, look_x: float, look_y: float, zoom: float)
+signal phone_power(kind: String, slot: int)
+signal phone_restart
 signal phone_typed(text: String, done: bool, closing: bool)
 signal cursor_received(player_id: String, uv: Vector2, on: bool)
 signal bump_received(from_id: String, velocity: Vector3)
@@ -129,7 +130,7 @@ func _handle_packet(packet: PackedByteArray) -> void:
 		"lobby_state":
 			lobby_state_received.emit(data)
 		"match_start":
-			match_started.emit(str(data.get("mapId", "rainbow_stairs")))
+			match_started.emit(str(data.get("mapId", "rainbow_stairs")), float(data.get("holeEndsAt", 0)))
 		"vote_state":
 			vote_state_received.emit(
 				float(data.get("deadline", 0.0)),
@@ -198,10 +199,13 @@ func _handle_packet(packet: PackedByteArray) -> void:
 				float(data.get("al", 0.0)),
 				bool(data.get("c", 0)),
 				clampf(float(data.get("lx", 0.0)), -1.0, 1.0),
-				clampf(float(data.get("ly", 0.0)), -1.0, 1.0)
+				clampf(float(data.get("ly", 0.0)), -1.0, 1.0),
+				clampf(float(data.get("z", 0.0)), -1.0, 1.0)
 			)
 		"phone_power":
-			phone_power.emit(str(data.get("kind", "")))
+			phone_power.emit(str(data.get("kind", "")), int(data.get("slot", -1)))
+		"phone_restart":
+			phone_restart.emit()
 		"phone_type":
 			phone_typed.emit(str(data.get("text", "")), bool(data.get("done", false)), bool(data.get("close", false)))
 		_:
@@ -313,7 +317,8 @@ func send_phone_powers(
 	right_kind: String,
 	right_left: float,
 	rank: int = 0,
-	rank_text: String = ""
+	rank_text: String = "",
+	rank_caption: String = ""
 ) -> void:
 	_send({
 		"t": "phone_powers",
@@ -323,6 +328,7 @@ func send_phone_powers(
 		"rightLeft": right_left,
 		"rank": rank,
 		"rankText": rank_text,
+		"rankCaption": rank_caption,
 	})
 
 

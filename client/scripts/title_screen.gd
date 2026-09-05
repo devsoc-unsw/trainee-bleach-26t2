@@ -9,7 +9,7 @@ const ITEM_SCRIPT := preload("res://scripts/title_menu_item.gd")
 @onready var logo: Control = $UI/Root/Left/Logo
 @onready var menu_panel: VBoxContainer = $UI/Root/Left/Menu
 @onready var menu_list: VBoxContainer = $UI/Root/Left/Menu
-@onready var player_name_label: Label = $UI/Root/PlayerBar/Row/Name
+@onready var player_name_edit: LineEdit = $UI/Root/PlayerBar/Row/Name
 @onready var settings_dimmer: ColorRect = $UI/SettingsDimmer
 
 var _index := -1
@@ -18,10 +18,10 @@ var _actions: Array[Callable] = []
 var _settings_open := false
 var _cam_base: Transform3D
 var _t := 0.0
-var _phone_urls: Label
-var _phone_local: Label
 var _phone_qr: TextureRect
 var _phone_hint: Label
+var _vol_fill: StyleBox
+var _vol_empty := StyleBoxEmpty.new()
 
 
 func _ready() -> void:
@@ -29,10 +29,13 @@ func _ready() -> void:
 	_cam_base = MapKit.frame_menu_camera(camera)
 	_build_menu()
 	_setup_settings()
-	player_name_label.text = GameSession.player_name
+	_apply_name(GameSession.player_name, true)
 	get_viewport().size_changed.connect(_apply_responsive)
 	_apply_responsive()
 	_play_intro()
+	GameSession.play_music("play_title")
+	if not NetworkClient.phone_ready.is_connected(_on_cloud_phone_ready):
+		NetworkClient.phone_ready.connect(_on_cloud_phone_ready)
 
 
 func _process(delta: float) -> void:
@@ -43,32 +46,7 @@ func _process(delta: float) -> void:
 
 
 func _build_course() -> void:
-	var ground := MapKit.combiner(world, false)
-	MapKit.box(ground, Vector3(160, 0.2, 160), Vector3(4, 0.1, -6), MapKit.grass())
-	var wood := MapKit.toon(Color("6B4428"), Color("4A2E1A"))
-	MapKit.box(world, Vector3(22, 0.45, 0.45), Vector3(2, 0.32, 4.2), wood, CSGShape3D.OPERATION_UNION, false)
-	MapKit.box(world, Vector3(0.45, 0.45, 28), Vector3(-8.6, 0.32, -6), wood, CSGShape3D.OPERATION_UNION, false)
-	MapKit.box(world, Vector3(0.45, 0.45, 28), Vector3(12.4, 0.32, -8), wood, CSGShape3D.OPERATION_UNION, false)
-
-	for pos in [
-		Vector3(10.5, 0.2, -2), Vector3(13.2, 0.2, -7), Vector3(11.8, 0.2, -12),
-		Vector3(16.0, 0.2, -5), Vector3(14.4, 0.2, -16), Vector3(9.6, 0.2, -18),
-		Vector3(-10.5, 0.2, -8), Vector3(-12.2, 0.2, -14), Vector3(18.0, 0.2, -11),
-	]:
-		MapKit.tree(world, pos, 3.4 + absf(pos.x) * 0.04)
-
-	var rock := MapKit.toon(Color("5A5A5E"), Color("3A3A3E"))
-	MapKit.box(world, Vector3(2.4, 1.4, 1.8), Vector3(-6.2, 0.7, 3.2), rock, CSGShape3D.OPERATION_UNION, false)
-	MapKit.box(world, Vector3(1.6, 0.9, 1.4), Vector3(-4.8, 0.45, 4.1), rock, CSGShape3D.OPERATION_UNION, false)
-
-	var brick := MapKit.toon(MapKit.BRICK, MapKit.BRICK_SHADE)
-	MapKit.box(world, Vector3(8.5, 5.5, 4.2), Vector3(2.5, 2.85, -22), brick, CSGShape3D.OPERATION_UNION, false)
-	MapKit.box(world, Vector3(5.5, 3.2, 0.25), Vector3(2.5, 2.6, -19.85), MapKit.toon(MapKit.GLASS), CSGShape3D.OPERATION_UNION, false)
-
-	MapKit.cylinder(world, 0.03, 1.1, Vector3(3.35, 0.75, -1.15), MapKit.toon(MapKit.CREAM), 8, CSGShape3D.OPERATION_UNION, false)
-	MapKit.box(world, Vector3(0.42, 0.24, 0.04), Vector3(3.58, 1.12, -1.15), MapKit.toon(Color("E23B3B")), CSGShape3D.OPERATION_UNION, false)
-	MapKit.menu_horizon(world)
-
+	MapKit.menu_backdrop(world)
 	var ball: RigidBody3D = BALL_SCENE.instantiate()
 	ball.freeze = true
 	ball.gravity_scale = 0.0
@@ -141,7 +119,10 @@ func _select(index: int) -> void:
 			if item.has_method("set_selected"):
 				item.set_selected(false)
 		return
-	_index = clampi(index, 0, _items.size() - 1)
+	var next := clampi(index, 0, _items.size() - 1)
+	if next != _index:
+		GameSession.play_sfx("hover")
+	_index = next
 	for i in _items.size():
 		if _items[i].has_method("set_selected"):
 			_items[i].set_selected(i == _index)
@@ -155,6 +136,8 @@ func _activate(index: int) -> void:
 
 
 func _unhandled_input(event: InputEvent) -> void:
+	if player_name_edit.has_focus():
+		return
 	if _settings_open:
 		if event.is_action_pressed("ui_cancel"):
 			_close_settings()
@@ -198,23 +181,18 @@ func _setup_settings() -> void:
 	settings_dimmer.modulate.a = 0.0
 	settings_dimmer.gui_input.connect(_on_dimmer_gui)
 	$UI/SettingsDimmer/Card/Layout/Back.pressed.connect(_close_settings)
-	var name_edit: LineEdit = $UI/SettingsDimmer/Card/Layout/NameEdit
-	name_edit.text = GameSession.player_name
-	name_edit.text_changed.connect(func(v: String) -> void:
-		GameSession.player_name = v.strip_edges()
-		if GameSession.player_name.is_empty():
-			GameSession.player_name = "Player"
-		player_name_label.text = GameSession.player_name
-	)
-	var vol: HSlider = $UI/SettingsDimmer/Card/Layout/Volume
-	vol.value = GameSession.master_volume
-	_set_volume_label(vol.value)
-	vol.value_changed.connect(func(v: float) -> void:
-		GameSession.set_master_volume(v)
-		_set_volume_label(v)
-	)
+	player_name_edit.text_changed.connect(_on_name_typed)
+	player_name_edit.focus_exited.connect(_commit_name)
+	player_name_edit.text_submitted.connect(func(_v: String) -> void: _commit_name())
 	var layout: VBoxContainer = $UI/SettingsDimmer/Card/Layout
+	var old_row := layout.get_node_or_null("VolumeRow") as Control
+	var old_slider := layout.get_node_or_null("Volume") as Control
+	if old_row:
+		old_row.visible = false
+	if old_slider:
+		old_slider.visible = false
 	var spacer: Control = layout.get_node("Spacer")
+	UiStyle.add_audio_sliders(layout, spacer.get_index())
 	var phone_label := Label.new()
 	phone_label.text = "PHONE REMOTE"
 	UiStyle.apply_font(phone_label, true, 12, UiStyle.INK)
@@ -228,19 +206,8 @@ func _setup_settings() -> void:
 	_phone_qr.visible = false
 	layout.add_child(_phone_qr)
 	layout.move_child(_phone_qr, spacer.get_index())
-	_phone_urls = Label.new()
-	_phone_urls.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_phone_urls.autowrap_mode = TextServer.AUTOWRAP_OFF
-	UiStyle.apply_font(_phone_urls, false, 12, UiStyle.TEAL)
-	layout.add_child(_phone_urls)
-	layout.move_child(_phone_urls, spacer.get_index())
-	_phone_local = Label.new()
-	_phone_local.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	UiStyle.apply_font(_phone_local, false, 12, UiStyle.BROWN_SOFT)
-	layout.add_child(_phone_local)
-	layout.move_child(_phone_local, spacer.get_index())
 	_phone_hint = Label.new()
-	_phone_hint.text = "Scan the code (use the https one for swing sensors). Tap CALIBRATE once, drag AIM for power, then swing the phone up and down."
+	_phone_hint.text = "Scan the code to open the phone remote. Tap CALIBRATE once, drag AIM for power, then swing the phone up and down."
 	_phone_hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_phone_hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_phone_hint.custom_minimum_size = Vector2(320, 0)
@@ -255,21 +222,58 @@ func _setup_settings() -> void:
 
 
 func _refresh_phone_settings() -> void:
+	if OS.has_feature("web"):
+		NetworkClient.ensure_connected()
+		NetworkClient.send_phone_open()
+		if _phone_hint:
+			_phone_hint.text = "Scan the code to open the phone remote on any Wi-Fi. Tap CALIBRATE once, drag AIM for power, then swing."
+		return
 	PhoneLink.ensure_listening()
-	if _phone_urls:
-		_phone_urls.text = "\n".join(PhoneLink.public_urls())
-	if _phone_local:
-		_phone_local.text = "This PC: %s" % PhoneLink.local_url()
 	PhoneLink.fetch_qr()
 
 
 func _on_phone_urls() -> void:
-	if _phone_urls:
-		_phone_urls.text = "\n".join(PhoneLink.public_urls())
-	if _phone_local:
-		_phone_local.text = "This PC: %s" % PhoneLink.local_url()
-	# The secure URL arrives a moment after boot, so repoint the QR at it.
+	if OS.has_feature("web"):
+		return
+	# The secure URL arrives a moment after boot, so refresh the QR.
 	PhoneLink.fetch_qr()
+
+
+func _on_cloud_phone_ready(_code: String, _urls: PackedStringArray, qr: String) -> void:
+	if not OS.has_feature("web") or _phone_qr == null or qr.is_empty():
+		return
+	var marker := "base64,"
+	var at := qr.find(marker)
+	if at < 0:
+		return
+	var bytes := Marshalls.base64_to_raw(qr.substr(at + marker.length()))
+	var img := Image.new()
+	if img.load_png_from_buffer(bytes) != OK:
+		return
+	_phone_qr.texture = ImageTexture.create_from_image(img)
+	_phone_qr.visible = true
+
+
+func _on_name_typed(value: String) -> void:
+	_sync_name_fields(value)
+
+
+func _commit_name() -> void:
+	_apply_name(player_name_edit.text, true)
+
+
+func _apply_name(value: String, commit: bool) -> void:
+	var shown := value if not commit else value.strip_edges()
+	if commit and shown.is_empty():
+		shown = "Player"
+	if commit and GameSession.player_name != shown:
+		GameSession.player_name = shown
+	_sync_name_fields(shown)
+
+
+func _sync_name_fields(value: String) -> void:
+	if player_name_edit.text != value:
+		player_name_edit.text = value
 
 
 func _on_settings_qr(bytes: PackedByteArray) -> void:
@@ -285,6 +289,15 @@ func _on_settings_qr(bytes: PackedByteArray) -> void:
 func _set_volume_label(amount: float) -> void:
 	var label: Label = $UI/SettingsDimmer/Card/Layout/VolumeRow/VolumeValue
 	label.text = "%d%%" % int(round(amount * 100.0))
+
+
+func _apply_volume_slider(slider: HSlider, amount: float) -> void:
+	_set_volume_label(amount)
+	if _vol_fill == null:
+		_vol_fill = slider.get_theme_stylebox("grabber_area")
+	var fill: StyleBox = _vol_empty if amount <= 0.001 else _vol_fill
+	slider.add_theme_stylebox_override("grabber_area", fill)
+	slider.add_theme_stylebox_override("grabber_area_highlight", fill)
 
 
 func _on_solo() -> void:

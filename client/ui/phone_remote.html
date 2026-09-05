@@ -111,6 +111,63 @@
       pointer-events: none;
     }
     #look.held #look-knob { background: var(--teal-press); }
+    #zoom {
+      position: absolute;
+      width: 22%;
+      right: -26%;
+      bottom: calc(8% + 32% + 10px);
+      z-index: 3;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .zbtn {
+      width: 100%;
+      aspect-ratio: 1;
+      border-radius: 50%;
+      border: 5px solid #e4dcce;
+      background: #fffbf5;
+      color: var(--teal);
+      font-size: 22px;
+      font-weight: 800;
+      line-height: 1;
+      padding: 0;
+      box-shadow: 0 8px 16px rgba(58, 50, 44, 0.14);
+      touch-action: manipulation;
+      appearance: none;
+      -webkit-appearance: none;
+    }
+    .zbtn.held {
+      border-color: var(--teal);
+      background: var(--teal);
+      color: #fff;
+    }
+    #restart {
+      position: fixed;
+      top: calc(12px + env(safe-area-inset-top));
+      left: calc(12px + env(safe-area-inset-left));
+      z-index: 6;
+      border: 5px solid #e4dcce;
+      background: #fffbf5;
+      color: var(--ink);
+      font: inherit;
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: 0.08em;
+      padding: 10px 12px;
+      border-radius: 999px;
+      box-shadow: 0 8px 16px rgba(58, 50, 44, 0.14);
+      touch-action: manipulation;
+      appearance: none;
+      -webkit-appearance: none;
+    }
+    #restart:active, #restart.held {
+      border-color: var(--teal);
+      background: var(--teal);
+      color: #fff;
+    }
+    body:has(#rank-view.show) #restart,
+    body:has(#type-view.show) #restart { display: none; }
     #status { min-height: 1.4em; }
     #powers {
       width: 100%;
@@ -148,6 +205,7 @@
     }
     .pslot.charged.shield .ring { border: 3px solid #5a5248; }
     .pslot.charged.tiny .ring { border: 3px solid #c9a22a; }
+    .pslot.charged.gust .ring { border: 3px solid #2a8a84; }
     .pslot.active .ring {
       border: none;
       background: conic-gradient(from 0deg, var(--accent) var(--sweep), transparent var(--sweep));
@@ -156,6 +214,7 @@
     }
     .pslot.shield { --accent: #5a5248; --sweep: 0deg; }
     .pslot.tiny { --accent: #c9a22a; --sweep: 0deg; }
+    .pslot.gust { --accent: #2a8a84; --sweep: 0deg; }
     .pslot .sigil {
       position: absolute;
       inset: 16%;
@@ -167,7 +226,9 @@
     .pslot.charged.shield .sigil-shield,
     .pslot.active.shield .sigil-shield,
     .pslot.charged.tiny .sigil-tiny,
-    .pslot.active.tiny .sigil-tiny { opacity: 1; }
+    .pslot.active.tiny .sigil-tiny,
+    .pslot.charged.gust .sigil-gust,
+    .pslot.active.gust .sigil-gust { opacity: 1; }
     .pslot.charged { cursor: pointer; }
     #rank-view {
       display: none;
@@ -186,10 +247,10 @@
       position: fixed;
       inset: 0;
       z-index: 12;
-      align-items: flex-end;
+      align-items: flex-start;
       justify-content: center;
       background: rgba(58, 50, 44, 0.35);
-      padding: 12px 12px calc(12px + env(safe-area-inset-bottom));
+      padding: calc(16px + env(safe-area-inset-top)) 12px 12px;
       touch-action: manipulation;
       user-select: text;
     }
@@ -199,18 +260,18 @@
       background: #fffbf5;
       border: 3px solid #e4dcce;
       border-radius: 22px;
-      padding: 14px 14px 12px;
+      padding: 12px;
       box-shadow: 0 16px 36px rgba(58, 50, 44, 0.22);
     }
-    #type-hint {
-      font-size: 12px;
-      font-weight: 800;
-      letter-spacing: 0.14em;
-      color: var(--brown);
-      margin-bottom: 8px;
+    #type-row {
+      display: flex;
+      align-items: stretch;
+      gap: 8px;
     }
     #type-input {
-      width: 100%;
+      flex: 1 1 auto;
+      min-width: 0;
+      width: auto;
       border: 2px solid #e4dcce;
       border-radius: 14px;
       background: #fff;
@@ -225,50 +286,19 @@
       -webkit-user-select: text;
     }
     #type-input:focus { border-color: var(--teal); }
-    #type-keys {
-      margin-top: 10px;
-      display: flex;
-      flex-direction: column;
-      gap: 6px;
-    }
-    #type-keys.hidden { display: none; }
-    .krow {
-      display: flex;
-      gap: 5px;
-    }
-    .krow button {
-      flex: 1 1 0;
-      min-height: 42px;
+    #type-go {
+      flex: 0 0 56px;
+      min-height: 48px;
       border: none;
-      border-radius: 10px;
-      background: #efe7d8;
-      color: var(--ink);
+      border-radius: 14px;
+      background: var(--teal);
+      color: #fff;
       font-family: inherit;
-      font-size: 16px;
+      font-size: 22px;
       font-weight: 800;
+      line-height: 1;
       touch-action: manipulation;
     }
-    .krow button.wide { flex: 1.4 1 0; }
-    .krow button.space { flex: 4 1 0; }
-    .krow button.accent { background: var(--teal); color: #fff; }
-    #type-actions {
-      display: flex;
-      gap: 8px;
-      margin-top: 10px;
-    }
-    #type-actions button {
-      flex: 1;
-      min-height: 44px;
-      border: none;
-      border-radius: 999px;
-      font-family: inherit;
-      font-size: 15px;
-      font-weight: 800;
-      letter-spacing: 0.08em;
-      touch-action: manipulation;
-    }
-    #type-cancel { background: #efe7d8; color: var(--ink); }
-    #type-done { background: var(--teal); color: #fff; }
     #rank-place {
       font-size: min(28vw, 140px);
       font-weight: 800;
@@ -341,15 +371,13 @@
   </div>
   <div id="type-view">
     <div id="type-card">
-      <div id="type-hint">TYPE HERE</div>
-      <input id="type-input" type="text" enterkeyhint="done" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" />
-      <div id="type-keys"></div>
-      <div id="type-actions">
-        <button type="button" id="type-cancel">CANCEL</button>
-        <button type="button" id="type-done">DONE</button>
+      <div id="type-row">
+        <input id="type-input" type="text" inputmode="text" enterkeyhint="done" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" />
+        <button type="button" id="type-go" aria-label="Done">-></button>
       </div>
     </div>
   </div>
+  <button type="button" id="restart" aria-label="Restart ball">RESTART</button>
   <div id="play">
     <h1>PHONE REMOTE</h1>
     <p id="status">Drag AIM for power and direction. Then swing the phone up and down.</p>
@@ -357,6 +385,10 @@
       <div id="pad"><div id="meter"></div><div id="knob">AIM</div></div>
       <div id="look" aria-label="Look">
         <div id="look-knob">LOOK</div>
+      </div>
+      <div id="zoom">
+        <button type="button" class="zbtn" id="zoom-in" aria-label="Zoom in">+</button>
+        <button type="button" class="zbtn" id="zoom-out" aria-label="Zoom out">-</button>
       </div>
     </div>
     <div id="powers">
@@ -372,6 +404,11 @@
           <circle cx="24" cy="24" r="7" fill="#f2d04b"/>
           <circle cx="21.5" cy="21.5" r="1.8" fill="#fff4c2"/>
         </svg>
+        <svg class="sigil sigil-gust" viewBox="0 0 48 48" aria-hidden="true">
+          <path d="M8 16 C18 10, 28 10, 40 16" fill="none" stroke="#4cb8b0" stroke-width="3" stroke-linecap="round"/>
+          <path d="M8 24 C20 18, 30 18, 40 24" fill="none" stroke="#2a8a84" stroke-width="3" stroke-linecap="round"/>
+          <path d="M8 32 C18 26, 28 26, 40 32" fill="none" stroke="#4cb8b0" stroke-width="3" stroke-linecap="round"/>
+        </svg>
       </button>
       <button type="button" class="pslot empty" id="p-right" data-kind="" aria-label="Power slot">
         <span class="face"></span>
@@ -385,12 +422,17 @@
           <circle cx="24" cy="24" r="7" fill="#f2d04b"/>
           <circle cx="21.5" cy="21.5" r="1.8" fill="#fff4c2"/>
         </svg>
+        <svg class="sigil sigil-gust" viewBox="0 0 48 48" aria-hidden="true">
+          <path d="M8 16 C18 10, 28 10, 40 16" fill="none" stroke="#4cb8b0" stroke-width="3" stroke-linecap="round"/>
+          <path d="M8 24 C20 18, 30 18, 40 24" fill="none" stroke="#2a8a84" stroke-width="3" stroke-linecap="round"/>
+          <path d="M8 32 C18 26, 28 26, 40 32" fill="none" stroke="#4cb8b0" stroke-width="3" stroke-linecap="round"/>
+        </svg>
       </button>
     </div>
     <div id="tune">
       <button id="calibrate" type="button">CALIBRATE</button>
-      <label for="sens">Swing effort <span id="sens-val">5</span></label>
-      <input id="sens" type="range" min="1" max="10" step="1" value="5" />
+      <label for="sens">Swing effort <span id="sens-val">1</span></label>
+      <input id="sens" type="range" min="1" max="10" step="1" value="1" />
     </div>
     <div id="sensors">
       <div class="row"><span class="dim">Link</span><span id="s-state">connecting...</span></div>
@@ -420,14 +462,9 @@
     const rankView = document.getElementById("rank-view");
     const rankPlace = document.getElementById("rank-place");
     const typeView = document.getElementById("type-view");
-    const typeHint = document.getElementById("type-hint");
     const typeInput = document.getElementById("type-input");
-    const typeKeys = document.getElementById("type-keys");
-    const typeCancel = document.getElementById("type-cancel");
-    const typeDone = document.getElementById("type-done");
+    const typeGo = document.getElementById("type-go");
     let typingOpen = false;
-    let typeShift = false;
-    let typeDigits = false;
     let typeSendAt = 0;
     let typeClosing = false;
     const calibrateBtn = document.getElementById("calibrate");
@@ -450,6 +487,7 @@
     let sy = 0;
     let lx = 0;
     let ly = 0;
+    let zoom = 0;
     let looking = false;
     let power = 0;
     let beta = 75;
@@ -477,7 +515,7 @@
     let calY = 0;
     let calZ = 0;
     let calibrated = false;
-    let sensitivity = 5;
+    let sensitivity = 1;
     let motionHits = 0;
     let poseOk = false;
     let poseFails = 0;
@@ -491,7 +529,7 @@
     let gravX = 0;
     let gravY = 0;
     let gravZ = 0;
-    const POSE_TIMEOUT_MS = 1200;
+    const POSE_TIMEOUT_MS = 600;
     const REARM_MS = 1400;
     const pairCode = (new URLSearchParams(location.search).get("c") || "").replace(/\s+/g, "").toUpperCase();
     let pairWs = null;
@@ -529,8 +567,11 @@
       if (data.rank == null && !data.rankText) return;
       const place = Math.max(0, Math.floor(Number(data.rank) || 0));
       const text = String(data.rankText || "").trim() || ordinal(place);
+      const cap = String(data.rankCaption || "").trim();
+      const rankCap = document.getElementById("rank-cap");
       if (place > 0 && text) {
         rankPlace.textContent = text;
+        if (rankCap) rankCap.textContent = cap || "YOUR PLACE";
         rankView.classList.add("show");
       } else {
         rankView.classList.remove("show");
@@ -541,7 +582,6 @@
       if (!data || data.typeOn == null || !typeView || !typeInput) return;
       if (data.typeOn) {
         if (typeClosing) return;
-        if (typeHint) typeHint.textContent = String(data.typeHint || "Type here").toUpperCase();
         const limit = Math.max(1, Number(data.typeMax) || 32);
         typeInput.maxLength = limit;
         if (!typingOpen) {
@@ -564,9 +604,6 @@
         focusType();
       } else {
         typeInput.blur();
-        typeShift = false;
-        typeDigits = false;
-        paintKeys();
       }
     }
 
@@ -598,99 +635,34 @@
       }).catch(() => {});
     }
 
-    function insertType(chunk) {
-      const limit = typeInput.maxLength > 0 ? typeInput.maxLength : 120;
-      const next = (typeInput.value + chunk).slice(0, limit);
-      typeInput.value = next;
-      sendType(false);
-    }
-
-    function paintKeys() {
-      if (!typeKeys) return;
-      typeKeys.innerHTML = "";
-      const rows = typeDigits
-        ? ["1234567890", "-/:;()$&@\"", ".,?!'_+=#"]
-        : ["qwertyuiop", "asdfghjkl", "zxcvbnm"];
-      rows.forEach((row, index) => {
-        const line = document.createElement("div");
-        line.className = "krow";
-        if (index === 2 && !typeDigits) {
-          line.appendChild(keyButton(typeShift ? "abc" : "ABC", "wide", () => {
-            typeShift = !typeShift;
-            paintKeys();
-          }));
-        }
-        for (const ch of row) {
-          const glyph = typeDigits || typeShift ? ch.toUpperCase() : ch;
-          line.appendChild(keyButton(glyph, "", () => {
-            insertType(glyph);
-            if (typeShift && !typeDigits) {
-              typeShift = false;
-              paintKeys();
-            }
-          }));
-        }
-        if (index === 2) {
-          line.appendChild(keyButton("⌫", "wide", () => {
-            typeInput.value = typeInput.value.slice(0, -1);
-            sendType(false);
-          }));
-        }
-        typeKeys.appendChild(line);
-      });
-      const extras = document.createElement("div");
-      extras.className = "krow";
-      extras.appendChild(keyButton(typeDigits ? "ABC" : "123", "wide", () => {
-        typeDigits = !typeDigits;
-        paintKeys();
-      }));
-      extras.appendChild(keyButton("space", "space", () => insertType(" ")));
-      extras.appendChild(keyButton("DONE", "wide accent", () => sendType(true)));
-      typeKeys.appendChild(extras);
-    }
-
-    function keyButton(label, cls, onPress) {
-      const btn = document.createElement("button");
-      btn.type = "button";
-      btn.textContent = label;
-      if (cls) btn.className = cls;
-      btn.addEventListener("pointerdown", (ev) => {
-        ev.preventDefault();
-        ev.stopPropagation();
-        onPress();
-      });
-      return btn;
-    }
-
     function paintSlot(el, kind, left) {
       if (!el) return;
-      const next = kind === "shield" || kind === "shrink" ? kind : "";
+      const next = kind === "shield" || kind === "shrink" || kind === "gust" ? kind : "";
       const remaining = next ? Math.max(0, Number(left) || 0) : 0;
-      const maxTime = next === "shield" ? 5 : 10;
+      const maxTime = next === "shield" ? 5 : next === "shrink" ? 10 : 1;
       el.setAttribute("data-kind", next);
       el.classList.toggle("empty", !next);
       el.classList.toggle("charged", !!next && remaining <= 0.001);
       el.classList.toggle("active", remaining > 0.001);
       el.classList.toggle("shield", next === "shield");
       el.classList.toggle("tiny", next === "shrink");
+      el.classList.toggle("gust", next === "gust");
       el.style.setProperty("--sweep", (Math.max(0, Math.min(1, remaining / maxTime)) * 360) + "deg");
     }
 
-    function usePower(kind) {
-      const el = (slotLeft && slotLeft.getAttribute("data-kind") === kind) ? slotLeft
-        : (slotRight && slotRight.getAttribute("data-kind") === kind) ? slotRight
-        : null;
-      if (!el || !el.classList.contains("charged")) return;
+    function usePower(kind, slot) {
+      const el = slot === 1 ? slotRight : slotLeft;
+      if (!el || el.getAttribute("data-kind") !== kind || !el.classList.contains("charged")) return;
       if (pairCode && pairWs && pairWs.readyState === 1) {
         try {
-          pairWs.send(JSON.stringify({ t: "power", kind: kind }));
+          pairWs.send(JSON.stringify({ t: "power", kind: kind, slot: slot }));
         } catch (_) {}
         return;
       }
       fetch("/power", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ kind: kind }),
+        body: JSON.stringify({ kind: kind, slot: slot }),
         keepalive: true,
       }).catch(() => {});
     }
@@ -709,6 +681,7 @@
         c: recenter ? 1 : 0,
         lx: lx,
         ly: ly,
+        z: zoom,
       };
     }
 
@@ -743,7 +716,7 @@
       pairWs.onclose = function () {
         pairLinked = false;
         pairWs = null;
-        setTimeout(connectPair, 800);
+        setTimeout(connectPair, 150);
       };
       pairWs.onerror = function () {
         poseFails += 1;
@@ -1095,15 +1068,15 @@
 
 
     function threshold(base) {
-      // Slider 1 is a gentle swing, 10 demands a hard one.
-      return base * (0.55 + sensitivity * 0.09);
+      // Level 1 is the old level 7. Each step above that asks for a harder swing.
+      return base * (0.55 + (sensitivity + 6) * 0.09);
     }
 
 
     function saveTuning() {
       try {
         localStorage.setItem("puttTune", JSON.stringify({
-          gx: gravX, gy: gravY, gz: gravZ, mag: gravMag, sens: sensitivity,
+          gx: gravX, gy: gravY, gz: gravZ, mag: gravMag, sens: sensitivity, ver: 2,
         }));
       } catch (_) {}
     }
@@ -1122,8 +1095,10 @@
         gravReady = true;
         calibrated = true;
       }
-      if (saved && typeof saved.sens === "number") {
+      if (saved && saved.ver === 2 && typeof saved.sens === "number") {
         sensitivity = Math.min(10, Math.max(1, Math.round(saved.sens)));
+      } else {
+        sensitivity = 1;
       }
       sensInput.value = String(sensitivity);
       sensVal.textContent = String(sensitivity);
@@ -1314,17 +1289,17 @@
         sendType(true);
       }
     });
-    typeCancel.addEventListener("click", (ev) => {
-      ev.preventDefault();
-      sendType(false, true);
-      showType(false);
-    });
-    typeDone.addEventListener("click", (ev) => {
+    typeGo.addEventListener("click", (ev) => {
       ev.preventDefault();
       sendType(true);
     });
-    typeView.addEventListener("pointerdown", (ev) => ev.stopPropagation());
-    paintKeys();
+    typeView.addEventListener("pointerdown", (ev) => {
+      ev.stopPropagation();
+      if (ev.target === typeView) {
+        sendType(false, true);
+        showType(false);
+      }
+    });
     pad.addEventListener("pointerdown", holdStart);
     pad.addEventListener("pointermove", holdMove);
     pad.addEventListener("pointerup", holdEnd);
@@ -1333,6 +1308,29 @@
     lookPad.addEventListener("pointermove", lookMove);
     lookPad.addEventListener("pointerup", lookEnd);
     lookPad.addEventListener("pointercancel", lookEnd);
+    function bindZoom(btn, dir) {
+      const start = (ev) => {
+        ev.preventDefault();
+        ev.stopPropagation();
+        zoom = dir;
+        btn.classList.add("held");
+        sendPose();
+        startPoseStream();
+      };
+      const end = (ev) => {
+        ev.preventDefault();
+        ev.stopPropagation();
+        if (zoom === dir) zoom = 0;
+        btn.classList.remove("held");
+        sendPose();
+      };
+      btn.addEventListener("pointerdown", start);
+      btn.addEventListener("pointerup", end);
+      btn.addEventListener("pointercancel", end);
+      btn.addEventListener("pointerleave", end);
+    }
+    bindZoom(document.getElementById("zoom-in"), -1);
+    bindZoom(document.getElementById("zoom-out"), 1);
     document.addEventListener("visibilitychange", () => {
       if (document.hidden) {
         holding = false;
@@ -1342,6 +1340,9 @@
         lookKnob.style.transform = "translate(-50%, -50%)";
         lx = 0;
         ly = 0;
+        zoom = 0;
+        document.getElementById("zoom-in").classList.remove("held");
+        document.getElementById("zoom-out").classList.remove("held");
         stopPoseStream();
       } else {
         startPoseStream();
@@ -1350,10 +1351,30 @@
     function onPowerTap(ev) {
       ev.preventDefault();
       ev.stopPropagation();
-      usePower(ev.currentTarget.getAttribute("data-kind"));
+      const el = ev.currentTarget;
+      usePower(el.getAttribute("data-kind"), el === slotRight ? 1 : 0);
+    }
+    function sendRestart() {
+      if (pairCode && pairWs && pairWs.readyState === 1) {
+        try {
+          pairWs.send(JSON.stringify({ t: "restart" }));
+        } catch (_) {}
+        return;
+      }
+      fetch("/restart", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: "{}",
+        keepalive: true,
+      }).catch(() => {});
     }
     slotLeft.addEventListener("click", onPowerTap);
     slotRight.addEventListener("click", onPowerTap);
+    document.getElementById("restart").addEventListener("click", (ev) => {
+      ev.preventDefault();
+      ev.stopPropagation();
+      sendRestart();
+    });
     calibrateBtn.addEventListener("click", () => {
       askSensors();
       armHaptics();
@@ -1365,14 +1386,17 @@
       saveTuning();
     });
     loadTuning();
-    if (pairCode) connectPair();
+    if (pairCode) {
+      connectPair();
+    } else {
+      fetch("/hello", { cache: "no-store", keepalive: true }).catch(() => {});
+    }
     askSensors();
+    sendPose();
     startPoseStream();
-    // First run has nothing saved, so calibrate as soon as samples arrive. The
-    // phone is sitting still while the page is being read.
     setTimeout(() => {
       if (!calibrated && !calibrating && motionHits > 0) startCalibration();
-    }, 900);
+    }, 250);
     setInterval(updateSensors, 80);
   </script>
 </body>

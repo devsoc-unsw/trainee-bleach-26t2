@@ -12,6 +12,9 @@ const KICKOFF_GO := 0.55
 const SHIELD_MS := 5000
 const SHRINK_MS := 10000
 const PICKUP_RESPAWN_MS := 18000
+const GUST_RADIUS := 5.0
+const GUST_SPEED := 14.0
+const POWER_KINDS: Array[String] = ["shield", "shrink", "gust"]
 
 @onready var hud = $HUD
 @onready var aim_controller: Node3D = $AimController
@@ -31,6 +34,7 @@ var _holed_ids: Dictionary = {}
 var _ghost_club: GhostClub
 var _stick_aim := Vector3.ZERO
 var _phone_look := Vector2.ZERO
+var _phone_zoom := 0.0
 var _phone_preview := false
 var _phone_swing_fired := false
 var _phone_hit_ms := 0
@@ -53,6 +57,7 @@ var _slot_until: Array[int] = [0, 0]
 var _phone_powers_key := ""
 var _phone_rank := 0
 var _phone_rank_text := ""
+var _phone_rank_caption := ""
 var _hole_results: Array = []
 var _last_hole := false
 var _results_page := 0
@@ -62,6 +67,7 @@ var _scores_ends_at := 0.0
 
 
 func _ready() -> void:
+	GameSession.play_music("play_game")
 	_load_map()
 
 	hud.set_strokes(0)
@@ -103,9 +109,13 @@ func _ready() -> void:
 		hud.results_skip_pressed.connect(_on_results_skip)
 	if hud.has_signal("results_hold_finished"):
 		hud.results_hold_finished.connect(_on_results_hold_finished)
+	if hud.has_signal("timer_expired"):
+		hud.timer_expired.connect(_on_timer_expired)
 	if GameSession.online:
 		hud.stop_timer()
 		hud.reset_timer()
+		if GameSession.is_free_for_all():
+			hud.set_countdown_end(GameSession.hole_ends_at_ms)
 	ball.freeze = true
 	ball.apply_color(GameSession.my_color)
 	_setup_scoreboard()
@@ -119,11 +129,13 @@ func _load_map() -> void:
 	if hud:
 		hud.set_hole(int(spec.get("hole", 1)))
 		hud.set_par(int(spec.get("par", 3)))
-	var packed: PackedScene = load(spec.scene) as PackedScene
-	if packed == null:
-		push_error("Could not load map scene: %s" % spec.scene)
-		return
-	_map = packed.instantiate() as Node3D
+	_map = GameSession.take_map_instance(str(spec.get("id", GameSession.map_id)))
+	if _map == null:
+		var packed: PackedScene = load(spec.scene) as PackedScene
+		if packed == null:
+			push_error("Could not load map scene: %s" % spec.scene)
+			return
+		_map = packed.instantiate() as Node3D
 	if _map == null:
 		push_error("Map scene did not instantiate: %s" % spec.scene)
 		return
@@ -470,21 +482,14 @@ func _grant_pickup(pickup_id: String, kind: String, player_id: String) -> void:
 		return
 	if not _can_store_power(kind):
 		return
-	var slot := _first_empty_slot()
-	if slot < 0:
-		return
-	_slot_kind[slot] = kind
-	_slot_until[slot] = 0
-	_refresh_power_hud()
+	var slot := _slot_for_pickup()
+	_put_power_in_slot(slot, kind)
+	GameSession.play_sfx("pickup")
+	_refresh_local_powers()
 
 
 func _can_store_power(kind: String) -> bool:
-	if kind != "shield" and kind != "shrink":
-		return false
-	for i in 2:
-		if _slot_kind[i] == kind:
-			return false
-	return _first_empty_slot() >= 0
+	return POWER_KINDS.has(kind)
 
 
 func _first_empty_slot() -> int:
@@ -492,6 +497,26 @@ func _first_empty_slot() -> int:
 		if _slot_kind[i].is_empty():
 			return i
 	return -1
+
+
+func _slot_for_pickup() -> int:
+	var empty := _first_empty_slot()
+	if empty >= 0:
+		return empty
+	return 1
+
+
+func _put_power_in_slot(index: int, kind: String) -> void:
+	if index < 0 or index >= 2:
+		return
+	var old := _slot_kind[index]
+	if not old.is_empty() and old != kind:
+		if old == "shield":
+			_shield_until = 0
+		elif old == "shrink":
+			_shrink_until = 0
+	_slot_kind[index] = kind
+	_slot_until[index] = 0
 
 
 func _slot_of(kind: String, stored_only: bool = false) -> int:
@@ -541,14 +566,18 @@ func _apply_ghost_powers(player_id: String) -> void:
 
 
 func _tick_powers() -> void:
+	var now := Time.get_ticks_msec()
 	var changed := false
-	if not _has_shield() and _shield_until != 0:
-		_shield_until = 0
-		_clear_expired_slot("shield")
-		changed = true
-	if not _has_shrink() and _shrink_until != 0:
-		_shrink_until = 0
-		_clear_expired_slot("shrink")
+	for i in 2:
+		if _slot_until[i] <= 0 or _slot_until[i] > now:
+			continue
+		var kind := _slot_kind[i]
+		_slot_kind[i] = ""
+		_slot_until[i] = 0
+		if kind == "shield":
+			_shield_until = 0
+		elif kind == "shrink":
+			_shrink_until = 0
 		changed = true
 	if changed:
 		_compact_power_slots()
@@ -557,20 +586,14 @@ func _tick_powers() -> void:
 		_refresh_power_hud()
 
 
-func _clear_expired_slot(kind: String) -> void:
-	var slot := _slot_of(kind)
-	if slot < 0:
-		return
-	_slot_kind[slot] = ""
-	_slot_until[slot] = 0
-
-
-func _on_power_used(kind: String) -> void:
+func _on_power_used(kind: String, slot: int = -1) -> void:
 	if _kickoff or ball == null or ball.is_holed:
 		return
-	var slot := _slot_of(kind, true)
+	if slot < 0 or slot > 1 or _slot_kind[slot] != kind or _slot_until[slot] != 0:
+		slot = _slot_of(kind, true)
 	if slot < 0:
 		return
+	GameSession.play_sfx("powerup")
 	var now := Time.get_ticks_msec()
 	if kind == "shield":
 		_shield_until = now + SHIELD_MS
@@ -578,6 +601,15 @@ func _on_power_used(kind: String) -> void:
 	elif kind == "shrink":
 		_shrink_until = now + SHRINK_MS
 		_slot_until[slot] = _shrink_until
+	elif kind == "gust":
+		_slot_kind[slot] = ""
+		_slot_until[slot] = 0
+		_compact_power_slots()
+		_fire_gust(ball.global_position, _local_player_id())
+		_refresh_power_hud()
+		if GameSession.online:
+			NetworkClient.send_power_use(kind)
+		return
 	else:
 		return
 	_refresh_local_powers()
@@ -602,6 +634,106 @@ func _on_remote_power(player_id: String, kind: String) -> void:
 			_shrink_ids.erase(player_id)
 			_apply_ghost_powers(player_id)
 		)
+	elif kind == "gust":
+		var ghost: Node3D = _ghosts.get(player_id) as Node3D
+		if ghost != null and is_instance_valid(ghost):
+			_fire_gust(ghost.global_position, player_id)
+
+
+func _fire_gust(origin: Vector3, caster_id: String) -> void:
+	_spawn_gust_fx(origin)
+	if caster_id != _local_player_id():
+		_gust_push_local(origin)
+	for id in _ghosts.keys():
+		if str(id) == caster_id or bool(_holed_ids.get(id, false)):
+			continue
+		var ghost: Node3D = _ghosts[id] as Node3D
+		if ghost == null or not is_instance_valid(ghost):
+			continue
+		if bool(_shield_ids.get(id, false)) or (ghost.has_method("has_shield") and ghost.call("has_shield")):
+			continue
+		if origin.distance_to(ghost.global_position) > GUST_RADIUS:
+			continue
+		if ghost.has_method("apply_knock"):
+			ghost.call("apply_knock", _gust_velocity(origin, ghost.global_position))
+
+
+func _gust_push_local(origin: Vector3) -> void:
+	if ball == null or not is_instance_valid(ball) or ball.is_holed:
+		return
+	if _has_shield():
+		return
+	if origin.distance_to(ball.global_position) > GUST_RADIUS:
+		return
+	if ball.has_method("nudge"):
+		ball.nudge(_gust_velocity(origin, ball.global_position))
+	if GameSession.online:
+		NetworkClient.send_ball_state(ball.global_position, ball.linear_velocity, false)
+
+
+func _gust_velocity(origin: Vector3, target: Vector3) -> Vector3:
+	var away: Vector3 = target - origin
+	away.y = 0.0
+	if away.length_squared() < 0.0001:
+		away = -_fairway
+		away.y = 0.0
+	if away.length_squared() < 0.0001:
+		away = Vector3.FORWARD
+	var dist := clampf(away.length(), 0.2, GUST_RADIUS)
+	var falloff := 1.0 - (dist / GUST_RADIUS)
+	var speed := GUST_SPEED * (0.62 + 0.38 * falloff)
+	var push := away.normalized() * speed
+	push.y = 2.4 * (0.55 + 0.45 * falloff)
+	return push
+
+
+func _spawn_gust_fx(origin: Vector3) -> void:
+	var fx := Node3D.new()
+	add_child(fx)
+	fx.global_position = origin + Vector3(0.0, 0.16, 0.0)
+	var base := Color("7ED8D0", 0.92)
+	for i in 3:
+		var ring := MeshInstance3D.new()
+		var torus := TorusMesh.new()
+		torus.inner_radius = 0.2
+		torus.outer_radius = 0.3
+		torus.rings = 18
+		torus.ring_segments = 20
+		ring.mesh = torus
+		var mat := StandardMaterial3D.new()
+		mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		mat.albedo_color = base
+		ring.material_override = mat
+		ring.rotation_degrees = Vector3(90.0, 0.0, 0.0)
+		fx.add_child(ring)
+		var grow := 1.4 + float(i) * 1.15
+		var ring_tw := create_tween()
+		ring_tw.set_parallel(true)
+		ring_tw.tween_property(ring, "scale", Vector3(grow, grow, grow), 0.42 + float(i) * 0.06)
+		ring_tw.tween_property(mat, "albedo_color:a", 0.0, 0.42 + float(i) * 0.06)
+	for s in 8:
+		var dash := MeshInstance3D.new()
+		var box := BoxMesh.new()
+		box.size = Vector3(0.08, 0.04, 0.55)
+		dash.mesh = box
+		var dash_mat := StandardMaterial3D.new()
+		dash_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		dash_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		dash_mat.albedo_color = Color("B8F4EE", 0.95)
+		dash.material_override = dash_mat
+		var yaw := TAU * float(s) / 8.0
+		dash.position = Vector3(cos(yaw), 0.08, sin(yaw)) * 0.7
+		dash.rotation = Vector3(0.0, -yaw, 0.0)
+		fx.add_child(dash)
+		var dash_tw := create_tween()
+		dash_tw.set_parallel(true)
+		dash_tw.tween_property(dash, "position", dash.position * 3.2, 0.38)
+		dash_tw.tween_property(dash_mat, "albedo_color:a", 0.0, 0.38)
+	get_tree().create_timer(0.55).timeout.connect(func() -> void:
+		if is_instance_valid(fx):
+			fx.queue_free()
+	)
 
 
 func _refresh_power_hud() -> void:
@@ -619,18 +751,23 @@ func _push_phone_powers(left_kind: String, left_left: float, right_kind: String,
 	if phone.has_method("set_powers"):
 		phone.call("set_powers", left_kind, left_left, right_kind, right_left)
 	if phone.has_method("set_rank"):
-		phone.call("set_rank", _phone_rank, _phone_rank_text)
-	var key := "%s|%.1f|%s|%.1f|%d|%s" % [left_kind, left_left, right_kind, right_left, _phone_rank, _phone_rank_text]
+		phone.call("set_rank", _phone_rank, _phone_rank_text, _phone_rank_caption)
+	var key := "%s|%.1f|%s|%.1f|%d|%s|%s" % [
+		left_kind, left_left, right_kind, right_left, _phone_rank, _phone_rank_text, _phone_rank_caption
+	]
 	if key == _phone_powers_key:
 		return
 	_phone_powers_key = key
 	if GameSession.online:
-		NetworkClient.send_phone_powers(left_kind, left_left, right_kind, right_left, _phone_rank, _phone_rank_text)
+		NetworkClient.send_phone_powers(
+			left_kind, left_left, right_kind, right_left, _phone_rank, _phone_rank_text, _phone_rank_caption
+		)
 
 
-func _set_phone_rank(place: int) -> void:
+func _set_phone_rank(place: int, caption: String = "") -> void:
 	_phone_rank = maxi(place, 0)
 	_phone_rank_text = _ordinal(_phone_rank)
+	_phone_rank_caption = caption if _phone_rank > 0 else ""
 	_phone_powers_key = ""
 	_refresh_power_hud()
 
@@ -681,6 +818,8 @@ func _place_from_results(results: Array, field: String) -> int:
 
 
 func _results_time_field(score_field: String) -> String:
+	if GameSession.is_free_for_all():
+		return ""
 	return "totalTime" if score_field == "total" else "time"
 
 
@@ -693,15 +832,13 @@ func _result_clock(row: Dictionary, time_field: String) -> float:
 
 
 func _result_better(a: Dictionary, b: Dictionary, field: String, time_field: String) -> bool:
-	var left := int(a.get(field, 0))
-	var right := int(b.get(field, 0))
+	var left := int(a.get(field, a.get("strokes", 0)))
+	var right := int(b.get(field, b.get("strokes", 0)))
 	var left_t := _result_clock(a, time_field)
 	var right_t := _result_clock(b, time_field)
 	if GameSession.is_free_for_all():
-		if not is_equal_approx(left_t, right_t):
-			return left_t < right_t
 		if left != right:
-			return left < right
+			return left > right
 	else:
 		if left != right:
 			return left < right
@@ -711,8 +848,10 @@ func _result_better(a: Dictionary, b: Dictionary, field: String, time_field: Str
 
 
 func _result_tied(a: Dictionary, b: Dictionary, field: String, time_field: String) -> bool:
-	if int(a.get(field, 0)) != int(b.get(field, 0)):
+	if int(a.get(field, a.get("strokes", 0))) != int(b.get(field, b.get("strokes", 0))):
 		return false
+	if GameSession.is_free_for_all():
+		return true
 	return is_equal_approx(_result_clock(a, time_field), _result_clock(b, time_field))
 
 
@@ -813,6 +952,12 @@ func _setup_phone() -> void:
 		phone.power_used.connect(_on_power_used)
 	if not NetworkClient.phone_power.is_connected(_on_power_used):
 		NetworkClient.phone_power.connect(_on_power_used)
+	if phone.has_signal("restart_requested") and not phone.restart_requested.is_connected(_on_phone_restart):
+		phone.restart_requested.connect(_on_phone_restart)
+	if phone.has_signal("phone_seen") and not phone.phone_seen.is_connected(_on_local_phone_seen):
+		phone.phone_seen.connect(_on_local_phone_seen)
+	if not NetworkClient.phone_restart.is_connected(_on_phone_restart):
+		NetworkClient.phone_restart.connect(_on_phone_restart)
 	if not NetworkClient.error_received.is_connected(_on_phone_error):
 		NetworkClient.error_received.connect(_on_phone_error)
 	_sync_aim_device()
@@ -844,6 +989,12 @@ func _teardown_phone() -> void:
 		phone.power_used.disconnect(_on_power_used)
 	if NetworkClient.phone_power.is_connected(_on_power_used):
 		NetworkClient.phone_power.disconnect(_on_power_used)
+	if phone.has_signal("restart_requested") and phone.restart_requested.is_connected(_on_phone_restart):
+		phone.restart_requested.disconnect(_on_phone_restart)
+	if phone.has_signal("phone_seen") and phone.phone_seen.is_connected(_on_local_phone_seen):
+		phone.phone_seen.disconnect(_on_local_phone_seen)
+	if NetworkClient.phone_restart.is_connected(_on_phone_restart):
+		NetworkClient.phone_restart.disconnect(_on_phone_restart)
 	if NetworkClient.error_received.is_connected(_on_phone_error):
 		NetworkClient.error_received.disconnect(_on_phone_error)
 	if NetworkClient.bump_received.is_connected(_on_bump):
@@ -862,6 +1013,12 @@ func _on_phone_link_pressed() -> void:
 	if _ghost_club == null:
 		_ghost_club = GhostClub.new()
 		add_child(_ghost_club)
+	var use_cloud := GameSession.online or OS.has_feature("web")
+	if use_cloud:
+		hud.set_phone_status("Starting phone remote...")
+		NetworkClient.ensure_connected()
+		NetworkClient.send_phone_open()
+		return
 	var phone := _phone()
 	var err: Error = phone.ensure_listening()
 	if err == OK:
@@ -877,17 +1034,14 @@ func _on_phone_link_pressed() -> void:
 		phone.fetch_qr()
 	else:
 		hud.set_phone_status("Phone port blocked (%s)." % phone.last_error())
-	if GameSession.online:
-		NetworkClient.ensure_connected()
-		NetworkClient.send_phone_open()
-		if err != OK:
-			hud.set_phone_status("Scan YOUR code. Each player gets their own phone, and their own ball.")
 
 
 func _on_phone_qr_png(bytes: PackedByteArray) -> void:
 	if not is_inside_tree() or hud == null or not is_instance_valid(hud):
 		return
 	if not _want_phone_panel:
+		return
+	if GameSession.online or OS.has_feature("web"):
 		return
 	var phone := _phone()
 	hud.set_phone_qr_png(bytes)
@@ -899,13 +1053,25 @@ func _on_phone_ready(code: String, urls: PackedStringArray, qr: String) -> void:
 		return
 	if not _want_phone_panel:
 		return
-	# Online pairing is per-player. Don't hide those unique codes behind the
-	# local phone page, or every guest would swing the host's ball.
-	if not GameSession.online and _phone().server != null and _phone().server.is_listening():
+	# Desktop solo keeps the LAN remote. Web and online always use the shared
+	# server remote so the phone works off any network.
+	if not GameSession.online and not OS.has_feature("web") and _phone().server != null and _phone().server.is_listening():
 		return
 	hud.set_phone_info(code, false, qr)
 	hud.set_phone_urls(urls)
+	hud.set_phone_status("Scan YOUR code. Phone remote works on any Wi-Fi.")
 	hud.show_phone_panel(true)
+
+
+func _on_local_phone_seen() -> void:
+	_sync_aim_device()
+	if not is_inside_tree() or hud == null or not is_instance_valid(hud):
+		return
+	if not _want_phone_panel:
+		return
+	if GameSession.online:
+		return
+	hud.set_phone_status("Phone linked. Hold to aim, then swing.")
 
 
 func _on_phone_linked() -> void:
@@ -913,7 +1079,7 @@ func _on_phone_linked() -> void:
 	_refresh_power_hud()
 	if not is_inside_tree() or hud == null or not is_instance_valid(hud):
 		return
-	if not GameSession.online and _phone().server != null and _phone().server.is_listening():
+	if not GameSession.online and not OS.has_feature("web") and _phone().server != null and _phone().server.is_listening():
 		return
 	GameSession.prefer_mouse = false
 	_sync_aim_device()
@@ -928,7 +1094,7 @@ func _on_phone_gone() -> void:
 	_sync_aim_device()
 	if not is_inside_tree() or hud == null or not is_instance_valid(hud):
 		return
-	if not GameSession.online and phone.server != null and phone.server.is_listening():
+	if not GameSession.online and not OS.has_feature("web") and phone.server != null and phone.server.is_listening():
 		return
 	hud.set_phone_info(_phone_code_text(), false)
 
@@ -968,6 +1134,23 @@ func _reset_phone_swing() -> void:
 	_phone_swing_fired = false
 
 
+func _on_phone_restart() -> void:
+	if _kickoff or _oob_wait or _spectating or _leaving_results:
+		return
+	if ball == null or not is_instance_valid(ball) or ball.is_holed:
+		return
+	var pos := _ground_snap(_tee_world_pos(_local_player_id()))
+	ball.reset_to(pos)
+	PhysicsServer3D.body_set_state(ball.get_rid(), PhysicsServer3D.BODY_STATE_TRANSFORM, ball.global_transform)
+	if hud:
+		hud.set_ball_state(BallStatusIndicator.State.READY)
+	_reset_phone_swing()
+	if aim_controller != null and aim_controller.has_method("clear_aim"):
+		aim_controller.clear_aim()
+	if GameSession.online:
+		NetworkClient.send_ball_state(ball.global_position, Vector3.ZERO, true)
+
+
 func _on_phone_hit(power: float, stick_x: float = 0.0, stick_y: float = 0.0) -> void:
 	if not is_inside_tree() or hud == null or not is_instance_valid(hud):
 		return
@@ -992,8 +1175,9 @@ func _on_phone_hit(power: float, stick_x: float = 0.0, stick_y: float = 0.0) -> 
 		aim_controller.clear_aim()
 
 
-func _on_phone_pose(beta: float, gamma: float, holding: bool, stick_x: float = 0.0, stick_y: float = 0.0, lift: float = 0.0, power: float = -1.0, _accel: float = 0.0, _yaw: float = 0.0, _recenter: bool = false, look_x: float = 0.0, look_y: float = 0.0) -> void:
+func _on_phone_pose(beta: float, gamma: float, holding: bool, stick_x: float = 0.0, stick_y: float = 0.0, lift: float = 0.0, power: float = -1.0, _accel: float = 0.0, _yaw: float = 0.0, _recenter: bool = false, look_x: float = 0.0, look_y: float = 0.0, zoom: float = 0.0) -> void:
 	_phone_look = Vector2(look_x, look_y)
+	_phone_zoom = zoom
 	if not is_inside_tree() or hud == null or not is_instance_valid(hud):
 		return
 	if aim_controller == null or not is_instance_valid(aim_controller):
@@ -1043,18 +1227,20 @@ func _lock_spectate_for_results() -> void:
 	var lock: bool = false
 	if hud != null and hud.has_method("is_showing_results"):
 		lock = bool(hud.is_showing_results())
-	if camera_rig.has_method("set_input_locked"):
+	if camera_rig.input_locked != lock:
 		camera_rig.set_input_locked(lock)
-	if lock and camera_rig.has_method("set_phone_drive"):
-		camera_rig.set_phone_drive(0.0, 0.0)
+		if lock and camera_rig.has_method("set_phone_drive"):
+			camera_rig.set_phone_drive(0.0, 0.0)
 
 
 func _apply_phone_look(delta: float) -> void:
 	if hud != null and hud.has_method("is_showing_results") and hud.is_showing_results():
 		return
-	if not GameSession.aim_with_phone:
-		return
 	if camera_rig == null or not is_instance_valid(camera_rig):
+		return
+	if camera_rig.has_method("apply_zoom_rate"):
+		camera_rig.apply_zoom_rate(_phone_zoom, delta)
+	if not GameSession.aim_with_phone:
 		return
 	if camera_rig.has_method("orbit_look"):
 		camera_rig.orbit_look(_phone_look.x, _phone_look.y, delta)
@@ -1347,7 +1533,7 @@ func _on_sunk_finished() -> void:
 	_last_hole = true
 	_results_page = 1
 	_board_ready = true
-	_set_phone_rank(1)
+	_set_phone_rank(1, "THIS HOLE")
 	await hud.show_round_results(maxi(hud.hole - 1, 0), true, results, hud.par)
 	if not is_inside_tree():
 		return
@@ -1469,6 +1655,19 @@ func is_ready_for_map_select() -> bool:
 	return not _hole_results.is_empty() or (hud != null and hud.is_showing_results())
 
 
+func _on_timer_expired() -> void:
+	_freeze_unfinished_play()
+
+
+func _freeze_unfinished_play() -> void:
+	hud.stop_timer()
+	if ball != null and is_instance_valid(ball) and not ball.is_holed:
+		ball.freeze = true
+		_hide_ghost_club()
+	if hud.has_method("hide_kickoff"):
+		hud.hide_kickoff()
+
+
 func _on_hole_ended(hole_index: int, last_hole: bool, results: Array, ends_at: float = 0.0) -> void:
 	_clear_powers()
 	_hole_results = results
@@ -1476,7 +1675,11 @@ func _on_hole_ended(hole_index: int, last_hole: bool, results: Array, ends_at: f
 	_results_page = 1
 	_board_ready = true
 	hud.show_spectate(false)
-	_set_phone_rank(_place_from_results(results, "strokes"))
+	_freeze_unfinished_play()
+	_set_phone_rank(
+		_place_from_results(results, "points" if GameSession.is_free_for_all() else "strokes"),
+		"THIS HOLE"
+	)
 	await hud.show_round_results(hole_index, last_hole, results, int(GameSession.get_map().get("par", 3)))
 	if not is_inside_tree() or _leaving_results:
 		return
@@ -1498,7 +1701,10 @@ func _show_score_board(ends_at: float = 0.0, can_skip: bool = false) -> void:
 		return
 	_results_page = 2
 	hud.clear_results_hold()
-	_set_phone_rank(_place_from_results(_hole_results, "total"))
+	_set_phone_rank(
+		_place_from_results(_hole_results, "total"),
+		"FINAL" if _last_hole else "STANDINGS"
+	)
 	if _last_hole:
 		await hud.show_match_results(_placings_from_hole(_hole_results))
 	else:

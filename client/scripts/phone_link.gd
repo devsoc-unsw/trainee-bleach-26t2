@@ -1,10 +1,12 @@
 extends CanvasLayer
 
 signal hit_received(power: float, stick_x: float, stick_y: float)
-signal pose_received(beta: float, gamma: float, holding: bool, stick_x: float, stick_y: float, lift: float, power: float, accel: float, yaw: float, recenter: bool, look_x: float, look_y: float)
+signal pose_received(beta: float, gamma: float, holding: bool, stick_x: float, stick_y: float, lift: float, power: float, accel: float, yaw: float, recenter: bool, look_x: float, look_y: float, zoom: float)
 signal qr_ready(bytes: PackedByteArray)
 signal urls_changed
-signal power_used(kind: String)
+signal power_used(kind: String, slot: int)
+signal restart_requested
+signal phone_seen
 
 const STALE_MS := 2500
 const CURSOR_HZ := 15.0
@@ -45,7 +47,9 @@ func _ready() -> void:
 		_try_click()
 	)
 	server.pose_received.connect(_on_pose)
-	server.power_used.connect(func(kind: String) -> void: power_used.emit(kind))
+	server.power_used.connect(func(kind: String, slot: int = -1) -> void: power_used.emit(kind, slot))
+	server.restart_requested.connect(func() -> void: restart_requested.emit())
+	server.client_seen.connect(_mark_seen)
 	server.type_received.connect(_on_type_from_phone)
 	server.urls_changed.connect(func() -> void: urls_changed.emit())
 	_cursor = (load("res://scripts/wii_pointer.gd") as GDScript).new()
@@ -60,7 +64,13 @@ func _ready() -> void:
 		NetworkClient.phone_hit.connect(_on_net_hit)
 	if not NetworkClient.phone_typed.is_connected(_on_type_from_phone):
 		NetworkClient.phone_typed.connect(_on_type_from_phone)
+	if not NetworkClient.phone_linked.is_connected(_on_cloud_linked):
+		NetworkClient.phone_linked.connect(_on_cloud_linked)
 	ensure_listening()
+
+
+func _on_cloud_linked() -> void:
+	_mark_seen()
 
 
 func ensure_listening() -> Error:
@@ -88,6 +98,14 @@ func is_linked() -> bool:
 	return Time.get_ticks_msec() - _last_pose_ms <= STALE_MS
 
 
+func _mark_seen() -> void:
+	var first := not is_linked()
+	_session_live = true
+	_last_pose_ms = Time.get_ticks_msec()
+	if first:
+		phone_seen.emit()
+
+
 func mark_unlinked() -> void:
 	_session_live = false
 	_last_pose_ms = 0
@@ -98,9 +116,9 @@ func set_powers(left_kind: String, left_left: float, right_kind: String, right_l
 		server.set_powers(left_kind, left_left, right_kind, right_left)
 
 
-func set_rank(place: int, label: String = "") -> void:
+func set_rank(place: int, label: String = "", caption: String = "") -> void:
 	if server:
-		server.set_rank(place, label)
+		server.set_rank(place, label, caption)
 
 
 func set_type(on: bool, text: String = "", hint: String = "", max_len: int = 32) -> void:
@@ -127,7 +145,7 @@ func last_qr() -> PackedByteArray:
 func fetch_qr() -> void:
 	if _qr_http == null:
 		_qr_http = HTTPRequest.new()
-		_qr_http.timeout = 4.0
+		_qr_http.timeout = 1.5
 		add_child(_qr_http)
 		_qr_http.request_completed.connect(_on_http)
 	_request_qr_png()
@@ -316,12 +334,12 @@ func _cursor_drive() -> Vector2:
 	return _stick / mag * t
 
 
-func _on_pose(beta: float, gamma: float, holding: bool, stick_x: float, stick_y: float, lift: float, power: float, accel: float = 0.0, yaw: float = 0.0, recenter: bool = false, look_x: float = 0.0, look_y: float = 0.0) -> void:
-	pose_received.emit(beta, gamma, holding, stick_x, stick_y, lift, power, accel, yaw, recenter, look_x, look_y)
-	_apply_pose(beta, gamma, holding, stick_x, stick_y, lift, power, accel, yaw, recenter, look_x, look_y)
+func _on_pose(beta: float, gamma: float, holding: bool, stick_x: float, stick_y: float, lift: float, power: float, accel: float = 0.0, yaw: float = 0.0, recenter: bool = false, look_x: float = 0.0, look_y: float = 0.0, zoom: float = 0.0) -> void:
+	pose_received.emit(beta, gamma, holding, stick_x, stick_y, lift, power, accel, yaw, recenter, look_x, look_y, zoom)
+	_apply_pose(beta, gamma, holding, stick_x, stick_y, lift, power, accel, yaw, recenter, look_x, look_y, zoom)
 
 
-func _apply_pose(beta: float, gamma: float, holding: bool, stick_x: float, stick_y: float, lift: float, power: float, accel: float = 0.0, yaw: float = 0.0, recenter: bool = false, look_x: float = 0.0, look_y: float = 0.0) -> void:
+func _apply_pose(_beta: float, _gamma: float, holding: bool, stick_x: float, stick_y: float, _lift: float, _power: float, _accel: float = 0.0, _yaw: float = 0.0, _recenter: bool = false, _look_x: float = 0.0, _look_y: float = 0.0, _zoom: float = 0.0) -> void:
 	_session_live = true
 	_last_pose_ms = Time.get_ticks_msec()
 	var raw := Vector2(stick_x, stick_y)
@@ -526,6 +544,7 @@ func _set_hover(hit: Control) -> void:
 	_hover = hit
 	if _hover == null:
 		return
+	GameSession.play_sfx("hover")
 	if _hover.has_signal("hovered"):
 		_hover.emit_signal("hovered")
 	if _hover.has_method("_on_hover"):

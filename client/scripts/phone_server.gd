@@ -3,9 +3,11 @@ extends Node
 
 signal hit_received(power: float, stick_x: float, stick_y: float)
 signal urls_changed
-signal pose_received(beta: float, gamma: float, holding: bool, stick_x: float, stick_y: float, lift: float, power: float, accel: float, yaw: float, recenter: bool, look_x: float, look_y: float)
-signal power_used(kind: String)
+signal pose_received(beta: float, gamma: float, holding: bool, stick_x: float, stick_y: float, lift: float, power: float, accel: float, yaw: float, recenter: bool, look_x: float, look_y: float, zoom: float)
+signal power_used(kind: String, slot: int)
+signal restart_requested
 signal type_received(text: String, done: bool, closing: bool)
+signal client_seen
 
 const HTML_PATH := "res://ui/phone_remote.html"
 const PORT := 27351
@@ -36,12 +38,15 @@ var _dns_queue := -1
 var _dns_want := ""
 var _last_error := ""
 var _cached_ips: PackedStringArray
+var _ip_thread: Thread
+var _ip_scan_done := false
 var _left_kind := ""
 var _left_left := 0.0
 var _right_kind := ""
 var _right_left := 0.0
 var _rank := 0
 var _rank_text := ""
+var _rank_caption := ""
 var _type_on := false
 var _type_text := ""
 var _type_hint := ""
@@ -71,9 +76,10 @@ func set_powers(left_kind: String, left_left: float, right_kind: String, right_l
 	_right_left = maxf(right_left, 0.0)
 
 
-func set_rank(place: int, label: String = "") -> void:
+func set_rank(place: int, label: String = "", caption: String = "") -> void:
 	_rank = maxi(place, 0)
 	_rank_text = label if not label.is_empty() else _ordinal(_rank)
+	_rank_caption = caption if _rank > 0 else ""
 
 
 func set_type(on: bool, text: String = "", hint: String = "", max_len: int = 32) -> void:
@@ -86,7 +92,7 @@ func set_type(on: bool, text: String = "", hint: String = "", max_len: int = 32)
 func ensure_listening() -> Error:
 	if _server.is_listening():
 		return OK
-	_html = FileAccess.get_file_as_string(HTML_PATH)
+	_load_html()
 	if _html.is_empty():
 		_last_error = "Cannot read %s" % HTML_PATH
 		push_error("PhoneServer: %s" % _last_error)
@@ -114,10 +120,13 @@ func _try_listen_tls() -> void:
 	if _tls_server.is_listening() or _dns_queue != -1:
 		return
 	var ips := lan_ips()
-	if ips.is_empty():
+	var host := _best_lan_ip(ips)
+	if host.is_empty():
 		return
-	_dns_want = ips[0]
-	_tls_host = "%s.%s" % [ips[0].replace(".", "-"), TLS_DOMAIN]
+	if not _is_preferred_ip(host) and not _ip_scan_done:
+		return
+	_dns_want = host
+	_tls_host = "%s.%s" % [host.replace(".", "-"), TLS_DOMAIN]
 	_dns_queue = IP.resolve_hostname_queue_item(_tls_host, IP.TYPE_IPV4)
 
 
@@ -233,6 +242,7 @@ func local_url() -> String:
 
 func lan_ips() -> PackedStringArray:
 	if _cached_ips.size() > 0:
+		_start_ip_scan()
 		return _cached_ips
 	var seen := {}
 	var ips: Array[String] = []
@@ -240,13 +250,78 @@ func lan_ips() -> PackedStringArray:
 		if _usable_ipv4(ip) and not seen.has(ip):
 			seen[ip] = true
 			ips.append(ip)
-	for ip in _ips_from_ipconfig():
-		if _usable_ipv4(ip) and not seen.has(ip):
-			seen[ip] = true
-			ips.append(ip)
 	ips.sort_custom(func(a: String, b: String) -> bool: return _rank_ip(a) < _rank_ip(b))
 	_cached_ips = PackedStringArray(ips)
+	_start_ip_scan()
 	return _cached_ips
+
+
+func _start_ip_scan() -> void:
+	if _ip_scan_done or _ip_thread != null:
+		return
+	_ip_thread = Thread.new()
+	_ip_thread.start(_ipconfig_worker)
+
+
+func _ipconfig_worker() -> void:
+	var extra := _ips_from_ipconfig()
+	call_deferred("_merge_lan_ips", extra)
+
+
+func _merge_lan_ips(extra: Array) -> void:
+	if _ip_thread != null:
+		_ip_thread.wait_to_finish()
+		_ip_thread = null
+	_ip_scan_done = true
+	var added := false
+	var ips: Array[String] = []
+	for ip in _cached_ips:
+		ips.append(ip)
+	for item in extra:
+		var ip := str(item)
+		if not _usable_ipv4(ip):
+			continue
+		var known := false
+		for have in ips:
+			if have == ip:
+				known = true
+				break
+		if known:
+			continue
+		ips.append(ip)
+		added = true
+	if not added:
+		_try_listen_tls()
+		return
+	ips.sort_custom(func(a: String, b: String) -> bool: return _rank_ip(a) < _rank_ip(b))
+	_cached_ips = PackedStringArray(ips)
+	_try_listen_tls()
+	urls_changed.emit()
+
+
+func _best_lan_ip(ips: PackedStringArray) -> String:
+	for ip in ips:
+		if _is_preferred_ip(ip):
+			return ip
+	if ips.size() > 0:
+		return ips[0]
+	return ""
+
+
+func _is_preferred_ip(ip: String) -> bool:
+	return ip.begins_with("192.168.") or ip.begins_with("10.")
+
+
+func _load_html() -> void:
+	if not _html.is_empty():
+		return
+	_html = FileAccess.get_file_as_string(HTML_PATH)
+
+
+func _exit_tree() -> void:
+	if _ip_thread != null:
+		_ip_thread.wait_to_finish()
+		_ip_thread = null
 
 
 func _process(_delta: float) -> void:
@@ -361,9 +436,17 @@ func _try_handle(index: int) -> bool:
 		_respond(peer, 200, "application/json", _powers_json(), false)
 		return false
 	if method == "POST" and path == "/power":
-		var kind := str(_stick_from_body(body).get("kind", ""))
-		if kind == "shield" or kind == "shrink":
-			power_used.emit(kind)
+		var payload := _stick_from_body(body)
+		var kind := str(payload.get("kind", ""))
+		var slot := int(payload.get("slot", -1))
+		if kind == "shield" or kind == "shrink" or kind == "gust":
+			power_used.emit(kind, slot)
+		_respond(peer, 200, "application/json", "{\"ok\":true}", true)
+		_close(index)
+		_drop(index)
+		return true
+	if method == "POST" and path == "/restart":
+		restart_requested.emit()
 		_respond(peer, 200, "application/json", "{\"ok\":true}", true)
 		_close(index)
 		_drop(index)
@@ -380,8 +463,12 @@ func _try_handle(index: int) -> bool:
 	elif method == "GET" or method == "HEAD":
 		if path == "/favicon.ico":
 			_respond(peer, 204, "text/plain; charset=utf-8", "", true)
+		elif path == "/hello":
+			client_seen.emit()
+			_respond(peer, 200, "application/json", "{\"ok\":true}", true)
 		else:
-			_html = FileAccess.get_file_as_string(HTML_PATH)
+			client_seen.emit()
+			_load_html()
 			_respond(peer, 200, "text/html; charset=utf-8", _html if method == "GET" else "", true)
 	else:
 		_respond(peer, 404, "text/plain; charset=utf-8", "not found", true)
@@ -417,6 +504,7 @@ func _powers_json() -> String:
 		"rightLeft": _right_left,
 		"rank": _rank,
 		"rankText": _rank_text,
+		"rankCaption": _rank_caption,
 		"typeOn": _type_on,
 		"typeText": _type_text,
 		"typeHint": _type_hint,
@@ -457,7 +545,8 @@ func _emit_pose(body: PackedByteArray) -> void:
 		float(data.get("al", 0.0)),
 		bool(data.get("c", 0)),
 		clampf(float(data.get("lx", 0.0)), -1.0, 1.0),
-		clampf(float(data.get("ly", 0.0)), -1.0, 1.0)
+		clampf(float(data.get("ly", 0.0)), -1.0, 1.0),
+		clampf(float(data.get("z", 0.0)), -1.0, 1.0)
 	)
 
 
@@ -520,7 +609,7 @@ func _rank_ip(ip: String) -> int:
 func _ips_from_ipconfig() -> Array[String]:
 	var pipe: Array = []
 	var exe := "ipconfig" if OS.get_name() == "Windows" else "ipconfig.exe"
-	OS.execute(exe, PackedStringArray(), pipe, true)
+	OS.execute(exe, PackedStringArray(), pipe, true, false)
 	var text := ""
 	for item in pipe:
 		text += str(item) + "\n"
