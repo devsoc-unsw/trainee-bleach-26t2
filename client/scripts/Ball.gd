@@ -20,6 +20,7 @@ var start_position: Vector3
 var last_safe_position: Vector3
 var _look := Color("E23B3B")
 var _size := 1.0
+var _wedged := 0.0
 
 func _ready() -> void:
 	print("Ball is ready")
@@ -43,6 +44,7 @@ func hit(direction: Vector3, power: float) -> void:
 
 	apply_central_impulse(impulse)
 	is_moving = true
+	GameSession.play_sfx("hit")
 	movement_started.emit()
 	# print("velocity after impulse: ", linear_velocity)
 	print("power: ", power, " | speed: ", speed)
@@ -68,6 +70,8 @@ func nudge(velocity: Vector3) -> void:
 
 
 func _physics_process(delta: float) -> void:
+	if is_holed:
+		return
 	if not is_moving:
 		return
 	if linear_velocity.length() < stop_velocity_threshold:
@@ -76,6 +80,58 @@ func _physics_process(delta: float) -> void:
 			_stop_rolling()
 	else:
 		stop_timer = 0.0
+
+
+func _integrate_forces(state: PhysicsDirectBodyState3D) -> void:
+	if is_holed or freeze or not is_moving:
+		_wedged = 0.0
+		return
+	var contacts := state.get_contact_count()
+	if contacts <= 0:
+		_wedged = 0.0
+		return
+	var wall_push := Vector3.ZERO
+	var wall_hits := 0
+	var on_ground := false
+	for i in contacts:
+		var normal := state.get_contact_local_normal(i)
+		if normal.y > 0.55:
+			on_ground = true
+		elif absf(normal.y) < 0.5:
+			wall_hits += 1
+			wall_push += Vector3(normal.x, 0.0, normal.z)
+	var vel := state.linear_velocity
+	var planar := Vector3(vel.x, 0.0, vel.z)
+	if on_ground and wall_hits == 0:
+		_wedged = 0.0
+		# Overlapping greens / leftover bounce should not hop the ball as it dies.
+		if planar.length() < 0.55 and vel.y > 0.0:
+			vel.y = 0.0
+			state.linear_velocity = vel
+		return
+	if wall_hits == 0 or wall_push.length_squared() < 0.0001:
+		_wedged = 0.0
+		return
+	var out := wall_push.normalized()
+	var pressed := planar.dot(out) < 0.12 and planar.length() < 1.6
+	if not pressed:
+		_wedged = 0.0
+		return
+	_wedged += state.step
+	vel.x += out.x * 1.4
+	vel.z += out.z * 1.4
+	if vel.y > 0.0:
+		vel.y = 0.0
+	state.linear_velocity = vel
+	if _wedged > 0.45:
+		_wedged = 0.0
+		state.transform.origin = last_safe_position + Vector3(0.0, 0.08, 0.0)
+		state.linear_velocity = Vector3.ZERO
+		state.angular_velocity = Vector3.ZERO
+		is_moving = false
+		stop_timer = 0.0
+		sleeping = true
+		movement_stopped.emit()
 
 
 func _stop_rolling() -> void:
@@ -92,6 +148,7 @@ func _stop_rolling() -> void:
 	movement_stopped.emit()
 
 func sink() -> void:
+	GameSession.play_sfx("goal")
 	is_holed = true
 	is_moving = false
 	stop_timer = 0.0

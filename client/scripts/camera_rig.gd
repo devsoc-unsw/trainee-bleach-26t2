@@ -26,13 +26,26 @@ var input_locked := false
 func _ready() -> void:
 	print("Camera ready")
 	spring_arm.spring_length = 8.0
+	spring_arm.collision_mask = 0
 	_update_rotation()
+	set_process(true)
+
+
+func _process(_delta: float) -> void:
+	_update_xray()
+
+
+func _exit_tree() -> void:
+	_set_xray(Vector3.ZERO, Vector3.ZERO, 0.0)
 
 
 func set_input_locked(on: bool) -> void:
+	if input_locked == on:
+		return
 	input_locked = on
 	_phone_drive = Vector2.ZERO
-	dragging = false
+	if on:
+		dragging = false
 
 
 func _physics_process(delta: float) -> void:
@@ -49,7 +62,7 @@ func set_follow(node: Node3D) -> void:
 	_phone_drive = Vector2.ZERO
 	target = node
 	overview = false
-	spring_arm.collision_mask = 2
+	spring_arm.collision_mask = 0
 
 
 func set_free_roam(from: Vector3) -> void:
@@ -67,7 +80,7 @@ func reset_view() -> void:
 	yaw = 0.0
 	pitch = -30.0
 	spring_arm.spring_length = 8.0
-	spring_arm.collision_mask = 2
+	spring_arm.collision_mask = 0
 	_update_rotation()
 
 
@@ -83,7 +96,7 @@ func set_overview(enabled: bool = true) -> void:
 	else:
 		pitch = -30.0
 		spring_arm.spring_length = 8.0
-		spring_arm.collision_mask = 2
+		spring_arm.collision_mask = 0
 	_update_rotation()
 
 
@@ -91,46 +104,61 @@ func toggle_overview() -> void:
 	set_overview(not overview)
 
 
-func _unhandled_input(event: InputEvent) -> void:
+func nudge_zoom(inward: bool) -> void:
+	apply_zoom_rate(-1.0 if inward else 1.0, 0.22)
+
+
+func apply_zoom_rate(dir: float, delta: float) -> void:
+	if spring_arm == null or absf(dir) < 0.08:
+		return
+	spring_arm.spring_length = clampf(spring_arm.spring_length + dir * zoom_speed * 10.0 * delta, min_zoom, max_zoom)
+	if overview:
+		overview_zoom = spring_arm.spring_length
+
+
+func _input(event: InputEvent) -> void:
 	if input_locked:
 		return
-	if event is InputEventMouseButton:		
-		# Mouse capabilities
-		match event.button_index:
+	if event is InputEventMouseButton:
+		var mouse := event as InputEventMouseButton
+		match mouse.button_index:
 			MOUSE_BUTTON_RIGHT:
-				if event.pressed and get_viewport().gui_get_hovered_control() != null:
-					return
-				dragging = event.pressed
+				if mouse.pressed:
+					if _blocks_look():
+						return
+					dragging = true
+				else:
+					dragging = false
 			MOUSE_BUTTON_WHEEL_UP:
-				#print("Zooming out")
-				spring_arm.spring_length = clamp(
-					spring_arm.spring_length - zoom_speed,
-					min_zoom,
-					max_zoom
-				)
+				if _blocks_look():
+					return
+				spring_arm.spring_length = clampf(spring_arm.spring_length - zoom_speed, min_zoom, max_zoom)
 			MOUSE_BUTTON_WHEEL_DOWN:
-				#print("Zooming in")
-				spring_arm.spring_length = clamp(
-					spring_arm.spring_length + zoom_speed,
-					min_zoom,
-					max_zoom
-				)
-				#print("spring_length now: ", spring_arm.spring_length)
-	
-	# Trackpad capabilities
+				if _blocks_look():
+					return
+				spring_arm.spring_length = clampf(spring_arm.spring_length + zoom_speed, min_zoom, max_zoom)
 	elif event is InputEventPanGesture:
-		#print("zooming")
-		spring_arm.spring_length = clamp(
-			spring_arm.spring_length + event.delta.y * zoom_speed,
-			min_zoom,
-			max_zoom
-		)
-
+		if _blocks_look():
+			return
+		spring_arm.spring_length = clampf(spring_arm.spring_length + event.delta.y * zoom_speed, min_zoom, max_zoom)
 	elif event is InputEventMouseMotion and dragging:
-		#print("Moving camera")
-		yaw -= event.relative.x * orbit_speed
-		pitch = clamp(pitch - event.relative.y * orbit_speed * 57.3, min_pitch, max_pitch)
+		var motion := event as InputEventMouseMotion
+		yaw -= motion.relative.x * orbit_speed
+		pitch = clampf(pitch - motion.relative.y * orbit_speed * 57.3, min_pitch, max_pitch)
 		_update_rotation()
+		get_viewport().set_input_as_handled()
+
+
+func _blocks_look() -> bool:
+	var hit := get_viewport().gui_get_hovered_control()
+	if hit == null or not is_instance_valid(hit):
+		return false
+	var node: Node = hit
+	while node != null:
+		if node is BaseButton or node is Range or node is LineEdit or node is TextEdit:
+			return true
+		node = node.get_parent()
+	return false
 
 
 func set_phone_drive(stick_x: float, stick_y: float) -> void:
@@ -214,3 +242,20 @@ func _look_free(delta: float) -> void:
 func _chat_focused() -> bool:
 	var focused := get_viewport().gui_get_focus_owner()
 	return focused is LineEdit or focused is TextEdit
+
+
+func _update_xray() -> void:
+	if camera == null or target == null or not is_instance_valid(target) or overview or free_roam:
+		_set_xray(Vector3.ZERO, Vector3.ZERO, 0.0)
+		return
+	if not is_inside_tree():
+		return
+	var ball_at := target.global_position + Vector3(0.0, 0.16, 0.0)
+	var cam_at := camera.global_position
+	var span := cam_at.distance_to(ball_at)
+	var radius := clampf(1.15 + span * 0.06, 1.15, 2.2)
+	_set_xray(ball_at, cam_at, radius)
+
+
+func _set_xray(ball_at: Vector3, cam_at: Vector3, radius: float) -> void:
+	MapKit.set_xray(ball_at, cam_at, radius)

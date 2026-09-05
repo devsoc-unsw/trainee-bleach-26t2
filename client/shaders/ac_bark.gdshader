@@ -1,12 +1,15 @@
 shader_type spatial;
 render_mode blend_mix, depth_draw_opaque, cull_back, diffuse_toon, specular_disabled, shadows_disabled;
 
+#include "res://shaders/xray_cut.gdshaderinc"
+
 uniform vec4 albedo : source_color = vec4(0.86, 0.74, 0.5, 1.0);
 uniform vec4 mark : source_color = vec4(0.48, 0.32, 0.18, 1.0);
 uniform vec4 shade : source_color = vec4(0.42, 0.3, 0.18, 1.0);
 uniform int style : hint_range(0, 1) = 0;
 
 varying vec3 v_local;
+varying vec3 v_world;
 
 float hash21(vec2 p) {
 	return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
@@ -14,9 +17,11 @@ float hash21(vec2 p) {
 
 void vertex() {
 	v_local = VERTEX;
+	v_world = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
 }
 
 void fragment() {
+	xray_try_discard(v_world, 0.0);
 	float ang = atan(v_local.z, v_local.x);
 	float h = v_local.y;
 	float pattern = 0.0;

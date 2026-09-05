@@ -7,8 +7,19 @@ uniform float check_size : hint_range(0.2, 4.0) = 0.85;
 
 uniform vec3 cup_pos = vec3(0.0);
 uniform float cup_radius = 0.0;
+uniform vec4 gap0 = vec4(0.0);
+uniform vec4 gap1 = vec4(0.0);
+uniform vec4 gap2 = vec4(0.0);
 
 varying vec3 v_world;
+
+bool in_gap(vec4 gap) {
+	if (gap.z < 0.02) {
+		return false;
+	}
+	vec2 d = v_world.xz - gap.xy;
+	return dot(d, d) < gap.z * gap.z;
+}
 
 void vertex() {
 	v_world = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
@@ -20,6 +31,9 @@ void fragment() {
 		if (dot(d, d) < cup_radius * cup_radius) {
 			discard;
 		}
+	}
+	if (in_gap(gap0) || in_gap(gap1) || in_gap(gap2)) {
+		discard;
 	}
 	vec2 grid = v_world.xz / max(check_size, 0.2);
 	float check = mod(floor(grid.x) + floor(grid.y), 2.0);

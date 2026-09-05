@@ -1,6 +1,8 @@
 shader_type spatial;
 render_mode blend_mix, depth_draw_opaque, cull_back, unshaded, shadows_disabled, specular_disabled, fog_disabled;
 
+#include "res://shaders/xray_cut.gdshaderinc"
+
 uniform vec4 dirt : source_color = vec4(0.42, 0.3, 0.18, 1.0);
 uniform vec4 rock : source_color = vec4(0.55, 0.42, 0.28, 1.0);
 uniform vec4 moss : source_color = vec4(0.28, 0.34, 0.18, 1.0);
@@ -40,6 +42,7 @@ void vertex() {
 }
 
 void fragment() {
+	xray_try_discard(v_world, 0.0);
 	vec2 along = vec2(v_world.x * 0.55 + v_world.z * 0.48, v_world.y * 0.62);
 	float grain = fbm(along * 1.35);
 	float grit = fbm(along * 4.8 + 17.0);

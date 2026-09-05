@@ -1,6 +1,8 @@
 shader_type spatial;
 render_mode blend_mix, depth_draw_opaque, cull_back, diffuse_toon, specular_toon, shadows_disabled;
 
+#include "res://shaders/xray_cut.gdshaderinc"
+
 uniform vec4 albedo : source_color = vec4(0.58, 0.82, 0.36, 1.0);
 uniform vec4 shade : source_color = vec4(0.18, 0.38, 0.22, 1.0);
 uniform float wrap : hint_range(0.0, 1.0) = 0.82;
@@ -18,6 +20,7 @@ void vertex() {
 }
 
 void fragment() {
+	xray_try_discard(v_world, 0.0);
 	vec3 tint = albedo.rgb * COLOR.rgb;
 	float blot = sin(v_world.x * 2.15) * sin(v_world.z * 1.85) * sin(v_world.y * 2.4);
 	vec3 mottled = mix(tint * 0.9, tint * 1.06, blot * 0.5 + 0.5);

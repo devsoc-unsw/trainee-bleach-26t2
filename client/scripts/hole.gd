@@ -11,14 +11,24 @@ signal sunk_finished
 
 var _sunk: bool = false
 var _armed := false
+var _goal_arrow: Node3D
+var _arrow_t := 0.0
 
 
 func _ready() -> void:
 	_build_funnel()
+	_build_goal_arrow()
 	_build_confetti()
 	sink_area.monitoring = false
 	sink_area.body_entered.connect(_on_body_entered)
 	call_deferred("_arm")
+
+
+func _process(delta: float) -> void:
+	if _goal_arrow == null or not _goal_arrow.visible:
+		return
+	_arrow_t += delta
+	_goal_arrow.position.y = sin(_arrow_t * 2.0) * 0.38
 
 
 func _arm() -> void:
@@ -69,6 +79,50 @@ func _build_funnel() -> void:
 	add_child(body)
 
 
+func _build_goal_arrow() -> void:
+	_goal_arrow = Node3D.new()
+	_goal_arrow.name = "GoalArrow"
+	add_child(_goal_arrow)
+	var fill := _arrow_mat(Color("3D8BFF"))
+	var rim := _arrow_mat(Color("163A8A"))
+	_add_arrow_piece(_goal_arrow, rim, 1.14)
+	_add_arrow_piece(_goal_arrow, fill, 1.0)
+
+
+func _arrow_mat(color: Color) -> StandardMaterial3D:
+	var mat := StandardMaterial3D.new()
+	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	mat.albedo_color = color
+	mat.cull_mode = BaseMaterial3D.CULL_DISABLED
+	mat.specular_mode = BaseMaterial3D.SPECULAR_DISABLED
+	return mat
+
+
+func _add_arrow_piece(parent: Node3D, mat: Material, scale_amt: float) -> void:
+	var head := MeshInstance3D.new()
+	var cone := CylinderMesh.new()
+	cone.top_radius = 1.42 * scale_amt
+	cone.bottom_radius = 0.02
+	cone.height = 2.7 * scale_amt
+	cone.radial_segments = 4
+	head.mesh = cone
+	head.position = Vector3(0.0, 3.85, 0.0)
+	head.material_override = mat
+	head.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	parent.add_child(head)
+	var shaft := MeshInstance3D.new()
+	var cyl := CylinderMesh.new()
+	cyl.top_radius = 0.46 * scale_amt
+	cyl.bottom_radius = 0.46 * scale_amt
+	cyl.height = 6.6
+	cyl.radial_segments = 8
+	shaft.mesh = cyl
+	shaft.position = Vector3(0.0, 8.5, 0.0)
+	shaft.material_override = mat
+	shaft.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	parent.add_child(shaft)
+
+
 func show_results(hole: int, par: int, strokes: int, time_text: String) -> void:
 	if win_menu and win_menu.has_method("present"):
 		win_menu.present(hole, par, strokes, time_text)
@@ -85,6 +139,8 @@ func _on_body_entered(body: Node3D) -> void:
 		return
 
 	_sunk = true
+	if _goal_arrow != null:
+		_goal_arrow.visible = false
 	body.sink()
 	ball_sunk.emit()
 	_drop_ball(body)

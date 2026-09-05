@@ -9,6 +9,15 @@ const CLIFF_SHADER: Shader = preload("res://shaders/ac_cliff.gdshader")
 
 static var _leaf_mesh: ArrayMesh
 static var _scale_mesh: ArrayMesh
+static var _mat_cache: Dictionary = {}
+static var _putt_phys: PhysicsMaterial
+static var _bump_phys: PhysicsMaterial
+static var _tree_protos: Dictionary = {}
+static var _backdrop_protos: Array[Node] = []
+static var _xray_mats: Array[ShaderMaterial] = []
+static var _xray_ball := Vector3.ZERO
+static var _xray_cam := Vector3.ZERO
+static var _xray_radius := 0.0
 
 const CREAM := Color("F6F1E6")
 const TEAL := Color("4CB8B0")
@@ -47,35 +56,63 @@ static func toon(
 	shade: Color = Color(0, 0, 0, 0),
 	pattern: int = 0,
 	pattern_scale: float = 1.0,
-	pattern_color: Color = Color(0.32, 0.52, 0.62)
+	pattern_color: Color = Color(0.32, 0.52, 0.62),
+	xray_cut: float = 1.0
 ) -> ShaderMaterial:
+	if shade.a <= 0.0:
+		shade = Color(lit.r * 0.72, lit.g * 0.7, lit.b * 0.68)
+	var key := "t|%s|%s|%d|%.3f|%s|%.1f" % [lit, shade, pattern, pattern_scale, pattern_color, xray_cut]
+	if _mat_cache.has(key):
+		return _mat_cache[key]
 	var mat := ShaderMaterial.new()
 	mat.shader = TOON_SHADER
 	mat.set_shader_parameter("albedo", lit)
-	if shade.a <= 0.0:
-		shade = Color(lit.r * 0.72, lit.g * 0.7, lit.b * 0.68)
 	mat.set_shader_parameter("shade", shade)
 	mat.set_shader_parameter("toon_cutoff", 0.48)
 	mat.set_shader_parameter("pattern", pattern)
 	mat.set_shader_parameter("pattern_scale", pattern_scale)
 	mat.set_shader_parameter("pattern_color", pattern_color)
+	mat.set_shader_parameter("xray_cut", xray_cut)
+	if xray_cut > 0.5:
+		_track_xray(mat)
+	_mat_cache[key] = mat
 	return mat
 
 
+static func _track_xray(mat: ShaderMaterial) -> void:
+	mat.set_shader_parameter("xray_ball", _xray_ball)
+	mat.set_shader_parameter("xray_cam", _xray_cam)
+	mat.set_shader_parameter("xray_radius", _xray_radius)
+	if not _xray_mats.has(mat):
+		_xray_mats.append(mat)
+
+
+static func set_xray(ball_at: Vector3, cam_at: Vector3, radius: float) -> void:
+	_xray_ball = ball_at
+	_xray_cam = cam_at
+	_xray_radius = radius
+	for mat in _xray_mats:
+		if mat == null:
+			continue
+		mat.set_shader_parameter("xray_ball", ball_at)
+		mat.set_shader_parameter("xray_cam", cam_at)
+		mat.set_shader_parameter("xray_radius", radius)
+
+
 static func pavers() -> ShaderMaterial:
-	return toon(CONCRETE, CONCRETE_SHADE, 1, 0.78)
+	return toon(CONCRETE, CONCRETE_SHADE, 1, 0.78, Color(0.32, 0.52, 0.62), 0.0)
 
 
 static func brick_wall() -> ShaderMaterial:
-	return toon(BRICK, BRICK_SHADE, 2, 0.52)
+	return toon(BRICK, BRICK_SHADE, 2, 0.52, Color(0.32, 0.52, 0.62), 1.0)
 
 
 static func quad_brick() -> ShaderMaterial:
-	return toon(Color("C4A57A"), Color("9A7D55"), 2, 0.34)
+	return toon(Color("C4A57A"), Color("9A7D55"), 2, 0.34, Color(0.32, 0.52, 0.62), 1.0)
 
 
 static func quad_plaster() -> ShaderMaterial:
-	return toon(Color("D8C9A4"), Color("B8A67E"))
+	return toon(Color("D8C9A4"), Color("B8A67E"), 0, 1.0, Color(0.32, 0.52, 0.62), 1.0)
 
 
 static func metal_silver() -> ShaderMaterial:
@@ -91,7 +128,7 @@ static func louver_glass() -> ShaderMaterial:
 
 
 static func cream_building() -> ShaderMaterial:
-	return toon(CREAM, Color(0.78, 0.7, 0.58), 3, 1.65, Color(0.42, 0.62, 0.72))
+	return toon(CREAM, Color(0.78, 0.7, 0.58), 3, 1.65, Color(0.42, 0.62, 0.72), 1.0)
 
 
 static func grass(
@@ -101,6 +138,9 @@ static func grass(
 	cup_pos: Vector3 = Vector3.ZERO,
 	cup_radius: float = 0.0
 ) -> ShaderMaterial:
+	var key := "g|%s|%s|%.3f|%s|%.3f" % [lit, shade, check_size, cup_pos, cup_radius]
+	if _mat_cache.has(key):
+		return _mat_cache[key]
 	var mat := ShaderMaterial.new()
 	mat.shader = GRASS_SHADER
 	mat.set_shader_parameter("grass_lit", lit)
@@ -108,10 +148,14 @@ static func grass(
 	mat.set_shader_parameter("check_size", check_size)
 	mat.set_shader_parameter("cup_pos", cup_pos)
 	mat.set_shader_parameter("cup_radius", cup_radius)
+	_mat_cache[key] = mat
 	return mat
 
 
 static func foliage(lit: Color, shade: Color, invert_tip: float = 0.0) -> ShaderMaterial:
+	var key := "f|%s|%s|%.3f" % [lit, shade, invert_tip]
+	if _mat_cache.has(key):
+		return _mat_cache[key]
 	var mat := ShaderMaterial.new()
 	mat.shader = FOLIAGE_SHADER
 	mat.set_shader_parameter("albedo", lit)
@@ -119,17 +163,35 @@ static func foliage(lit: Color, shade: Color, invert_tip: float = 0.0) -> Shader
 	mat.set_shader_parameter("wrap", 0.84)
 	mat.set_shader_parameter("toon_soft", 0.3)
 	mat.set_shader_parameter("invert_tip", invert_tip)
+	_track_xray(mat)
+	_mat_cache[key] = mat
 	return mat
 
 
 static func bark(lit: Color, mark: Color, shade: Color, style: int) -> ShaderMaterial:
+	var key := "b|%s|%s|%s|%d" % [lit, mark, shade, style]
+	if _mat_cache.has(key):
+		return _mat_cache[key]
 	var mat := ShaderMaterial.new()
 	mat.shader = BARK_SHADER
 	mat.set_shader_parameter("albedo", lit)
 	mat.set_shader_parameter("mark", mark)
 	mat.set_shader_parameter("shade", shade)
 	mat.set_shader_parameter("style", style)
+	_track_xray(mat)
+	_mat_cache[key] = mat
 	return mat
+
+
+static func mesh_box(parent: Node3D, size: Vector3, pos: Vector3, mat: Material) -> MeshInstance3D:
+	var mesh := BoxMesh.new()
+	mesh.size = size
+	var node := MeshInstance3D.new()
+	node.mesh = mesh
+	node.position = pos
+	node.material_override = mat
+	parent.add_child(node)
+	return node
 
 
 static func combiner(parent: Node3D, collision: bool = true) -> CSGCombiner3D:
@@ -180,10 +242,34 @@ static func cylinder(
 
 
 static func putting_physics() -> PhysicsMaterial:
-	var phys := PhysicsMaterial.new()
-	phys.friction = 0.28
-	phys.bounce = 0.04
-	return phys
+	if _putt_phys == null:
+		_putt_phys = PhysicsMaterial.new()
+		_putt_phys.friction = 0.24
+		_putt_phys.bounce = 0.05
+	return _putt_phys
+
+
+static func flatten_ramp(from: Vector3, to: Vector3, max_degrees: float = 8.5) -> Vector3:
+	var delta := to - from
+	var flat := Vector3(delta.x, 0.0, delta.z)
+	var run := flat.length()
+	var rise := delta.y
+	var start := from
+	start.y = from.y - 0.03
+	if run < 0.05 or rise <= 0.02:
+		return start
+	var max_rad := deg_to_rad(maxf(max_degrees, 2.0))
+	var need := rise / tan(max_rad)
+	if need > run:
+		start -= flat / run * (need - run)
+	return start
+
+
+static func slope_right(from: Vector3, to: Vector3) -> Vector3:
+	var flat := Vector3(to.x - from.x, 0.0, to.z - from.z)
+	if flat.length_squared() < 0.0001:
+		return Vector3.RIGHT
+	return Vector3.UP.cross(flat.normalized()).normalized()
 
 
 static func slope_xform(from: Vector3, to: Vector3, thickness: float) -> Transform3D:
@@ -227,10 +313,18 @@ static func slope_collider(
 ) -> StaticBody3D:
 	var body := StaticBody3D.new()
 	body.physics_material_override = putting_physics()
-	body.transform = slope_xform(from, to, thickness)
 	var col := CollisionShape3D.new()
-	var shape := BoxShape3D.new()
-	shape.size = Vector3(width, thickness, from.distance_to(to))
+	var shape := ConvexPolygonShape3D.new()
+	var right := slope_right(from, to)
+	var hw := maxf(width, 0.08) * 0.5
+	var drop := Vector3(0.0, -maxf(thickness, 0.08), 0.0)
+	var pts := PackedVector3Array()
+	for end: Vector3 in [from, to]:
+		for side in [-1.0, 1.0]:
+			var top: Vector3 = end + right * hw * side
+			pts.append(top)
+			pts.append(top + drop)
+	shape.points = pts
 	col.shape = shape
 	body.add_child(col)
 	parent.add_child(body)
@@ -477,9 +571,9 @@ static func dress_quad_facade(
 	if with_entrance:
 		box(combo, Vector3(door_w, 2.55, 0.16), Vector3(0.0, 1.28, -0.52), toon(Color("3A322C"), Color("221C18")), CSGShape3D.OPERATION_UNION, false)
 		box(combo, Vector3(door_w + 0.35, 0.16, 0.28), Vector3(0.0, 2.62, -0.28), plaster, CSGShape3D.OPERATION_UNION, false)
-		var sign := label(face, "Quadrangle West", Vector3(0.0, 2.95, 0.22), 42)
-		sign.rotation.y = PI
-		sign.modulate = Color("F4EFE4")
+		var plaque := label(face, "Quadrangle West", Vector3(0.0, 2.95, 0.22), 42)
+		plaque.rotation.y = PI
+		plaque.modulate = Color("F4EFE4")
 
 	box(combo, Vector3(width + 0.1, 0.12, 0.58), Vector3(0.0, col_h + 0.16, 0.28), plaster, CSGShape3D.OPERATION_UNION, false)
 	_quad_rail(combo, width, col_h + 0.22, dark, glass)
@@ -515,7 +609,24 @@ static func dress_quad_facade(
 	while bx <= half - 1.2:
 		box(combo, Vector3(0.08, 0.38, 0.55), Vector3(bx, 10.02, 0.28), dark, CSGShape3D.OPERATION_UNION, false)
 		bx += 3.2
+	if not Engine.is_editor_hint():
+		_quad_facade_collider(face, width, maxf(ground_y + 8.0, 10.0))
 	return face
+
+
+static func _quad_facade_collider(face: Node3D, width: float, height: float) -> void:
+	var body := StaticBody3D.new()
+	body.name = "FacadeBody"
+	body.physics_material_override = bumper_physics()
+	body.collision_layer = 1 | 2
+	body.collision_mask = 0
+	var col := CollisionShape3D.new()
+	var shape := BoxShape3D.new()
+	shape.size = Vector3(width + 0.25, height, 0.9)
+	col.shape = shape
+	col.position = Vector3(0.0, height * 0.5, -0.45)
+	body.add_child(col)
+	face.add_child(body)
 
 
 static func _quad_rail(combo: Node3D, width: float, y: float, dark: Material, glass: Material) -> void:
@@ -530,18 +641,34 @@ static func _quad_rail(combo: Node3D, width: float, y: float, dark: Material, gl
 
 
 static func menu_backdrop(world: Node3D) -> void:
-	var ground := combiner(world, false)
-	box(ground, Vector3(160, 0.2, 160), Vector3(4, 0.1, -6), grass())
+	if not _backdrop_protos.is_empty():
+		for proto in _backdrop_protos:
+			world.add_child(proto.duplicate())
+		return
+	_fill_menu_backdrop(world)
+	if world.is_inside_tree() and world.visible:
+		capture_menu_backdrop(world)
+
+
+static func capture_menu_backdrop(world: Node3D) -> void:
+	if not _backdrop_protos.is_empty() or world == null:
+		return
+	for child in world.get_children():
+		_backdrop_protos.append(child.duplicate())
+
+
+static func _fill_menu_backdrop(world: Node3D) -> void:
+	mesh_box(world, Vector3(160, 0.2, 160), Vector3(4, 0.1, -6), grass())
 	var wood := toon(Color("6B4428"), Color("4A2E1A"))
-	box(world, Vector3(22, 0.45, 0.45), Vector3(2, 0.32, 4.2), wood, CSGShape3D.OPERATION_UNION, false)
-	box(world, Vector3(0.45, 0.45, 28), Vector3(-8.6, 0.32, -6), wood, CSGShape3D.OPERATION_UNION, false)
-	box(world, Vector3(0.45, 0.45, 28), Vector3(12.4, 0.32, -8), wood, CSGShape3D.OPERATION_UNION, false)
+	mesh_box(world, Vector3(22, 0.45, 0.45), Vector3(2, 0.32, 4.2), wood)
+	mesh_box(world, Vector3(0.45, 0.45, 28), Vector3(-8.6, 0.32, -6), wood)
+	mesh_box(world, Vector3(0.45, 0.45, 28), Vector3(12.4, 0.32, -8), wood)
 	for pos in [
 		Vector3(13.2, 0.2, -7), Vector3(-10.5, 0.2, -8), Vector3(16.0, 0.2, -16),
 	]:
-		tree(world, pos, 3.4 + absf(pos.x) * 0.04)
-	box(world, Vector3(8.5, 5.5, 4.2), Vector3(2.5, 2.85, -22), brick_wall(), CSGShape3D.OPERATION_UNION, false)
-	box(world, Vector3(5.5, 3.2, 0.25), Vector3(2.5, 2.6, -19.85), toon(GLASS), CSGShape3D.OPERATION_UNION, false)
+		tree(world, pos, 3.4 + absf(pos.x) * 0.04, true)
+	mesh_box(world, Vector3(8.5, 5.5, 4.2), Vector3(2.5, 2.85, -22), brick_wall())
+	mesh_box(world, Vector3(5.5, 3.2, 0.25), Vector3(2.5, 2.6, -19.85), toon(GLASS))
 	menu_horizon(world)
 
 
@@ -549,23 +676,42 @@ static func menu_horizon(world: Node3D) -> void:
 	var cream := cream_building()
 	var brick := brick_wall()
 	# Wide far buildings so the sky ground never reads as a grey void.
-	box(world, Vector3(90, 26, 10), Vector3(4, 12.5, -36), cream, CSGShape3D.OPERATION_UNION, false)
-	box(world, Vector3(22, 18, 8), Vector3(-18, 8.6, -30), brick, CSGShape3D.OPERATION_UNION, false)
-	box(world, Vector3(18, 14, 7), Vector3(24, 6.6, -31), brick, CSGShape3D.OPERATION_UNION, false)
-	box(world, Vector3(10, 22, 70), Vector3(-42, 10.5, -8), cream, CSGShape3D.OPERATION_UNION, false)
-	box(world, Vector3(10, 20, 70), Vector3(50, 9.5, -10), cream, CSGShape3D.OPERATION_UNION, false)
-	box(world, Vector3(14, 8, 0.35), Vector3(-8, 8.2, -31.2), toon(GLASS), CSGShape3D.OPERATION_UNION, false)
-	box(world, Vector3(16, 7, 0.35), Vector3(16, 10.4, -31.2), toon(GLASS), CSGShape3D.OPERATION_UNION, false)
+	mesh_box(world, Vector3(90, 26, 10), Vector3(4, 12.5, -36), cream)
+	mesh_box(world, Vector3(22, 18, 8), Vector3(-18, 8.6, -30), brick)
+	mesh_box(world, Vector3(18, 14, 7), Vector3(24, 6.6, -31), brick)
+	mesh_box(world, Vector3(10, 22, 70), Vector3(-42, 10.5, -8), cream)
+	mesh_box(world, Vector3(10, 20, 70), Vector3(50, 9.5, -10), cream)
+	mesh_box(world, Vector3(14, 8, 0.35), Vector3(-8, 8.2, -31.2), toon(GLASS))
+	mesh_box(world, Vector3(16, 7, 0.35), Vector3(16, 10.4, -31.2), toon(GLASS))
 
 
 static func cliff() -> ShaderMaterial:
+	var key := "cliff"
+	if _mat_cache.has(key):
+		return _mat_cache[key]
 	var mat := ShaderMaterial.new()
 	mat.shader = CLIFF_SHADER
 	mat.set_shader_parameter("dirt", Color("6B4A2C"))
 	mat.set_shader_parameter("rock", Color("8A6A44"))
 	mat.set_shader_parameter("moss", Color("3F4A28"))
 	mat.set_shader_parameter("abyss", Color(0.02, 0.015, 0.01))
+	_track_xray(mat)
+	_mat_cache[key] = mat
 	return mat
+
+
+static func warm() -> void:
+	_ensure_tree_meshes()
+	toon(CREAM)
+	pavers()
+	brick_wall()
+	cream_building()
+	grass()
+	foliage(Color("4E8A46"), Color("2A5A30"))
+	bark(Color("C8A46E"), Color("7A5230"), Color("8A6844"), 0)
+	cliff()
+	putting_physics()
+	bumper_physics()
 
 
 static func append_mesh_cliffs(
@@ -795,10 +941,11 @@ static func emit_void_bumpers(parent: Node3D, shared: Dictionary, cup: Vector3) 
 
 
 static func bumper_physics() -> PhysicsMaterial:
-	var phys := PhysicsMaterial.new()
-	phys.friction = 0.22
-	phys.bounce = 0.2
-	return phys
+	if _bump_phys == null:
+		_bump_phys = PhysicsMaterial.new()
+		_bump_phys.friction = 0.1
+		_bump_phys.bounce = 0.34
+	return _bump_phys
 
 
 static func _bumper_xform(a: Vector3, b: Vector3, outward: Vector3, height: float) -> Transform3D:
@@ -897,8 +1044,14 @@ static func _cliff_quad(st: SurfaceTool, a: Vector3, b: Vector3, drop: float, ce
 	st.add_vertex(a2)
 
 
-static func tree(parent: Node3D, pos: Vector3, height: float = 3.4) -> void:
+static func tree(parent: Node3D, pos: Vector3, height: float = 3.4, simple: bool = false) -> void:
 	_ensure_tree_meshes()
+	var key := "%.2f|%.2f|%.2f|%.2f|%d" % [pos.x, pos.y, pos.z, height, (1 if simple else 0)]
+	if _tree_protos.has(key):
+		var copy: Node3D = (_tree_protos[key] as Node3D).duplicate()
+		copy.position = pos
+		parent.add_child(copy)
+		return
 	var root := Node3D.new()
 	root.position = pos
 	root.set_meta("generated", true)
@@ -919,35 +1072,45 @@ static func tree(parent: Node3D, pos: Vector3, height: float = 3.4) -> void:
 	var lean := Vector3(cos(lean_ang), 0.0, sin(lean_ang)) * trunk_h * rng.randf_range(0.16, 0.4)
 	var wobble := rng.randf_range(0.55, 1.15)
 	var trunk := MeshInstance3D.new()
-	trunk.mesh = _build_trunk_mesh(
-		trunk_h,
-		0.22 if pine else 0.3,
-		0.08 if pine else 0.1,
-		lean,
-		wobble,
-		rng
-	)
+	if simple:
+		var cyl := CylinderMesh.new()
+		cyl.top_radius = 0.08 if pine else 0.1
+		cyl.bottom_radius = 0.2 if pine else 0.26
+		cyl.height = trunk_h
+		cyl.radial_segments = 8
+		trunk.mesh = cyl
+		trunk.position = Vector3(0.0, trunk_h * 0.5, 0.0)
+	else:
+		trunk.mesh = _build_trunk_mesh(
+			trunk_h,
+			0.22 if pine else 0.3,
+			0.08 if pine else 0.1,
+			lean,
+			wobble,
+			rng
+		)
 	trunk.material_override = bark_mat
 	trunk.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	root.add_child(trunk)
 
-	var mid := _trunk_center(0.48, trunk_h, lean, wobble)
-	var mid_dir := (_trunk_center(0.62, trunk_h, lean, wobble) - mid).normalized()
-	var side := Vector3(-mid_dir.z, 0.15, mid_dir.x).normalized()
-	_branch_stub(root, mid + side * 0.04, (side + Vector3(0, 0.45, 0)).normalized(), 0.28 if pine else 0.38, bark_mat, rng)
-	if not pine:
-		_branch_stub(root, _trunk_center(0.66, trunk_h, lean, wobble), (-side * 0.7 + Vector3(0, 0.5, 0.2)).normalized(), 0.26, bark_mat, rng)
-
-	_blob(root, 0.34 if pine else 0.4, Vector3(0, 0.07, 0), bark_mat, Vector3(1.2, 0.38, 1.2))
-	for i in 5:
-		var a := TAU * float(i) / 5.0 + rng.randf() * 0.2
-		_blob(
-			root,
-			0.12 if pine else 0.14,
-			Vector3(cos(a) * 0.22, 0.05, sin(a) * 0.22),
-			bark_mat,
-			Vector3(1.15, 0.42, 1.15)
-		)
+	if not simple:
+		var mid := _trunk_center(0.48, trunk_h, lean, wobble)
+		var mid_dir := (_trunk_center(0.62, trunk_h, lean, wobble) - mid).normalized()
+		var side := Vector3(-mid_dir.z, 0.15, mid_dir.x).normalized()
+		_branch_stub(root, mid + side * 0.04, (side + Vector3(0, 0.45, 0)).normalized(), 0.28 if pine else 0.38, bark_mat, rng)
+		if not pine:
+			_branch_stub(root, _trunk_center(0.66, trunk_h, lean, wobble), (-side * 0.7 + Vector3(0, 0.5, 0.2)).normalized(), 0.26, bark_mat, rng)
+		_blob(root, 0.34 if pine else 0.4, Vector3(0, 0.07, 0), bark_mat, Vector3(1.2, 0.38, 1.2), false)
+		for i in 5:
+			var a := TAU * float(i) / 5.0 + rng.randf() * 0.2
+			_blob(
+				root,
+				0.12 if pine else 0.14,
+				Vector3(cos(a) * 0.22, 0.05, sin(a) * 0.22),
+				bark_mat,
+				Vector3(1.15, 0.42, 1.15),
+				false
+			)
 
 	var body := StaticBody3D.new()
 	var col := CollisionShape3D.new()
@@ -956,28 +1119,31 @@ static func tree(parent: Node3D, pos: Vector3, height: float = 3.4) -> void:
 	shape.height = trunk_h
 	col.shape = shape
 	col.position = Vector3(0, trunk_h * 0.5, 0)
+	body.collision_layer = 1 | 2
+	body.collision_mask = 0
 	body.add_child(col)
 	root.add_child(body)
 
 	var canopy := Node3D.new()
-	canopy.position = _trunk_center(1.0, trunk_h, lean, wobble)
+	canopy.position = Vector3(0.0, trunk_h, 0.0) if simple else _trunk_center(1.0, trunk_h, lean, wobble)
 	root.add_child(canopy)
 	if pine:
-		_pine_canopy(canopy, height, rng)
+		_pine_canopy(canopy, height, rng, simple)
 	else:
-		_round_canopy(canopy, height, rng)
+		_round_canopy(canopy, height, rng, simple)
+	_tree_protos[key] = root.duplicate()
 
 
-static func _blob(parent: Node3D, radius: float, pos: Vector3, mat: Material, scale := Vector3.ONE) -> MeshInstance3D:
+static func _blob(parent: Node3D, radius: float, pos: Vector3, mat: Material, stretch := Vector3.ONE, detailed: bool = true) -> MeshInstance3D:
 	var mesh := SphereMesh.new()
 	mesh.radius = radius
 	mesh.height = radius * 2.0
-	mesh.radial_segments = 22
-	mesh.rings = 14
+	mesh.radial_segments = 18 if detailed else 8
+	mesh.rings = 10 if detailed else 5
 	var node := MeshInstance3D.new()
 	node.mesh = mesh
 	node.position = pos
-	node.scale = scale
+	node.scale = stretch
 	node.material_override = mat
 	node.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	parent.add_child(node)
@@ -1062,11 +1228,11 @@ static func _branch_stub(
 	_blob(parent, 0.055, origin + d * length * 0.95, mat, Vector3(1.15, 0.65, 1.15))
 
 
-static func _round_canopy(root: Node3D, height: float, rng: RandomNumberGenerator) -> void:
+static func _round_canopy(root: Node3D, height: float, rng: RandomNumberGenerator, simple: bool = false) -> void:
 	var s := height / 3.4
 	var lit := foliage(Color("4E8A46"), Color("2A5A30"))
 	var deep := foliage(Color("3E7440"), Color("244A2C"))
-	_blob(root, 0.38 * s, Vector3(0.0, 0.04 * s, 0.0), deep, Vector3(1.15, 0.82, 1.15))
+	_blob(root, 0.38 * s, Vector3(0.0, 0.04 * s, 0.0), deep, Vector3(1.15, 0.82, 1.15), not simple)
 	var clusters: Array[Dictionary] = [
 		{"c": Vector3(-0.58 * s, 0.16 * s, 0.1 * s), "r": 0.78 * s},
 		{"c": Vector3(0.55 * s, 0.14 * s, -0.12 * s), "r": 0.82 * s},
@@ -1075,16 +1241,19 @@ static func _round_canopy(root: Node3D, height: float, rng: RandomNumberGenerato
 	for cluster in clusters:
 		var cluster_c: Vector3 = cluster["c"]
 		var cluster_r: float = cluster["r"]
-		_blob(root, cluster_r * 0.72, cluster_c, deep, Vector3(1.04, 0.94, 1.04))
-		_scatter_leaves(root, cluster_c, cluster_r * 0.92, 34, 0.42 * s, lit, rng)
+		_blob(root, cluster_r * 0.72, cluster_c, deep, Vector3(1.04, 0.94, 1.04), not simple)
+		if not simple:
+			_scatter_leaves(root, cluster_c, cluster_r * 0.92, 20, 0.42 * s, lit, rng)
 
 
-static func _pine_canopy(root: Node3D, height: float, rng: RandomNumberGenerator) -> void:
+static func _pine_canopy(root: Node3D, height: float, rng: RandomNumberGenerator, simple: bool = false) -> void:
 	var s := height / 3.4
 	var green := foliage(Color("4E8A4A"), Color("2A5A32"), 0.2)
-	_blob(root, 0.36 * s, Vector3(0.0, 0.06 * s, 0.0), green, Vector3(1.12, 0.8, 1.12))
-	_blob(root, 0.5 * s, Vector3(0.0, 0.38 * s, 0.0), green, Vector3(1.05, 0.92, 1.05))
-	_blob(root, 0.28 * s, Vector3(0.0, 0.88 * s, 0.0), green, Vector3(1.0, 1.05, 1.0))
+	_blob(root, 0.36 * s, Vector3(0.0, 0.06 * s, 0.0), green, Vector3(1.12, 0.8, 1.12), not simple)
+	_blob(root, 0.5 * s, Vector3(0.0, 0.38 * s, 0.0), green, Vector3(1.05, 0.92, 1.05), not simple)
+	_blob(root, 0.28 * s, Vector3(0.0, 0.88 * s, 0.0), green, Vector3(1.0, 1.05, 1.0), not simple)
+	if simple:
+		return
 	_scatter_scales(root, Vector3(0, 0.55 * s, 0), 0.28 * s, 0.06 * s, 12, 0.5 * s, green, rng, 0.12)
 	_scatter_scales(root, Vector3(0, 0.42 * s, 0), 0.55 * s, 0.08 * s, 18, 0.62 * s, green, rng, 0.16)
 	_scatter_scales(root, Vector3(0, 0.22 * s, 0), 0.82 * s, 0.08 * s, 22, 0.72 * s, green, rng, 0.2, PI / 22.0)
@@ -1115,8 +1284,8 @@ static func _scatter_leaves(
 		if dir.y < -0.72:
 			continue
 		var basis := _orient(dir, rng.randf() * TAU)
-		var scale := Vector3.ONE * leaf_scale * rng.randf_range(0.82, 1.18)
-		var xform := Transform3D(basis.scaled(scale), center + dir * radius * rng.randf_range(0.78, 1.02))
+		var leaf_size := Vector3.ONE * leaf_scale * rng.randf_range(0.82, 1.18)
+		var xform := Transform3D(basis.scaled(leaf_size), center + dir * radius * rng.randf_range(0.78, 1.02))
 		mm.set_instance_transform(placed, xform)
 		var lift := clampf(dir.y * 0.18 + 0.82, 0.72, 0.98)
 		mm.set_instance_color(placed, Color(lift, lift, lift, 1.0))

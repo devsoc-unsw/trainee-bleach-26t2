@@ -1,12 +1,15 @@
 shader_type spatial;
 render_mode blend_mix, depth_draw_opaque, cull_back, diffuse_toon, specular_disabled, shadows_disabled;
 
+#include "res://shaders/xray_cut.gdshaderinc"
+
 uniform vec4 albedo : source_color = vec4(0.96, 0.9, 0.78, 1.0);
 uniform vec4 shade : source_color = vec4(0.78, 0.62, 0.48, 1.0);
 uniform float toon_cutoff : hint_range(0.0, 1.0) = 0.48;
 uniform int pattern = 0;
 uniform float pattern_scale = 1.0;
 uniform vec4 pattern_color : source_color = vec4(0.32, 0.52, 0.62, 1.0);
+uniform float xray_cut = 0.0;
 
 varying vec3 v_world;
 varying vec3 v_world_n;
@@ -17,6 +20,9 @@ void vertex() {
 }
 
 void fragment() {
+	if (xray_cut > 0.5) {
+		xray_try_discard(v_world, abs(normalize(v_world_n).y));
+	}
 	vec3 col = albedo.rgb;
 	if (pattern == 1) {
 		vec3 wn = abs(normalize(v_world_n));
