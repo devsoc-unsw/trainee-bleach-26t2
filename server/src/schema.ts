@@ -51,6 +51,8 @@ const holeResultSchema = z
   colour: z.string(),
   strokes: z.number().int().min(0),
   relToPar: z.number().int(),
+  total: z.number().int().min(0),
+  completed: z.boolean(),
 });
 
 const ongoingResultSchema = z
