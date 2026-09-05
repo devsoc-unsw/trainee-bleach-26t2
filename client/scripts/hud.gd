@@ -14,8 +14,9 @@ signal spectate_follow_pressed
 signal spectate_free_pressed
 signal spectate_prev_pressed
 signal spectate_next_pressed
-signal show_players_changed(enabled: bool)
 signal scorecard_toggled(expanded: bool)
+signal results_skip_pressed
+signal results_hold_finished
 
 @export var hole: int = 1
 @export var par: int = 3
@@ -33,8 +34,6 @@ var scorecard_expanded: bool = true
 @onready var scorecard_header: PanelContainer = $Root/Scorecard/Layout/Header
 @onready var scorecard_body: Control = $Root/Scorecard/Layout/Body
 @onready var chevron_button: Button = $Root/Scorecard/Layout/Header/HeaderRow/ChevronButton
-@onready var players_toggle: Control = $Root/Scorecard/Layout/Body/BodyRow/PlayersToggle
-@onready var show_players_row: Control = $Root/Scorecard/Layout/Body/BodyRow
 @onready var ball_status: Control = $Root/TopBar/LeftButtons/BallStatus
 @onready var camera_button: Button = $Root/TopBar/LeftButtons/CameraButton
 @onready var look_button: Button = $Root/TopBar/LeftButtons/LookButton
@@ -70,12 +69,15 @@ var _phone_qr_data := ""
 var _aim_mouse_btns: Array[Button] = []
 var _aim_phone_btns: Array[Button] = []
 var _results_dimmer: ColorRect
+var _results_content: Control
 var _results_title: Label
 var _results_sub: Label
-var _results_round_header: Control
-var _results_match_header: Control
 var _results_rows: VBoxContainer
 var _results_tween: Tween
+var _results_hold_label: Label
+var _results_skip: Button
+var _results_ends_at := 0.0
+var _results_hold_open := false
 var _kickoff_dimmer: ColorRect
 var _kickoff_label: Label
 var _kickoff_tween: Tween
@@ -115,19 +117,14 @@ func _ready() -> void:
 	if score_title:
 		score_title.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_setup_view_buttons()
-	if players_toggle.has_signal("toggled"):
-		players_toggle.toggled.connect(_on_show_players_toggled)
-	if players_toggle.has_method("set_on"):
-		players_toggle.call("set_on", GameSession.show_players)
 	set_chat_visible(GameSession.online)
-	show_players_row.visible = GameSession.online
 
 
 func _process(delta: float) -> void:
-	if not timer_running:
-		return
-	elapsed += delta
-	_refresh_timer()
+	if timer_running:
+		elapsed += delta
+		_refresh_timer()
+	_refresh_results_hold()
 
 
 func set_hole(value: int) -> void:
@@ -501,16 +498,13 @@ func _build_left_dock() -> void:
 	scorecard.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	scorecard.custom_minimum_size = Vector2(300, 0)
 
-	var body_row := show_players_row
 	var body := scorecard_body
-	body.remove_child(body_row)
 	var col := VBoxContainer.new()
 	col.add_theme_constant_override("separation", 10)
 	_players_box = VBoxContainer.new()
 	_players_box.add_theme_constant_override("separation", 6)
 	col.add_child(_make_roster_header())
 	col.add_child(_players_box)
-	col.add_child(body_row)
 	body.add_child(col)
 
 
@@ -670,7 +664,6 @@ func _build_pause_menu() -> void:
 	phone.add_theme_stylebox_override("hover", UiStyle.pill(UiStyle.TEAL_HOVER, 18, 12))
 	phone.add_theme_stylebox_override("pressed", UiStyle.pill(UiStyle.TEAL_PRESS, 18, 12))
 	phone.pressed.connect(func() -> void:
-		_set_aim_mode(true, false)
 		phone_link_pressed.emit()
 		_set_pause_open(false)
 	)
@@ -879,9 +872,14 @@ func _aim_mode_button(caption: String) -> Button:
 
 
 func _set_aim_mode(phone: bool, open_panel: bool) -> void:
-	GameSession.aim_with_phone = phone
+	GameSession.prefer_mouse = not phone
+	var live := false
+	var link := get_node_or_null("/root/PhoneLink")
+	if link != null and link.has_method("is_linked"):
+		live = bool(link.call("is_linked"))
+	GameSession.aim_with_phone = phone and live
 	_refresh_aim_mode_buttons()
-	aim_mode_changed.emit(phone)
+	aim_mode_changed.emit(GameSession.aim_with_phone)
 	if phone and open_panel:
 		phone_link_pressed.emit()
 		_set_pause_open(false)
@@ -1079,205 +1077,450 @@ func _apply_scorecard_state() -> void:
 		scorecard_header.add_theme_stylebox_override("panel", _style_header_closed)
 
 
-func _on_show_players_toggled(enabled: bool) -> void:
-	show_players_changed.emit(enabled)
+func is_showing_results() -> bool:
+	return _results_dimmer != null and _results_dimmer.visible
+
+
+func can_skip_results() -> bool:
+	return _results_hold_open and _results_skip != null and _results_skip.visible
 
 
 func show_round_results(hole_index: int, last_hole: bool, results: Array, hole_par: int) -> void:
-	_ensure_results_overlay()
-	_results_title.text = "HOLE %d RESULTS" % (hole_index + 1)
-	UiStyle.apply_font(_results_title, true, 22, UiStyle.INK)
-	_results_sub.text = "Final results incoming..." if last_hole else "Next hole starting soon"
-	_results_round_header.visible = true
-	_results_match_header.visible = false
-	var ranked: Array = results.duplicate()
-	ranked.sort_custom(func(a, b):
-		if int(a.get("strokes", 0)) == int(b.get("strokes", 0)):
-			return String(a.get("name", "")) < String(b.get("name", ""))
-		return int(a.get("strokes", 0)) < int(b.get("strokes", 0))
-	)
-	var rows: Array = []
-	var place := 1
-	var prev := -1
-	for i in ranked.size():
-		var r: Dictionary = ranked[i]
-		var hole_strokes := int(r.get("strokes", 0))
-		if i > 0 and hole_strokes != prev:
-			place = i + 1
-		prev = hole_strokes
-		rows.append(_result_row_data(
-			place,
-			String(r.get("name", "Player")),
-			String(r.get("playerId", "")),
-			UiStyle.to_color(r.get("color", "#E23B3B")),
-			str(hole_strokes),
-			_rel_text(hole_strokes - hole_par, bool(r.get("holed", true))),
-			str(int(r.get("total", hole_strokes)))
-		))
-	_play_result_rows(rows)
+	var ranked := _sorted_result_dicts(results, "strokes", "time")
+	await _present_results("Results", "Hole %d" % (hole_index + 1), _result_rows_from(
+		ranked, "strokes", "time"
+	), false)
+
+
+func show_standings_results(results: Array) -> void:
+	var ranked := _sorted_result_dicts(results, "total", "totalTime")
+	await _present_results("Scores", "Standings", _result_rows_from(
+		ranked, "total", "totalTime"
+	), true)
 
 
 func show_match_results(placings: Array) -> void:
-	_ensure_results_overlay()
-	var winners: Array[Dictionary] = []
-	for p in placings:
-		if p is Dictionary and int(p.get("place", 1)) == 1:
-			winners.append(p)
-	if winners.size() == 1:
-		var winner: Dictionary = winners[0]
-		_results_title.text = "%s WINS!" % String(winner.get("name", "Player")).to_upper()
-		UiStyle.apply_font(_results_title, true, 28, Color(str(winner.get("color", "#4CB8B0"))))
-		_results_sub.text = "Lowest strokes wins"
-	elif winners.size() > 1:
-		var names: PackedStringArray = PackedStringArray()
-		for winner in winners:
-			names.append(String(winner.get("name", "Player")).to_upper())
-		_results_title.text = "%s TIE!" % " & ".join(names)
-		UiStyle.apply_font(_results_title, true, 24, UiStyle.INK)
-		_results_sub.text = "Shared first, same total strokes"
-	else:
-		_results_title.text = "MATCH COMPLETE"
-		UiStyle.apply_font(_results_title, true, 22, UiStyle.INK)
-		_results_sub.text = "Lowest strokes wins"
-	_results_round_header.visible = false
-	_results_match_header.visible = true
+	var ranked := _sorted_result_dicts(placings, "total", "time")
+	await _present_results("Final", "Scores", _result_rows_from(
+		ranked, "total", "time"
+	), true)
+
+
+func _result_rows_from(ranked: Array, score_field: String, time_field: String) -> Array:
 	var rows: Array = []
-	for p in placings:
-		if not p is Dictionary:
-			continue
+	var place := 1
+	var prev_score := -1
+	var prev_time := -1.0
+	for i in ranked.size():
+		var r: Dictionary = ranked[i]
+		var score := int(r.get(score_field, r.get("putts", 0)))
+		var clock := _row_time(r, time_field)
+		if i > 0 and (score != prev_score or not is_equal_approx(clock, prev_time)):
+			place = i + 1
+		prev_score = score
+		prev_time = clock
 		rows.append(_result_row_data(
-			int(p.get("place", 1)),
-			String(p.get("name", "Player")),
-			String(p.get("playerId", "")),
-			UiStyle.to_color(p.get("color", "#E23B3B")),
-			"",
-			"",
-			"%d strokes" % int(p.get("total", 0))
+			place,
+			String(r.get("name", "Player")),
+			String(r.get("playerId", r.get("id", ""))),
+			UiStyle.to_color(r.get("color", "#E23B3B")),
+			score,
+			clock,
+			true
 		))
-	_play_result_rows(rows)
+	return rows
 
 
-func _result_row_data(place: int, player_name: String, player_id: String, colour: Color, hole_text: String, par_text: String, total_text: String) -> Dictionary:
+func begin_results_hold(ends_at_ms: float = 0.0, can_skip: bool = false) -> void:
+	_ensure_results_overlay()
+	if ends_at_ms <= 0.0:
+		ends_at_ms = Time.get_unix_time_from_system() * 1000.0 + 10000.0
+	_results_ends_at = ends_at_ms
+	_results_hold_open = true
+	if _results_skip:
+		_results_skip.visible = can_skip
+	_refresh_results_hold()
+
+
+func clear_results_hold() -> void:
+	_results_hold_open = false
+	_results_ends_at = 0.0
+	if _results_skip:
+		_results_skip.visible = false
+
+
+func finish_results_hold() -> void:
+	if not _results_hold_open:
+		return
+	_results_hold_open = false
+	results_hold_finished.emit()
+
+
+func fade_out_results(restore_chrome: bool = true) -> void:
+	if _results_dimmer == null or not _results_dimmer.visible:
+		if restore_chrome:
+			_set_play_chrome(true)
+		return
+	if _results_tween and is_instance_valid(_results_tween):
+		_results_tween.kill()
+	_results_tween = create_tween()
+	_results_tween.set_pause_mode(Tween.TWEEN_PAUSE_PROCESS)
+	_results_tween.tween_property(_results_dimmer, "modulate:a", 0.0, 0.35).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_IN)
+	await _results_tween.finished
+	if not is_inside_tree():
+		return
+	_results_dimmer.visible = false
+	clear_results_hold()
+	if restore_chrome:
+		_set_play_chrome(true)
+
+
+func _sorted_result_dicts(results: Array, field: String, time_field: String = "") -> Array:
+	var rows: Array = []
+	for item in results:
+		if item is Dictionary:
+			rows.append(item)
+	rows.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
+		var left := int(a.get(field, 0))
+		var right := int(b.get(field, 0))
+		var left_t := _row_time(a, time_field)
+		var right_t := _row_time(b, time_field)
+		if GameSession.is_free_for_all():
+			if not is_equal_approx(left_t, right_t):
+				return left_t < right_t
+			if left != right:
+				return left < right
+		else:
+			if left != right:
+				return left < right
+			if not is_equal_approx(left_t, right_t):
+				return left_t < right_t
+		return String(a.get("name", "")) < String(b.get("name", ""))
+	)
+	return rows
+
+
+func _row_time(row: Dictionary, time_field: String) -> float:
+	if time_field.is_empty():
+		return 0.0
+	if row.has(time_field):
+		return float(row.get(time_field, 0))
+	if time_field == "totalTime" and row.has("time"):
+		return float(row.get("time", 0))
+	return float(row.get("time", 0))
+
+
+func _present_results(title: String, subtitle: String, rows: Array, crossfade: bool) -> void:
+	_ensure_results_overlay()
+	_set_play_chrome(false)
+	show_spectate(false)
+	$Root.move_child(_results_dimmer, -1)
+	var already_up := _results_dimmer.visible and _results_dimmer.modulate.a > 0.05
+	if crossfade and already_up:
+		await _tween_modulate(_results_rows, 0.0, 0.22)
+		if not is_inside_tree():
+			return
+	var cards := _fill_result_board(title, subtitle, rows)
+	_results_content.modulate.a = 1.0
+	_results_rows.modulate.a = 1.0
+	_results_dimmer.visible = true
+	_results_dimmer.modulate.a = 1.0
+	$Root.move_child(_results_dimmer, -1)
+	await _reveal_result_rows(cards)
+
+
+func _tween_modulate(node: CanvasItem, alpha: float, seconds: float) -> void:
+	if node == null or not is_instance_valid(node):
+		return
+	if _results_tween and is_instance_valid(_results_tween):
+		_results_tween.kill()
+	if seconds <= 0.02:
+		node.modulate.a = alpha
+		return
+	_results_tween = create_tween()
+	_results_tween.set_pause_mode(Tween.TWEEN_PAUSE_PROCESS)
+	_results_tween.tween_property(node, "modulate:a", alpha, seconds).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+	await _results_tween.finished
+	if is_instance_valid(node):
+		node.modulate.a = alpha
+
+
+func _fill_result_board(title: String, subtitle: String, rows: Array) -> Array:
+	_results_title.text = title
+	UiStyle.apply_font(_results_title, true, 56, Color(1, 1, 1, 0.96))
+	_results_sub.text = subtitle
+	UiStyle.apply_font(_results_sub, true, 18, Color(1, 1, 1, 0.55))
+	_results_sub.visible = not subtitle.is_empty()
+	for child in _results_rows.get_children():
+		_results_rows.remove_child(child)
+		child.queue_free()
+	var cards: Array = []
+	for i in rows.size():
+		var group := VBoxContainer.new()
+		group.add_theme_constant_override("separation", 10)
+		group.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		if i > 0:
+			group.add_child(_make_result_divider())
+		var row: Dictionary = rows[i]
+		group.add_child(_make_result_line(row))
+		group.modulate.a = 0.0
+		_results_rows.add_child(group)
+		cards.append(group)
+	return cards
+
+
+func _reveal_result_rows(cards: Array) -> void:
+	for i in range(cards.size() - 1, -1, -1):
+		var node := cards[i] as CanvasItem
+		if node == null or not is_instance_valid(node):
+			continue
+		if _results_tween and is_instance_valid(_results_tween):
+			_results_tween.kill()
+		node.modulate.a = 0.0
+		_results_tween = create_tween()
+		_results_tween.set_pause_mode(Tween.TWEEN_PAUSE_PROCESS)
+		_results_tween.tween_property(node, "modulate:a", 1.0, 0.24).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+		await _results_tween.finished
+		if is_instance_valid(node):
+			node.modulate.a = 1.0
+		if is_inside_tree():
+			await get_tree().create_timer(0.12).timeout
+
+
+func _result_row_data(
+	place: int,
+	player_name: String,
+	player_id: String,
+	colour: Color,
+	putts: int,
+	time_sec: float,
+	show_time: bool = true
+) -> Dictionary:
 	return {
 		"place": place,
 		"name": player_name,
 		"id": player_id,
 		"color": colour,
-		"hole": hole_text,
-		"par": par_text,
-		"total": total_text,
+		"putts": putts,
+		"time": time_sec,
+		"show_time": show_time,
 	}
 
 
-func _rel_text(rel: int, completed: bool) -> String:
-	if not completed:
-		return "DNF"
-	if rel == 0:
-		return "E"
-	if rel > 0:
-		return "+%d" % rel
-	return str(rel)
+func _format_clock(seconds: float) -> String:
+	var total := maxi(int(seconds), 0)
+	return "%d:%02d" % [int(total / 60.0), total % 60]
+
+
+func _refresh_results_hold() -> void:
+	if not _results_hold_open:
+		return
+	var left := maxf(0.0, _results_ends_at / 1000.0 - Time.get_unix_time_from_system())
+	if _results_hold_label:
+		_results_hold_label.text = str(maxi(ceili(left), 0))
+	if left <= 0.0:
+		finish_results_hold()
+
+
+func _ordinal(place: int) -> String:
+	var tens := place % 100
+	var ones := place % 10
+	if tens >= 11 and tens <= 13:
+		return "%dth" % place
+	if ones == 1:
+		return "%dst" % place
+	if ones == 2:
+		return "%dnd" % place
+	if ones == 3:
+		return "%drd" % place
+	return "%dth" % place
+
+
+func _set_play_chrome(on: bool) -> void:
+	var top := $Root.get_node_or_null("TopBar") as Control
+	if top:
+		top.visible = on
+	var abilities := $Root.get_node_or_null("Abilities") as Control
+	if abilities:
+		abilities.visible = on
+	var dock := $Root.get_node_or_null("LeftDock") as Control
+	if dock:
+		dock.visible = on
+	if not on:
+		show_phone_panel(false)
+		show_spectate(false)
+		if _pause_dimmer:
+			_pause_dimmer.visible = false
+	elif _chat_card:
+		_chat_card.visible = GameSession.online
 
 
 func _ensure_results_overlay() -> void:
 	if _results_dimmer:
 		return
 	_results_dimmer = ColorRect.new()
-	_results_dimmer.color = Color(0.08, 0.07, 0.06, 0.72)
+	_results_dimmer.color = Color(0.04, 0.05, 0.07, 0.84)
 	_results_dimmer.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	_results_dimmer.mouse_filter = Control.MOUSE_FILTER_STOP
 	_results_dimmer.visible = false
 	$Root.add_child(_results_dimmer)
-	var center := CenterContainer.new()
-	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	center.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_results_dimmer.add_child(center)
-	var card := PanelContainer.new()
-	card.add_theme_stylebox_override("panel", UiStyle.card(24))
-	card.custom_minimum_size = Vector2(460, 0)
-	center.add_child(card)
-	var col := VBoxContainer.new()
-	col.add_theme_constant_override("separation", 10)
-	card.add_child(col)
+	_results_content = Control.new()
+	_results_content.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_results_content.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_results_dimmer.add_child(_results_content)
 	_results_title = Label.new()
-	_results_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	UiStyle.apply_font(_results_title, true, 22, UiStyle.INK)
-	col.add_child(_results_title)
+	_results_title.text = "Results"
+	_results_title.anchor_left = 0.0
+	_results_title.anchor_top = 0.0
+	_results_title.anchor_right = 0.0
+	_results_title.anchor_bottom = 0.0
+	_results_title.offset_left = 48.0
+	_results_title.offset_top = 28.0
+	_results_title.offset_right = 420.0
+	_results_title.offset_bottom = 100.0
+	UiStyle.apply_font(_results_title, true, 56, Color(1, 1, 1, 0.96))
+	_results_content.add_child(_results_title)
 	_results_sub = Label.new()
-	_results_sub.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	UiStyle.apply_font(_results_sub, true, 14, UiStyle.TEAL)
-	col.add_child(_results_sub)
-	_results_round_header = _make_result_line("#", "Name", "Hole", "Par", "Total", Color(0.45, 0.38, 0.32), false)
-	_results_round_header.modulate.a = 0.65
-	col.add_child(_results_round_header)
-	_results_match_header = _make_result_line("#", "Name", "", "", "Total", Color(0.45, 0.38, 0.32), false)
-	_results_match_header.modulate.a = 0.65
-	_results_match_header.visible = false
-	col.add_child(_results_match_header)
+	_results_sub.anchor_left = 0.0
+	_results_sub.anchor_top = 0.0
+	_results_sub.anchor_right = 0.0
+	_results_sub.anchor_bottom = 0.0
+	_results_sub.offset_left = 52.0
+	_results_sub.offset_top = 96.0
+	_results_sub.offset_right = 420.0
+	_results_sub.offset_bottom = 124.0
+	UiStyle.apply_font(_results_sub, true, 18, Color(1, 1, 1, 0.55))
+	_results_content.add_child(_results_sub)
+	var board := MarginContainer.new()
+	board.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	board.add_theme_constant_override("margin_left", 72)
+	board.add_theme_constant_override("margin_right", 72)
+	board.add_theme_constant_override("margin_top", 150)
+	board.add_theme_constant_override("margin_bottom", 110)
+	board.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_results_content.add_child(board)
+	var center := CenterContainer.new()
+	center.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	center.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	center.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	board.add_child(center)
 	_results_rows = VBoxContainer.new()
-	_results_rows.add_theme_constant_override("separation", 8)
-	col.add_child(_results_rows)
+	_results_rows.add_theme_constant_override("separation", 10)
+	_results_rows.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_results_rows.custom_minimum_size = Vector2(780, 0)
+	center.add_child(_results_rows)
+	var hold := HBoxContainer.new()
+	hold.alignment = BoxContainer.ALIGNMENT_CENTER
+	hold.add_theme_constant_override("separation", 18)
+	hold.anchor_left = 0.0
+	hold.anchor_right = 1.0
+	hold.anchor_top = 1.0
+	hold.anchor_bottom = 1.0
+	hold.offset_left = 48.0
+	hold.offset_right = -48.0
+	hold.offset_top = -92.0
+	hold.offset_bottom = -28.0
+	hold.mouse_filter = Control.MOUSE_FILTER_STOP
+	_results_content.add_child(hold)
+	_results_hold_label = Label.new()
+	_results_hold_label.text = "10"
+	_results_hold_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_results_hold_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	UiStyle.apply_font(_results_hold_label, true, 36, Color(1, 1, 1, 0.92))
+	hold.add_child(_results_hold_label)
+	_results_skip = Button.new()
+	_results_skip.text = "SKIP · SWING"
+	_results_skip.visible = false
+	_results_skip.focus_mode = Control.FOCUS_NONE
+	_results_skip.custom_minimum_size = Vector2(168, 48)
+	UiStyle.apply_ghost_button(_results_skip)
+	UiStyle.apply_font(_results_skip, true, 18, UiStyle.INK)
+	_results_skip.pressed.connect(func() -> void: results_skip_pressed.emit())
+	hold.add_child(_results_skip)
 
 
-func _play_result_rows(rows: Array) -> void:
-	show_spectate(false)
-	for child in _results_rows.get_children():
-		child.queue_free()
-	var created: Array[Control] = []
-	for row in rows:
-		var line := _make_result_line(
-			"#%d" % int(row["place"]),
-			String(row["name"]),
-			String(row["hole"]),
-			String(row["par"]),
-			String(row["total"]),
-			row["color"],
-			String(row["id"]) == NetworkClient.player_id
-		)
-		line.modulate.a = 0.0
-		_results_rows.add_child(line)
-		created.append(line)
-	_results_dimmer.visible = true
-	_results_dimmer.modulate.a = 0.0
-	if _results_tween:
-		_results_tween.kill()
-	_results_tween = create_tween()
-	_results_tween.tween_property(_results_dimmer, "modulate:a", 1.0, 0.28)
-	for i in range(created.size() - 1, -1, -1):
-		_results_tween.tween_property(created[i], "modulate:a", 1.0, 0.22)
+func _make_result_divider() -> ColorRect:
+	var line := ColorRect.new()
+	line.color = Color(1, 1, 1, 0.35)
+	line.custom_minimum_size = Vector2(0, 2)
+	line.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	return line
 
 
-func _make_result_line(place_text: String, player_name: String, hole_text: String, par_text: String, total_text: String, colour: Color, is_local: bool) -> HBoxContainer:
-	var row := HBoxContainer.new()
-	row.add_theme_constant_override("separation", 10)
+func _make_result_line(row: Dictionary) -> Control:
+	var card := PanelContainer.new()
+	card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var panel := StyleBoxFlat.new()
+	panel.bg_color = Color(0.07, 0.08, 0.1, 0.78)
+	panel.set_corner_radius_all(12)
+	panel.border_width_left = 2
+	panel.border_width_top = 2
+	panel.border_width_right = 2
+	panel.border_width_bottom = 2
+	panel.border_color = Color(1, 1, 1, 0.32)
+	panel.content_margin_left = 22
+	panel.content_margin_right = 22
+	panel.content_margin_top = 14
+	panel.content_margin_bottom = 14
+	card.add_theme_stylebox_override("panel", panel)
+	var box := HBoxContainer.new()
+	box.add_theme_constant_override("separation", 22)
+	box.alignment = BoxContainer.ALIGNMENT_CENTER
+	card.add_child(box)
 	var place_l := Label.new()
-	place_l.text = place_text
-	place_l.custom_minimum_size = Vector2(40, 0)
-	UiStyle.apply_font(place_l, true, 16, UiStyle.INK)
-	row.add_child(place_l)
+	place_l.text = _ordinal(int(row.get("place", 1)))
+	place_l.custom_minimum_size = Vector2(92, 0)
+	place_l.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	UiStyle.apply_font(place_l, true, 36, Color(1, 1, 1, 0.96))
+	box.add_child(place_l)
+	box.add_child(_make_colour_portrait(row.get("color", Color("E23B3B"))))
 	var name_l := Label.new()
-	name_l.text = player_name + ("  (you)" if is_local else "")
+	name_l.text = String(row.get("name", "Player"))
 	name_l.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	UiStyle.apply_font(name_l, true, 16, colour)
-	row.add_child(name_l)
-	if not hole_text.is_empty():
-		var hole_l := Label.new()
-		hole_l.text = hole_text
-		hole_l.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-		hole_l.custom_minimum_size = Vector2(44, 0)
-		UiStyle.apply_font(hole_l, true, 16, UiStyle.INK)
-		row.add_child(hole_l)
-	if not par_text.is_empty():
-		var par_l := Label.new()
-		par_l.text = par_text
-		par_l.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-		par_l.custom_minimum_size = Vector2(44, 0)
-		UiStyle.apply_font(par_l, true, 16, UiStyle.INK)
-		row.add_child(par_l)
-	var total_l := Label.new()
-	total_l.text = total_text
-	total_l.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-	total_l.custom_minimum_size = Vector2(72, 0)
-	UiStyle.apply_font(total_l, true, 16, UiStyle.INK)
-	row.add_child(total_l)
-	return row
+	name_l.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	UiStyle.apply_font(name_l, true, 26, Color(1, 1, 1, 0.96))
+	box.add_child(name_l)
+	var stats := HBoxContainer.new()
+	stats.add_theme_constant_override("separation", 28)
+	stats.alignment = BoxContainer.ALIGNMENT_CENTER
+	var putts := int(row.get("putts", 0))
+	stats.add_child(_make_stat_value("%d %s" % [putts, "putt" if putts == 1 else "putts"]))
+	if bool(row.get("show_time", true)):
+		stats.add_child(_make_stat_value(_format_clock(float(row.get("time", 0)))))
+	box.add_child(stats)
+	return card
+
+
+func _make_colour_portrait(colour: Variant) -> Panel:
+	var tint: Color = colour if colour is Color else UiStyle.to_color(colour)
+	var frame := Panel.new()
+	frame.custom_minimum_size = Vector2(76, 76)
+	var style := StyleBoxFlat.new()
+	style.bg_color = tint.darkened(0.12)
+	style.set_corner_radius_all(16)
+	style.border_width_left = 3
+	style.border_width_top = 3
+	style.border_width_right = 3
+	style.border_width_bottom = 3
+	style.border_color = Color(1, 1, 1, 0.92)
+	frame.add_theme_stylebox_override("panel", style)
+	var orb := Panel.new()
+	orb.set_anchors_preset(Control.PRESET_CENTER)
+	orb.offset_left = -20.0
+	orb.offset_top = -20.0
+	orb.offset_right = 20.0
+	orb.offset_bottom = 20.0
+	var orb_style := StyleBoxFlat.new()
+	orb_style.bg_color = tint.lightened(0.08)
+	orb_style.set_corner_radius_all(999)
+	orb.add_theme_stylebox_override("panel", orb_style)
+	frame.add_child(orb)
+	return frame
+
+
+func _make_stat_value(text: String) -> Label:
+	var value := Label.new()
+	value.text = text
+	value.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	UiStyle.apply_font(value, true, 28, Color(1, 1, 1, 0.96))
+	return value

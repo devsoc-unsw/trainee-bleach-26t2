@@ -26,7 +26,7 @@ export const VOTE_MS = 30_000;
 export type Phase = 'lobby' | 'selecting' | 'playing';
 export type MapId = (typeof MAP_IDS)[number];
 export type GameMode = 'turn_by_turn' | 'free_for_all';
-export const HOLE_SUMMARY_MS = 8_000;
+export const HOLE_SUMMARY_MS = 10_000;
 
 export interface Player {
   id: string;
@@ -37,6 +37,8 @@ export interface Player {
   strokes: number;
   totalStrokes: number;
   holed: boolean;
+  holeTime: number;
+  totalTime: number;
   joinedAt: number;
   ball: BallSnap;
 }
@@ -52,6 +54,8 @@ export interface Room {
   roundIndex: number;
   gameMode: GameMode;
   summaryPending: boolean;
+  summaryPhase: 'hole' | 'standings' | '';
+  holeStartedAt: number;
   joinSeq: number;
   players: Map<string, Player>;
   votes: Map<string, string>;
@@ -179,8 +183,10 @@ function freshCode(): string {
 }
 
 function nextColor(room: Room): string {
-  const used = new Set(Array.from(room.players.values()).map((p) => p.color));
-  return COLORS.find((c) => !used.has(c)) ?? '#E23B3B';
+  const used = new Set(
+    Array.from(room.players.values()).map((p) => p.color.trim().toUpperCase())
+  );
+  return COLORS.find((c) => !used.has(c.toUpperCase())) ?? COLORS[0] ?? '#E23B3B';
 }
 
 function attachSocket(ws: WebSocket, code: string): void {
@@ -221,6 +227,8 @@ export function createRoom(
     roundIndex: 0,
     gameMode: normalizeGameMode(gameMode),
     summaryPending: false,
+    summaryPhase: '',
+    holeStartedAt: 0,
     joinSeq: 0,
     players: new Map(),
     votes: new Map(),
@@ -236,6 +244,8 @@ export function createRoom(
     strokes: 0,
     totalStrokes: 0,
     holed: false,
+    holeTime: 0,
+    totalTime: 0,
     joinedAt: ++room.joinSeq,
     ball: emptyBall(id),
   };
@@ -267,6 +277,8 @@ export function joinRoom(ws: WebSocket, code: string, playerName: string): Room 
     strokes: 0,
     totalStrokes: 0,
     holed: false,
+    holeTime: 0,
+    totalTime: 0,
     joinedAt: ++room.joinSeq,
     ball: emptyBall(id),
   };
@@ -359,9 +371,12 @@ export function beginSelect(ws: WebSocket): Room | string {
   if (room.phase === 'lobby') {
     room.roundIndex = 0;
     room.summaryPending = false;
+    room.summaryPhase = '';
     for (const p of room.players.values()) {
       p.totalStrokes = 0;
       p.strokes = 0;
+      p.holeTime = 0;
+      p.totalTime = 0;
       p.holed = false;
     }
   }
@@ -446,12 +461,15 @@ export function holeEndPayload(room: Room): {
   t: 'hole_end';
   holeIndex: number;
   lastHole: boolean;
+  endsAt: number;
   results: Array<{
     playerId: string;
     name: string;
     color: string;
     strokes: number;
     total: number;
+    time: number;
+    totalTime: number;
     holed: boolean;
   }>;
 } {
@@ -459,12 +477,15 @@ export function holeEndPayload(room: Room): {
     t: 'hole_end',
     holeIndex: room.roundIndex,
     lastHole: room.roundIndex + 1 >= room.rounds,
+    endsAt: Date.now() + HOLE_SUMMARY_MS,
     results: [...room.players.values()].map((p) => ({
       playerId: p.id,
       name: p.name,
       color: p.color,
       strokes: p.strokes,
       total: p.totalStrokes,
+      time: p.holeTime,
+      totalTime: p.totalTime,
       holed: p.holed,
     })),
   };
@@ -475,25 +496,23 @@ export function matchPlacings(room: Room): Array<{
   name: string;
   color: string;
   total: number;
+  time: number;
   place: number;
 }> {
-  const ranked = [...room.players.values()].sort((a, b) => {
-    if (a.totalStrokes !== b.totalStrokes) {
-      return a.totalStrokes - b.totalStrokes;
-    }
-    return a.name.localeCompare(b.name);
-  });
+  const ffa = room.gameMode === 'free_for_all';
+  const ranked = [...room.players.values()].sort((a, b) => compareMatchScore(a, b, ffa));
   const placings: Array<{
     playerId: string;
     name: string;
     color: string;
     total: number;
+    time: number;
     place: number;
   }> = [];
   let place = 1;
-  let prev: number | null = null;
   ranked.forEach((p, i) => {
-    if (prev !== null && p.totalStrokes !== prev) {
+    const prev = i > 0 ? ranked[i - 1] : undefined;
+    if (prev && !sameMatchPlace(prev, p, ffa)) {
       place = i + 1;
     }
     placings.push({
@@ -501,11 +520,31 @@ export function matchPlacings(room: Room): Array<{
       name: p.name,
       color: p.color,
       total: p.totalStrokes,
+      time: p.totalTime,
       place,
     });
-    prev = p.totalStrokes;
   });
   return placings;
+}
+
+function compareMatchScore(a: Player, b: Player, ffa: boolean): number {
+  if (ffa) {
+    if (a.totalTime !== b.totalTime) {
+      return a.totalTime - b.totalTime;
+    }
+    if (a.totalStrokes !== b.totalStrokes) {
+      return a.totalStrokes - b.totalStrokes;
+    }
+  } else if (a.totalStrokes !== b.totalStrokes) {
+    return a.totalStrokes - b.totalStrokes;
+  } else if (a.totalTime !== b.totalTime) {
+    return a.totalTime - b.totalTime;
+  }
+  return a.name.localeCompare(b.name);
+}
+
+function sameMatchPlace(a: Player, b: Player, _ffa: boolean): boolean {
+  return a.totalStrokes === b.totalStrokes && a.totalTime === b.totalTime;
 }
 
 export function markHoled(ws: WebSocket): { room: Room; result: 'player' | 'summary' } | string {
@@ -519,6 +558,9 @@ export function markHoled(ws: WebSocket): { room: Room; result: 'player' | 'summ
   }
   player.holed = true;
   player.ball.atRest = true;
+  if (player.holeTime <= 0) {
+    player.holeTime = Math.max(0, (Date.now() - (room.holeStartedAt || Date.now())) / 1000);
+  }
   const finished = tryFinishHole(room);
   return { room, result: finished ?? 'player' };
 }
@@ -534,14 +576,17 @@ export function tryFinishHole(room: Room): 'summary' | null {
   }
   for (const p of room.players.values()) {
     p.totalStrokes += p.strokes;
+    p.totalTime += p.holeTime;
   }
   room.summaryPending = true;
+  room.summaryPhase = 'hole';
   return 'summary';
 }
 
 export function continueAfterHole(room: Room): 'vote' | 'over' {
   clearHoleAdvance(room.code);
   room.summaryPending = false;
+  room.summaryPhase = '';
   room.roundIndex += 1;
   if (room.roundIndex >= room.rounds) {
     room.phase = 'lobby';
@@ -552,9 +597,34 @@ export function continueAfterHole(room: Room): 'vote' | 'over' {
   return 'vote';
 }
 
+export type SummaryAdvance = 'standings' | 'vote' | 'over';
+
+export function advanceSummary(room: Room): { room: Room; result: SummaryAdvance; endsAt?: number } {
+  if (room.summaryPhase !== 'standings') {
+    room.summaryPhase = 'standings';
+    return { room, result: 'standings', endsAt: Date.now() + HOLE_SUMMARY_MS };
+  }
+  return { room, result: continueAfterHole(room) };
+}
+
+export function skipHoleSummary(ws: WebSocket): { room: Room; result: SummaryAdvance; endsAt?: number } | string {
+  const room = roomFor(ws);
+  const player = playerFor(ws);
+  if (!room || !player) {
+    return 'You are not in a lobby';
+  }
+  if (player.id !== room.hostId) {
+    return 'Only the host can skip';
+  }
+  if (!room.summaryPending) {
+    return 'Results are not up';
+  }
+  return advanceSummary(room);
+}
+
 export function scheduleHoleAdvance(
   room: Room,
-  onDone: (live: Room, result: 'vote' | 'over') => void
+  onDone: (live: Room, result: SummaryAdvance, endsAt?: number) => void
 ): void {
   clearHoleAdvance(room.code);
   holeAdvanceTimers.set(
@@ -565,8 +635,11 @@ export function scheduleHoleAdvance(
       if (!live || !live.summaryPending) {
         return;
       }
-      const result = continueAfterHole(live);
-      onDone(live, result);
+      const next = advanceSummary(live);
+      if (next.result === 'standings') {
+        scheduleHoleAdvance(live, onDone);
+      }
+      onDone(live, next.result, next.endsAt);
     }, HOLE_SUMMARY_MS)
   );
 }
@@ -649,11 +722,14 @@ function commitMatch(room: Room, mapId: string): Room {
   room.mapId = mapId;
   room.phase = 'playing';
   room.summaryPending = false;
+  room.summaryPhase = '';
   room.votes.clear();
   room.voteDeadline = 0;
   room.takenPickups.clear();
+  room.holeStartedAt = Date.now();
   for (const p of room.players.values()) {
     p.strokes = 0;
+    p.holeTime = 0;
     p.holed = false;
     p.ball = emptyBall(p.id);
   }
@@ -689,7 +765,8 @@ function newestPlayer(room: Room): Player | undefined {
 }
 
 function normalizeBallColor(value: string): string | null {
-  const hex = value.trim().toUpperCase();
+  const raw = value.trim().toUpperCase();
+  const hex = raw.startsWith('#') ? raw : `#${raw}`;
   const match = COLORS.find((c) => c.toUpperCase() === hex);
   return match ?? null;
 }

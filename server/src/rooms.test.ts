@@ -254,6 +254,81 @@ describe('rooms', () => {
     assert.equal(last.room.phase, 'lobby');
   });
 
+  it('lets only the host skip the results hold', () => {
+    const a = fakeSocket();
+    const b = fakeSocket();
+    rooms.register(a.ws);
+    rooms.register(b.ws);
+    const room = rooms.createRoom(a.ws, 'Skip', true, 'Host', 2);
+    rooms.joinRoom(b.ws, room.code, 'Guest');
+    rooms.startMatch(a.ws, 'rainbow_stairs');
+    rooms.markHoled(a.ws);
+    rooms.markHoled(b.ws);
+    assert.equal(room.summaryPending, true);
+    assert.equal(rooms.skipHoleSummary(b.ws), 'Only the host can skip');
+    const first = rooms.skipHoleSummary(a.ws);
+    assert.notEqual(typeof first, 'string');
+    assert.equal((first as { result: string }).result, 'standings');
+    assert.equal(room.summaryPending, true);
+    assert.equal(room.summaryPhase, 'standings');
+    const skipped = rooms.skipHoleSummary(a.ws);
+    assert.notEqual(typeof skipped, 'string');
+    assert.equal((skipped as { result: string }).result, 'vote');
+    assert.equal(room.phase, 'selecting');
+    assert.equal(room.summaryPending, false);
+  });
+
+  it('ranks free-for-all by time, then putts', () => {
+    const a = fakeSocket();
+    const b = fakeSocket();
+    rooms.register(a.ws);
+    rooms.register(b.ws);
+    const room = rooms.createRoom(a.ws, 'Race', true, 'Host', 1, 'free_for_all');
+    rooms.joinRoom(b.ws, room.code, 'Guest');
+    rooms.startMatch(a.ws, 'rainbow_stairs');
+    rooms.markHoled(a.ws);
+    rooms.markHoled(b.ws);
+    const host = [...room.players.values()].find((p) => p.host);
+    const guest = [...room.players.values()].find((p) => !p.host);
+    assert.ok(host && guest);
+    host.totalStrokes = 8;
+    host.totalTime = 12;
+    guest.totalStrokes = 3;
+    guest.totalTime = 20;
+    const places = rooms.matchPlacings(room);
+    assert.equal(places[0]?.playerId, host.id);
+    assert.equal(places[0]?.place, 1);
+    assert.equal(places[0]?.time, 12);
+    assert.equal(places[0]?.total, 8);
+    assert.equal(places[1]?.playerId, guest.id);
+    assert.equal(places[1]?.place, 2);
+  });
+
+  it('ranks turn-by-turn by putts, then time', () => {
+    const a = fakeSocket();
+    const b = fakeSocket();
+    rooms.register(a.ws);
+    rooms.register(b.ws);
+    const room = rooms.createRoom(a.ws, 'Turns', true, 'Host', 1, 'turn_by_turn');
+    rooms.joinRoom(b.ws, room.code, 'Guest');
+    rooms.startMatch(a.ws, 'rainbow_stairs');
+    rooms.markHoled(a.ws);
+    rooms.markHoled(b.ws);
+    const host = [...room.players.values()].find((p) => p.host);
+    const guest = [...room.players.values()].find((p) => !p.host);
+    assert.ok(host && guest);
+    host.totalStrokes = 4;
+    host.totalTime = 30;
+    guest.totalStrokes = 4;
+    guest.totalTime = 18;
+    const places = rooms.matchPlacings(room);
+    assert.equal(places[0]?.playerId, guest.id);
+    assert.equal(places[0]?.place, 1);
+    assert.equal(places[0]?.time, 18);
+    assert.equal(places[1]?.playerId, host.id);
+    assert.equal(places[1]?.place, 2);
+  });
+
   it('lets the host set turn-by-turn or free-for-all before the match starts', () => {
     const a = fakeSocket();
     const b = fakeSocket();
@@ -320,6 +395,7 @@ describe('rooms', () => {
     assert.equal(guest?.name, 'Lou');
     assert.equal(guest?.color, '#27AE60');
     assert.equal(rooms.setProfile(a.ws, 'Host', '#27AE60'), 'That colour is already taken');
+    assert.equal(rooms.setProfile(a.ws, 'Host', '27AE60'), 'That colour is already taken');
     assert.equal(rooms.setProfile(b.ws, 'Lou', '#not-a-colour'), 'Pick a valid ball colour');
     rooms.startMatch(a.ws, 'rainbow_stairs');
     assert.equal(rooms.setProfile(b.ws, 'Nope'), 'Cannot change that after the match has started');

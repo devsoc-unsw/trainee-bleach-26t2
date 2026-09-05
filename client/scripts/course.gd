@@ -37,6 +37,7 @@ var _phone_hit_ms := 0
 var _tee_origin := Vector3.ZERO
 var _fairway := Vector3.FORWARD
 var _kickoff := false
+var _oob_wait := false
 var _want_phone_panel := false
 var _bump_at: Dictionary = {}
 var _prev_ball_vel := Vector3.ZERO
@@ -50,6 +51,14 @@ var _pending_pickup := ""
 var _slot_kind: Array[String] = ["", ""]
 var _slot_until: Array[int] = [0, 0]
 var _phone_powers_key := ""
+var _phone_rank := 0
+var _phone_rank_text := ""
+var _hole_results: Array = []
+var _last_hole := false
+var _results_page := 0
+var _board_ready := false
+var _leaving_results := false
+var _scores_ends_at := 0.0
 
 
 func _ready() -> void:
@@ -78,7 +87,6 @@ func _ready() -> void:
 	if hole.has_signal("sunk_finished"):
 		hole.sunk_finished.connect(_on_sunk_finished)
 	out_of_bounds.oob_triggered.connect(_on_oob)
-	hud.show_players_changed.connect(_on_show_players_changed)
 	hud.quit_pressed.connect(_on_quit_pressed)
 	hud.courses_pressed.connect(_on_courses_pressed)
 	hud.phone_link_pressed.connect(_on_phone_link_pressed)
@@ -91,6 +99,10 @@ func _ready() -> void:
 	hud.spectate_next_pressed.connect(func() -> void: _cycle_spectate(1))
 	if hud.has_signal("power_used"):
 		hud.power_used.connect(_on_power_used)
+	if hud.has_signal("results_skip_pressed"):
+		hud.results_skip_pressed.connect(_on_results_skip)
+	if hud.has_signal("results_hold_finished"):
+		hud.results_hold_finished.connect(_on_results_hold_finished)
 	if GameSession.online:
 		hud.stop_timer()
 		hud.reset_timer()
@@ -606,12 +618,113 @@ func _push_phone_powers(left_kind: String, left_left: float, right_kind: String,
 	var phone := _phone()
 	if phone.has_method("set_powers"):
 		phone.call("set_powers", left_kind, left_left, right_kind, right_left)
-	var key := "%s|%.1f|%s|%.1f" % [left_kind, left_left, right_kind, right_left]
+	if phone.has_method("set_rank"):
+		phone.call("set_rank", _phone_rank, _phone_rank_text)
+	var key := "%s|%.1f|%s|%.1f|%d|%s" % [left_kind, left_left, right_kind, right_left, _phone_rank, _phone_rank_text]
 	if key == _phone_powers_key:
 		return
 	_phone_powers_key = key
 	if GameSession.online:
-		NetworkClient.send_phone_powers(left_kind, left_left, right_kind, right_left)
+		NetworkClient.send_phone_powers(left_kind, left_left, right_kind, right_left, _phone_rank, _phone_rank_text)
+
+
+func _set_phone_rank(place: int) -> void:
+	_phone_rank = maxi(place, 0)
+	_phone_rank_text = _ordinal(_phone_rank)
+	_phone_powers_key = ""
+	_refresh_power_hud()
+
+
+func _ordinal(place: int) -> String:
+	if place < 1:
+		return ""
+	var tens := place % 100
+	var ones := place % 10
+	if tens >= 11 and tens <= 13:
+		return "%dth" % place
+	if ones == 1:
+		return "%dst" % place
+	if ones == 2:
+		return "%dnd" % place
+	if ones == 3:
+		return "%drd" % place
+	return "%dth" % place
+
+
+func _place_from_results(results: Array, field: String) -> int:
+	var mine := _local_player_id()
+	var time_field := _results_time_field(field)
+	var ranked: Array = []
+	for item in results:
+		if item is Dictionary:
+			ranked.append(item)
+	ranked.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
+		return _result_better(a, b, field, time_field)
+	)
+	var place := 1
+	for i in ranked.size():
+		var r: Dictionary = ranked[i]
+		if i > 0 and not _result_tied(ranked[i - 1], r, field, time_field):
+			place = i + 1
+		var id := String(r.get("playerId", ""))
+		if id == mine or (mine.is_empty() and id == "local"):
+			return place
+	var my_name := GameSession.player_name
+	place = 1
+	for i in ranked.size():
+		var named: Dictionary = ranked[i]
+		if i > 0 and not _result_tied(ranked[i - 1], named, field, time_field):
+			place = i + 1
+		if String(named.get("name", "")) == my_name:
+			return place
+	return 1 if ranked.size() == 1 else 0
+
+
+func _results_time_field(score_field: String) -> String:
+	return "totalTime" if score_field == "total" else "time"
+
+
+func _result_clock(row: Dictionary, time_field: String) -> float:
+	if time_field.is_empty():
+		return 0.0
+	if row.has(time_field):
+		return float(row.get(time_field, 0))
+	return float(row.get("time", 0))
+
+
+func _result_better(a: Dictionary, b: Dictionary, field: String, time_field: String) -> bool:
+	var left := int(a.get(field, 0))
+	var right := int(b.get(field, 0))
+	var left_t := _result_clock(a, time_field)
+	var right_t := _result_clock(b, time_field)
+	if GameSession.is_free_for_all():
+		if not is_equal_approx(left_t, right_t):
+			return left_t < right_t
+		if left != right:
+			return left < right
+	else:
+		if left != right:
+			return left < right
+		if not is_equal_approx(left_t, right_t):
+			return left_t < right_t
+	return String(a.get("name", "")) < String(b.get("name", ""))
+
+
+func _result_tied(a: Dictionary, b: Dictionary, field: String, time_field: String) -> bool:
+	if int(a.get(field, 0)) != int(b.get(field, 0)):
+		return false
+	return is_equal_approx(_result_clock(a, time_field), _result_clock(b, time_field))
+
+
+func _place_from_placings(placings: Array) -> int:
+	var mine := _local_player_id()
+	for p in placings:
+		if not p is Dictionary:
+			continue
+		var id := String(p.get("playerId", ""))
+		if id == mine or (mine.is_empty() and id == "local"):
+			return int(p.get("place", 0))
+	return 0
 
 
 func _on_pad_crossed(pad: SpeedPad, body: Node) -> void:
@@ -642,6 +755,8 @@ func _on_pad_crossed(pad: SpeedPad, body: Node) -> void:
 func _process(delta: float) -> void:
 	if not is_inside_tree():
 		return
+	_sync_aim_device()
+	_lock_spectate_for_results()
 	_apply_phone_look(delta)
 	_update_ghost_club()
 	_tick_powers()
@@ -700,10 +815,7 @@ func _setup_phone() -> void:
 		NetworkClient.phone_power.connect(_on_power_used)
 	if not NetworkClient.error_received.is_connected(_on_phone_error):
 		NetworkClient.error_received.connect(_on_phone_error)
-	if phone.is_linked():
-		GameSession.aim_with_phone = true
-		if hud.has_method("_refresh_aim_mode_buttons"):
-			hud._refresh_aim_mode_buttons()
+	_sync_aim_device()
 
 
 func _exit_tree() -> void:
@@ -759,7 +871,7 @@ func _on_phone_link_pressed() -> void:
 			hud.set_phone_qr_png(qr)
 		if phone.is_linked():
 			hud.set_phone_status("Still linked. Keep the same phone page open.")
-			GameSession.aim_with_phone = true
+			_sync_aim_device()
 		else:
 			hud.set_phone_status("Same Wi-Fi. Scan the code, or type the address. Use the https one for swing sensors.")
 		phone.fetch_qr()
@@ -803,21 +915,42 @@ func _on_phone_linked() -> void:
 		return
 	if not GameSession.online and _phone().server != null and _phone().server.is_listening():
 		return
-	GameSession.aim_with_phone = true
+	GameSession.prefer_mouse = false
+	_sync_aim_device()
 	hud.set_phone_info(_phone_code_text(), true)
 
 
 func _on_phone_gone() -> void:
 	_phone_look = Vector2.ZERO
+	var phone := _phone()
+	if phone.has_method("mark_unlinked"):
+		phone.call("mark_unlinked")
+	_sync_aim_device()
 	if not is_inside_tree() or hud == null or not is_instance_valid(hud):
 		return
-	if not GameSession.online and _phone().server != null and _phone().server.is_listening():
+	if not GameSession.online and phone.server != null and phone.server.is_listening():
 		return
 	hud.set_phone_info(_phone_code_text(), false)
 
 
+func _sync_aim_device() -> void:
+	var live := false
+	var phone := _phone()
+	if phone != null and phone.has_method("is_linked"):
+		live = bool(phone.call("is_linked"))
+	var want := live and not GameSession.prefer_mouse
+	if GameSession.aim_with_phone == want:
+		return
+	GameSession.aim_with_phone = want
+	if hud != null and is_instance_valid(hud) and hud.has_method("_refresh_aim_mode_buttons"):
+		hud._refresh_aim_mode_buttons()
+	if not want:
+		_clear_phone_aim()
+
+
 func _on_aim_mode_changed(_use_phone: bool) -> void:
 	_clear_phone_aim()
+	_sync_aim_device()
 
 
 func _clear_phone_aim() -> void:
@@ -837,6 +970,9 @@ func _reset_phone_swing() -> void:
 
 func _on_phone_hit(power: float, stick_x: float = 0.0, stick_y: float = 0.0) -> void:
 	if not is_inside_tree() or hud == null or not is_instance_valid(hud):
+		return
+	if hud.has_method("can_skip_results") and hud.can_skip_results():
+		_on_results_skip()
 		return
 	if _kickoff or _spectating or not GameSession.aim_with_phone:
 		return
@@ -864,6 +1000,11 @@ func _on_phone_pose(beta: float, gamma: float, holding: bool, stick_x: float = 0
 		return
 	if camera_rig == null or not is_instance_valid(camera_rig):
 		return
+	if camera_rig.free_roam and camera_rig.has_method("set_phone_drive"):
+		if holding and (hud == null or not hud.is_showing_results()):
+			camera_rig.set_phone_drive(stick_x, stick_y)
+		else:
+			camera_rig.set_phone_drive(0.0, 0.0)
 	if not GameSession.aim_with_phone or _spectating or (ball != null and ball.is_holed):
 		_hide_ghost_club()
 		return
@@ -896,7 +1037,21 @@ func _on_phone_pose(beta: float, gamma: float, holding: bool, stick_x: float = 0
 		aim_controller.preview_from_phone(0.0, 0.0, 0.0)
 
 
+func _lock_spectate_for_results() -> void:
+	if camera_rig == null or not is_instance_valid(camera_rig):
+		return
+	var lock: bool = false
+	if hud != null and hud.has_method("is_showing_results"):
+		lock = bool(hud.is_showing_results())
+	if camera_rig.has_method("set_input_locked"):
+		camera_rig.set_input_locked(lock)
+	if lock and camera_rig.has_method("set_phone_drive"):
+		camera_rig.set_phone_drive(0.0, 0.0)
+
+
 func _apply_phone_look(delta: float) -> void:
+	if hud != null and hud.has_method("is_showing_results") and hud.is_showing_results():
+		return
 	if not GameSession.aim_with_phone:
 		return
 	if camera_rig == null or not is_instance_valid(camera_rig):
@@ -976,6 +1131,8 @@ func _setup_multiplayer() -> void:
 	NetworkClient.chat_received.connect(_on_chat_received)
 	NetworkClient.lobby_state_received.connect(_on_lobby_state)
 	NetworkClient.hole_ended.connect(_on_hole_ended)
+	if not NetworkClient.results_next.is_connected(_on_results_next):
+		NetworkClient.results_next.connect(_on_results_next)
 	if not NetworkClient.bump_received.is_connected(_on_bump):
 		NetworkClient.bump_received.connect(_on_bump)
 	if not NetworkClient.pickup_taken.is_connected(_on_pickup_taken):
@@ -1044,12 +1201,7 @@ func _ghosts_visible() -> bool:
 		return true
 	if GameSession.is_turn_by_turn() and not _local_holed() and not _spectating:
 		return false
-	return GameSession.show_players or _spectating
-
-
-func _on_show_players_changed(enabled: bool) -> void:
-	GameSession.show_players = enabled
-	_apply_ghost_visibility()
+	return true
 
 
 func _apply_ghost_visibility() -> void:
@@ -1159,6 +1311,7 @@ func _on_lobby_state(_lobby: Dictionary) -> void:
 
 
 func _on_ball_sunk() -> void:
+	_clear_powers()
 	hud.stop_timer()
 	hud.set_ball_state(BallStatusIndicator.State.HOLED)
 	var id := NetworkClient.player_id if GameSession.online else "local"
@@ -1179,12 +1332,32 @@ func _on_sunk_finished() -> void:
 			return
 		_enter_spectate()
 		return
-	if hole.has_method("show_results"):
-		hole.show_results(hud.hole, hud.par, hud.strokes, hud.timer_value.text)
+	_clear_powers()
+	var colour := "#%s" % GameSession.my_color.to_html(false)
+	var results: Array = [{
+		"playerId": "local",
+		"name": GameSession.player_name,
+		"color": colour,
+		"strokes": hud.strokes,
+		"total": hud.strokes,
+		"time": hud.elapsed,
+		"holed": true,
+	}]
+	_hole_results = results
+	_last_hole = true
+	_results_page = 1
+	_board_ready = true
+	_set_phone_rank(1)
+	await hud.show_round_results(maxi(hud.hole - 1, 0), true, results, hud.par)
+	if not is_inside_tree():
+		return
+	hud.begin_results_hold(0.0, true)
 
 
 func _unhandled_input(event: InputEvent) -> void:
 	if not _spectating:
+		return
+	if hud != null and hud.is_showing_results():
 		return
 	if event is InputEventKey and event.pressed and not event.echo:
 		if event.physical_keycode == KEY_TAB:
@@ -1284,19 +1457,182 @@ func _apply_spectate_target() -> void:
 	hud.set_spectate_target_name(_player_name(id))
 
 
-func _on_hole_ended(hole_index: int, last_hole: bool, results: Array) -> void:
+func _clear_powers() -> void:
+	_slot_kind = ["", ""]
+	_slot_until = [0, 0]
+	_shield_until = 0
+	_shrink_until = 0
+	_refresh_local_powers()
+
+
+func is_ready_for_map_select() -> bool:
+	return not _hole_results.is_empty() or (hud != null and hud.is_showing_results())
+
+
+func _on_hole_ended(hole_index: int, last_hole: bool, results: Array, ends_at: float = 0.0) -> void:
+	_clear_powers()
+	_hole_results = results
+	_last_hole = last_hole
+	_results_page = 1
+	_board_ready = true
 	hud.show_spectate(false)
-	hud.show_round_results(hole_index, last_hole, results, int(GameSession.get_map().get("par", 3)))
+	_set_phone_rank(_place_from_results(results, "strokes"))
+	await hud.show_round_results(hole_index, last_hole, results, int(GameSession.get_map().get("par", 3)))
+	if not is_inside_tree() or _leaving_results:
+		return
+	_phone_powers_key = ""
+	_refresh_power_hud()
+	hud.begin_results_hold(ends_at, GameSession.hosting)
 
 
-func present_match_results(placings: Array) -> void:
-	hud.show_match_results(placings)
-	await get_tree().create_timer(8.0).timeout
+func _on_results_next(last_hole: bool, ends_at: float = 0.0) -> void:
+	_last_hole = last_hole
+	_scores_ends_at = ends_at
+	if _leaving_results:
+		return
+	await _show_score_board(ends_at, GameSession.hosting)
+
+
+func _show_score_board(ends_at: float = 0.0, can_skip: bool = false) -> void:
+	if _results_page >= 2 or _leaving_results:
+		return
+	_results_page = 2
+	hud.clear_results_hold()
+	_set_phone_rank(_place_from_results(_hole_results, "total"))
+	if _last_hole:
+		await hud.show_match_results(_placings_from_hole(_hole_results))
+	else:
+		await hud.show_standings_results(_hole_results)
+	if not is_inside_tree() or _leaving_results:
+		return
+	_phone_powers_key = ""
+	_refresh_power_hud()
+	hud.begin_results_hold(ends_at, can_skip)
+
+
+func _on_results_skip() -> void:
+	if not hud.can_skip_results():
+		return
+	hud.clear_results_hold()
+	if GameSession.online:
+		NetworkClient.send_skip_results()
+		return
+	await _advance_local_results()
+
+
+func _on_results_hold_finished() -> void:
+	if GameSession.online:
+		return
+	await _advance_local_results()
+
+
+func _advance_local_results() -> void:
+	if _leaving_results:
+		return
+	if _results_page < 2:
+		await _show_score_board(0.0, true)
+		return
+	_leaving_results = true
+	_set_phone_rank(0)
 	if is_inside_tree():
-		GameSession.return_to_lobby()
+		await hud.fade_out_results(false)
+	if is_inside_tree():
+		GameSession.open_select_faded()
+
+
+func leave_to_map_select() -> void:
+	if _leaving_results:
+		return
+	if _hole_results.is_empty() and not hud.is_showing_results():
+		return
+	_leaving_results = true
+	_set_phone_rank(0)
+	if is_inside_tree():
+		await hud.fade_out_results(false)
+	if is_inside_tree():
+		GameSession.open_select_faded()
+
+
+func present_match_results(_placings: Array) -> void:
+	if _leaving_results:
+		return
+	_leaving_results = true
+	_set_phone_rank(0)
+	if is_inside_tree():
+		await hud.fade_out_results(false)
+	if is_inside_tree():
+		GameSession.return_to_lobby_faded()
+
+
+func _wait_board_ready(limit: float) -> void:
+	var waited := 0.0
+	while not _board_ready and is_inside_tree() and waited < limit:
+		await get_tree().process_frame
+		waited += get_process_delta_time()
+
+
+func _placings_from_hole(results: Array) -> Array:
+	var time_field := _results_time_field("total")
+	var ranked: Array = []
+	for item in results:
+		if item is Dictionary:
+			ranked.append(item)
+	ranked.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
+		return _result_better(a, b, "total", time_field)
+	)
+	var placings: Array = []
+	var place := 1
+	for i in ranked.size():
+		var r: Dictionary = ranked[i]
+		if i > 0 and not _result_tied(ranked[i - 1], r, "total", time_field):
+			place = i + 1
+		placings.append({
+			"playerId": String(r.get("playerId", "")),
+			"name": String(r.get("name", "Player")),
+			"color": r.get("color", "#E23B3B"),
+			"total": int(r.get("total", 0)),
+			"time": _result_clock(r, time_field if not time_field.is_empty() else "time"),
+			"place": place,
+		})
+	return placings
 
 
 func _on_oob() -> void:
+	if _oob_wait or _kickoff or ball == null or not is_instance_valid(ball) or ball.is_holed:
+		return
+	_return_from_oob()
+
+
+func _return_from_oob() -> void:
+	_oob_wait = true
 	hud.set_ball_state(BallStatusIndicator.State.OOB)
+	var back := ball.last_safe_position
+	ball.freeze = true
+	ball.visible = false
+	ball.linear_velocity = Vector3.ZERO
+	ball.angular_velocity = Vector3.ZERO
+	ball.is_moving = false
+	ball.sleeping = true
+	var park := _ground_snap(back)
+	ball.global_position = park
+	PhysicsServer3D.body_set_state(ball.get_rid(), PhysicsServer3D.BODY_STATE_TRANSFORM, ball.global_transform)
 	if GameSession.online:
 		NetworkClient.send_oob()
+	for n in [3, 2, 1]:
+		if hud.has_method("show_kickoff"):
+			hud.show_kickoff(str(n))
+		await get_tree().create_timer(1.0).timeout
+		if not is_inside_tree():
+			return
+	if hud.has_method("hide_kickoff"):
+		hud.hide_kickoff()
+	if ball == null or not is_instance_valid(ball):
+		_oob_wait = false
+		return
+	ball.reset_to(park)
+	ball.visible = true
+	hud.set_ball_state(BallStatusIndicator.State.READY)
+	_oob_wait = false
+	_reset_phone_swing()
+	if aim_controller != null and aim_controller.has_method("clear_aim"):
+		aim_controller.clear_aim()

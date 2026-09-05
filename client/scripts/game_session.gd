@@ -25,8 +25,8 @@ var hosting := false
 var online := false
 var my_color := Color("E23B3B")
 var last_error := ""
-var show_players := true
 var aim_with_phone := false
+var prefer_mouse := false
 var game_mode := "turn_by_turn"
 var vote_deadline_ms := 0.0
 var vote_counts: Dictionary = {}
@@ -192,11 +192,32 @@ func set_game_mode(mode: String) -> void:
 	NetworkClient.send_set_mode(mode)
 
 
+func color_hex(value: Variant) -> String:
+	return str(value).strip_edges().trim_prefix("#").to_upper()
+
+
+func is_color_taken(hex: String) -> bool:
+	var key := color_hex(hex)
+	if key.is_empty():
+		return false
+	var people: Variant = active_lobby.get("player_list", [])
+	if people is Array:
+		for p in people:
+			if not p is Dictionary:
+				continue
+			if str(p.get("id", "")) == NetworkClient.player_id:
+				continue
+			if color_hex(p.get("color", "")) == key:
+				return true
+	return false
+
+
 func set_profile(new_name: String = "", color: String = "") -> void:
 	if not new_name.is_empty():
 		player_name = new_name
-	if not color.is_empty():
-		my_color = Color(color)
+	if not color.is_empty() and is_color_taken(color):
+		last_error = "That colour is already taken"
+		return
 	NetworkClient.send_set_profile(new_name, color)
 
 
@@ -364,8 +385,13 @@ func _on_vote_state(deadline: float, votes: Dictionary, counts: Dictionary) -> v
 	if not online or _loading:
 		return
 	var scene := get_tree().current_scene
+	if scene and scene.has_method("leave_to_map_select"):
+		if scene.has_method("is_ready_for_map_select") and not bool(scene.call("is_ready_for_map_select")):
+			return
+		scene.call("leave_to_map_select")
+		return
 	if scene == null or scene.scene_file_path != SELECT_SCENE:
-		get_tree().change_scene_to_file(SELECT_SCENE)
+		_play_with_fade(SELECT_SCENE)
 
 
 func _on_match_started(id: String) -> void:
@@ -393,8 +419,16 @@ func open_select() -> void:
 	get_tree().change_scene_to_file(SELECT_SCENE)
 
 
+func open_select_faded() -> void:
+	_play_with_fade(SELECT_SCENE)
+
+
 func return_to_lobby() -> void:
 	get_tree().change_scene_to_file(LOBBY_SCENE)
+
+
+func return_to_lobby_faded() -> void:
+	_play_with_fade(LOBBY_SCENE)
 
 
 func _build_loader() -> void:
@@ -431,9 +465,11 @@ func _play_with_fade(path: String) -> void:
 		return
 	_loading = true
 	_request_scene(path)
-	var map_scene := str(get_map().get("scene", ""))
-	if not map_scene.is_empty():
-		_request_scene(map_scene)
+	var map_scene := ""
+	if path == COURSE_SCENE:
+		map_scene = str(get_map().get("scene", ""))
+		if not map_scene.is_empty():
+			_request_scene(map_scene)
 	await _fade_to_black()
 	if not map_scene.is_empty():
 		await _await_scene(map_scene)
