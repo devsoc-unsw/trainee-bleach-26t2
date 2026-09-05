@@ -3,7 +3,6 @@
 [ext_resource type="Script" uid="uid://dy6feaiske18s" path="res://scripts/hud.gd" id="1_hud"]
 [ext_resource type="Theme" path="res://ui/hud_theme.tres" id="2_theme"]
 [ext_resource type="Script" uid="uid://bqyoyw2tf4by7" path="res://scripts/top_bar.gd" id="3_topbar"]
-[ext_resource type="Script" uid="uid://dcaw2vhwwlfte" path="res://scripts/on_off_toggle.gd" id="4_toggle"]
 [ext_resource type="Script" path="res://scripts/ball_status.gd" id="13_ballstatus"]
 [ext_resource type="FontFile" path="res://ui/fonts/Montserrat-ExtraBold.ttf" id="5_extrabold"]
 [ext_resource type="FontFile" path="res://ui/fonts/Montserrat-Bold.ttf" id="6_bold"]
@@ -31,11 +30,6 @@ font_color = Color(0.298, 0.722, 0.69, 1)
 font = ExtResource("5_extrabold")
 font_size = 18
 font_color = Color(0.965, 0.945, 0.902, 1)
-
-[sub_resource type="LabelSettings" id="LabelSettings_body"]
-font = ExtResource("6_bold")
-font_size = 17
-font_color = Color(0.353, 0.322, 0.282, 1)
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_btn"]
 bg_color = Color(0.298, 0.722, 0.69, 1)
@@ -483,23 +477,6 @@ theme_override_constants/margin_left = 18
 theme_override_constants/margin_top = 14
 theme_override_constants/margin_right = 14
 theme_override_constants/margin_bottom = 16
-
-[node name="BodyRow" type="HBoxContainer" parent="Root/Scorecard/Layout/Body"]
-layout_mode = 2
-theme_override_constants/separation = 12
-
-[node name="ShowPlayers" type="Label" parent="Root/Scorecard/Layout/Body/BodyRow"]
-layout_mode = 2
-size_flags_horizontal = 3
-text = "Show Players"
-label_settings = SubResource("LabelSettings_body")
-vertical_alignment = 1
-
-[node name="PlayersToggle" type="Control" parent="Root/Scorecard/Layout/Body/BodyRow"]
-custom_minimum_size = Vector2(52, 30)
-layout_mode = 2
-script = ExtResource("4_toggle")
-font = ExtResource("6_bold")
 
 [node name="Abilities" type="HBoxContainer" parent="Root"]
 layout_mode = 1
