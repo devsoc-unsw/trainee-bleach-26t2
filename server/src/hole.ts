@@ -1,11 +1,12 @@
 import { GameState, Player, Room, Vec3 } from './interface.js';
 import { COURSE, getHole } from './course.js';
-import { broadcast } from './rooms.js';
+import { broadcast, sendTo } from './rooms.js';
 
 const COUNTDOWN_MS = 3 * 1000;
 const HOLE_TIMER_MS = 90 * 1000;
 const HOLE_SUMMARY_PAUSE_MS = 5 * 1000;
 const MAX_STROKES = 10;
+const SNAPSHOT_MS = 1000 / 15;
 
 interface HoleEndResult {
   playerId: string;
@@ -24,15 +25,22 @@ export function startCountdown(room: Room, holeIndex: number) {
     if (!hole) return;
 
     room.state = GameState.HOLE_ACTIVE;
+    for (const p of room.players.values()) {
+      p.pos = [hole.spawn[0] ?? 0, hole.spawn[1] ?? 0, hole.spawn[2] ?? 0];
+      p.vel = [0, 0, 0];
+      p.atRest = true;
+    }
     broadcast(room, {
       t: 'hole_start',
       holeIndex: holeIndex,
       par: hole.par,
       timerMs: HOLE_TIMER_MS, // still unimplemented
       spawn: hole.spawn,
+      gameMode: room.gameMode,
     });
 
     startHoleTimer(room, holeIndex, HOLE_TIMER_MS);
+    startSnapshots(room);
   }, COUNTDOWN_MS);
 }
 
@@ -87,12 +95,55 @@ function computePlacings(room: Room): { playerId: string; total: number; place: 
   return placings;
 }
 
+function ballSnapshot(player: Player) {
+  return {
+    id: player.id,
+    pos: player.pos,
+    vel: player.vel,
+    atRest: player.atRest,
+    holed: player.holedThisHole,
+  };
+}
+
+export function startSnapshots(room: Room): void {
+  stopSnapshots(room);
+  room.snapshotTick = 0;
+  room.snapshotHandle = setInterval(() => {
+    if (room.state !== GameState.HOLE_ACTIVE) return;
+    room.snapshotTick += 1;
+    sendSnapshots(room);
+  }, SNAPSHOT_MS);
+}
+
+export function stopSnapshots(room: Room): void {
+  if (room.snapshotHandle) {
+    clearInterval(room.snapshotHandle);
+    room.snapshotHandle = null;
+  }
+}
+
+export function sendSnapshots(room: Room): void {
+  const allBalls = [...room.players.values()].map(ballSnapshot);
+
+  if (room.gameMode === 'free_for_all') {
+    broadcast(room, { t: 'snapshot', tick: room.snapshotTick, balls: allBalls });
+    return;
+  }
+
+  // Turn by turn: only players who have already holed may see other balls
+  for (const player of room.players.values()) {
+    if (!player.holedThisHole) continue;
+    sendTo(player, { t: 'snapshot', tick: room.snapshotTick, balls: allBalls });
+  }
+}
+
 export function handleHoleTransition(room: Room): void {
 
   if (room.holeTimerHandle) {
     clearTimeout(room.holeTimerHandle);
     room.holeTimerHandle = null;
   }
+  stopSnapshots(room);
   const finishedHoleIndex = room.currentHoleIndex;
   const results = finaliseHole(room, finishedHoleIndex);
   if (!results) return;

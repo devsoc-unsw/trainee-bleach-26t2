@@ -54,17 +54,17 @@ size_flags_vertical = 0
 text = "Join"
 
 [node name="LobbyPanel" type="VBoxContainer" parent="." unique_id=67570026]
-custom_minimum_size = Vector2(320, 260)
+custom_minimum_size = Vector2(360, 420)
 layout_mode = 1
 anchors_preset = 8
 anchor_left = 0.5
 anchor_top = 0.5
 anchor_right = 0.5
 anchor_bottom = 0.5
-offset_left = -160.0
-offset_top = -130.0
-offset_right = 160.0
-offset_bottom = 130.0
+offset_left = -180.0
+offset_top = -210.0
+offset_right = 180.0
+offset_bottom = 210.0
 grow_horizontal = 2
 grow_vertical = 2
 theme_override_constants/separation = 10
@@ -80,6 +80,26 @@ text = "START"
 
 [node name="RoomCodeLabel" type="Label" parent="LobbyPanel" unique_id=518572218]
 layout_mode = 2
+
+[node name="ModeLabel" type="Label" parent="LobbyPanel" unique_id=518572219]
+layout_mode = 2
+text = "Mode: Turn by Turn"
+horizontal_alignment = 1
+
+[node name="ModeButtonRow" type="HBoxContainer" parent="LobbyPanel" unique_id=518572220]
+layout_mode = 2
+theme_override_constants/separation = 8
+alignment = 1
+
+[node name="TurnByTurnButton" type="Button" parent="LobbyPanel/ModeButtonRow" unique_id=518572221]
+custom_minimum_size = Vector2(160, 36)
+layout_mode = 2
+text = "Turn by Turn"
+
+[node name="FreeForAllButton" type="Button" parent="LobbyPanel/ModeButtonRow" unique_id=518572222]
+custom_minimum_size = Vector2(160, 36)
+layout_mode = 2
+text = "Free for All"
 
 [node name="PlayerListContainer" type="VBoxContainer" parent="LobbyPanel" unique_id=854527753]
 layout_mode = 2

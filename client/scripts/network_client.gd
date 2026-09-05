@@ -13,6 +13,7 @@ signal stroke_updated(player_id: String, hole_index: int, strokes: int)
 signal hole_ended(hole_index: int, results: Array)
 signal match_ended(placings: Array)
 signal server_error(code: String, message: String)
+signal game_mode_changed(mode: String)
 
 
 
@@ -31,8 +32,14 @@ enum GameState {
 var _socket: WebSocketPeer = WebSocketPeer.new()
 var _connected: bool = false
 var _was_connected: bool = false
+const MODE_TURN_BY_TURN := "turn_by_turn"
+const MODE_FREE_FOR_ALL := "free_for_all"
+
 var current_state: GameState = GameState.LOBBY
 var my_player_id: String = ""
+var game_mode: String = MODE_TURN_BY_TURN
+var players: Dictionary = {}
+var local_holed: bool = false
 
 
 func _get_server_url() -> String:
@@ -44,7 +51,10 @@ func _get_server_url() -> String:
 
 func _ready() -> void:
 	connection_status_changed.connect(func(status): print("[NetworkClient] ", status))
-	message_received.connect(func(data): print("[NetworkClient] received: ", data))
+	message_received.connect(func(data):
+		if data.get("t") != "snapshot":
+			print("[NetworkClient] received: ", data)
+	)
 	var url := _get_server_url()
 	_emit_status("Connecting to " + url + "...")
 
@@ -99,13 +109,18 @@ func _route_message(data: Dictionary) -> void:
 	match data.get("t"):
 		"joined":
 			my_player_id = data["playerId"]
+			_apply_lobby_payload(data)
 			player_joined.emit(data)
 		"lobby_state":
+			_apply_lobby_payload(data)
 			lobby_updated.emit(data["players"])
 		"match_start":
+			_apply_game_mode(data)
 			_set_state(GameState.COUNTDOWN)
 			match_started.emit(data["courseId"], data["holes"])
 		"hole_start":
+			_apply_game_mode(data)
+			local_holed = false
 			_set_state(GameState.HOLE_ACTIVE)
 			var spawn_arr: Array = data["spawn"]
 			var spawn := Vector3(spawn_arr[0], spawn_arr[1], spawn_arr[2])
@@ -121,6 +136,7 @@ func _route_message(data: Dictionary) -> void:
 			_set_state(GameState.MATCH_END)
 			match_ended.emit(data["placings"])
 		"player_left":
+			players.erase(data["playerId"])
 			player_left.emit(data["playerId"])
 		"error":
 			server_error.emit(data["code"], data["message"])
@@ -157,6 +173,28 @@ func send_ready() -> void:
 func send_start_match() -> void:
 	var msg:= { "t": "start_match" }
 	_send(msg)
+
+func send_set_mode(mode: String) -> void:
+	_send({ "t": "set_mode", "mode": mode })
+
+func is_ffa() -> bool:
+	return game_mode == MODE_FREE_FOR_ALL
+
+func _apply_lobby_payload(data: Dictionary) -> void:
+	_apply_game_mode(data)
+	if data.has("players"):
+		players.clear()
+		for p in data["players"]:
+			players[p["id"]] = p
+
+func _apply_game_mode(data: Dictionary) -> void:
+	if not data.has("gameMode"):
+		return
+	var mode: String = data["gameMode"]
+	if mode == game_mode:
+		return
+	game_mode = mode
+	game_mode_changed.emit(game_mode)
 
 #   send_shot(dir: Vector2, power: float)
 func send_shot(dir: Vector2, power: float) -> void:

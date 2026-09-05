@@ -8,6 +8,10 @@ extends Control
 
 @onready var lobby_panel: Control = $LobbyPanel
 @onready var room_code_label: Label = $LobbyPanel/RoomCodeLabel
+@onready var mode_label: Label = $LobbyPanel/ModeLabel
+@onready var mode_button_row: HBoxContainer = $LobbyPanel/ModeButtonRow
+@onready var turn_button: Button = $LobbyPanel/ModeButtonRow/TurnByTurnButton
+@onready var ffa_button: Button = $LobbyPanel/ModeButtonRow/FreeForAllButton
 @onready var player_list_container: VBoxContainer = $LobbyPanel/PlayerListContainer
 @onready var ready_button: Button = $LobbyPanel/ReadyButton
 @onready var start_button: Button = $LobbyPanel/StartButton
@@ -24,6 +28,9 @@ func _ready() -> void:
 	join_button.pressed.connect(_on_join_pressed)
 	ready_button.pressed.connect(_on_ready_pressed)
 	start_button.pressed.connect(_on_start_pressed)
+	turn_button.pressed.connect(_on_turn_mode_pressed)
+	ffa_button.pressed.connect(_on_ffa_mode_pressed)
+	NetworkClient.game_mode_changed.connect(_on_game_mode_changed)
 
 	lobby_panel.visible = false
 	countdown_panel.visible = false
@@ -65,11 +72,32 @@ func _render_player_list(players: Array) -> void:
 		player_list_container.add_child(row)
 
 	start_button.visible = am_host
+	_refresh_mode_ui(am_host)
 
 	for p in players:
 		if p["id"] == NetworkClient.my_player_id:
 			ready_button.text = "Unready" if p["ready"] else "Ready"
 			break
+
+func _refresh_mode_ui(am_host: bool) -> void:
+	var is_turn := NetworkClient.game_mode == NetworkClient.MODE_TURN_BY_TURN
+	mode_label.text = "Mode: " + ("Turn by Turn" if is_turn else "Free for All")
+	mode_button_row.visible = am_host
+	if am_host:
+		turn_button.disabled = is_turn
+		ffa_button.disabled = not is_turn
+
+func _on_game_mode_changed(_mode: String) -> void:
+	var am_host := false
+	if NetworkClient.players.has(NetworkClient.my_player_id):
+		am_host = NetworkClient.players[NetworkClient.my_player_id]["isHost"]
+	_refresh_mode_ui(am_host)
+
+func _on_turn_mode_pressed() -> void:
+	NetworkClient.send_set_mode(NetworkClient.MODE_TURN_BY_TURN)
+
+func _on_ffa_mode_pressed() -> void:
+	NetworkClient.send_set_mode(NetworkClient.MODE_FREE_FOR_ALL)
 
 func _on_ready_pressed() -> void:
 	NetworkClient.send_ready()

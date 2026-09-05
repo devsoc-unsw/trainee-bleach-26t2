@@ -75,6 +75,9 @@ const holeConfigSchema = z.object({
   name: z.string(),
 });
 
+export const gameModeSchema = z.enum(['turn_by_turn', 'free_for_all']);
+export type GameModeMessage = z.infer<typeof gameModeSchema>;
+
 
 // TODO: add per-message schemas for client -> server:
 // player wants join the room
@@ -100,6 +103,13 @@ export const startMatchSchema = z
   t: z.literal('start_match'),
 });
 export type StartMatchMessage = z.infer<typeof startMatchSchema>;
+
+export const setModeSchema = z
+.object({
+  t: z.literal('set_mode'),
+  mode: gameModeSchema,
+});
+export type SetModeMessage = z.infer<typeof setModeSchema>;
 
 // send a shot
 export const shotSchema = z
@@ -148,6 +158,7 @@ export const clientMessageSchema = z.discriminatedUnion('t', [
   readySchema,
   shotSchema,
   startMatchSchema,
+  setModeSchema,
   ballStateSchema,
   holedSchema,
   pingSchema,
@@ -163,6 +174,7 @@ export const playerJoinedSchema = z
   playerId: z.string(),
   code: z.string(),
   players: z.array(lobbyPlayerSchema),
+  gameMode: gameModeSchema,
 });
 export type PlayerJoinedMessage = z.infer<typeof playerJoinedSchema>;
 
@@ -171,6 +183,7 @@ export const lobbyStateSchema = z
 .object({
   t: z.literal('lobby_state'),
   players: z.array(lobbyPlayerSchema),
+  gameMode: gameModeSchema,
 });  
 export type LobbyStateMessage = z.infer<typeof lobbyStateSchema>;
 
@@ -180,6 +193,7 @@ export const matchStartSchema = z
   t: z.literal('match_start'),
   courseId: z.string(),
   holes: z.array(holeConfigSchema),
+  gameMode: gameModeSchema,
 });
 export type MatchStartMessage = z.infer<typeof matchStartSchema>;
 
@@ -191,6 +205,7 @@ export const holeStartSchema = z
   par: z.number().int().min(0),
   timerMs: z.number().min(0),
   spawn: vec3Schema,
+  gameMode: gameModeSchema,
 });
 export type HoleStartMessage = z.infer<typeof holeStartSchema>;
 

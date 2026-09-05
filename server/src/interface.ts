@@ -10,6 +10,8 @@ export enum GameState {
 
 export type Vec3 = [number, number, number]
 
+export type GameMode = 'turn_by_turn' | 'free_for_all';
+
 export interface Player {
   id: string;
   ws: WebSocket;
@@ -52,8 +54,11 @@ export interface Room {
   players: Map<string, Player>;
   hostId: string | null;
   state: GameState;
+  gameMode: GameMode;
   currentHoleIndex: number;
   holeTimerHandle: NodeJS.Timeout | null;
+  snapshotHandle: NodeJS.Timeout | null;
+  snapshotTick: number;
   createdAt: number;
   lastModified: number;
   availableColours: string[];

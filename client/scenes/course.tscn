@@ -123,3 +123,23 @@ offset_bottom = -20.0
 grow_horizontal = 2
 grow_vertical = 2
 theme_override_constants/separation = 10
+
+[node name="SpectatePanel" type="Control" parent="UILayer" unique_id=247094583]
+visible = false
+layout_mode = 3
+anchors_preset = 10
+anchor_right = 1.0
+offset_bottom = 56.0
+grow_horizontal = 2
+mouse_filter = 2
+
+[node name="SpectateLabel" type="Label" parent="UILayer/SpectatePanel" unique_id=247094584]
+layout_mode = 1
+anchors_preset = 10
+anchor_right = 1.0
+offset_top = 12.0
+offset_bottom = 48.0
+grow_horizontal = 2
+theme_override_font_sizes/font_size = 20
+text = "Spectating"
+horizontal_alignment = 1

@@ -50,10 +50,12 @@ func _physics_process(delta: float) -> void:
 		else:
 			stop_timer = 0.0
 
-func reset_to(position: Vector3) -> void:
-	global_position = position
+func reset_to(spawn_position: Vector3) -> void:
+	freeze = false
+	global_position = spawn_position
 	linear_velocity = Vector3.ZERO
 	angular_velocity = Vector3.ZERO
 	is_moving = true
 	stop_timer = 0.0
 	sleeping = false
+	last_safe_position = spawn_position

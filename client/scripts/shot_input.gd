@@ -28,7 +28,10 @@ func _ready() -> void:
 
 
 func _input(event: InputEvent) -> void:
-	var is_active := NetworkClient.current_state == NetworkClient.GameState.HOLE_ACTIVE
+	var is_active := (
+		NetworkClient.current_state == NetworkClient.GameState.HOLE_ACTIVE
+		and not NetworkClient.local_holed
+	)
 		
 	if event is InputEventMouseButton:
 		if event.button_index == MOUSE_BUTTON_LEFT:

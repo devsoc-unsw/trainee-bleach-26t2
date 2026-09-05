@@ -21,6 +21,9 @@ export function canShoot(player: Player, room: Room): { ok: true } | { ok: false
   if (room.state !== GameState.HOLE_ACTIVE) {
     return { ok: false, code: 'NOT_ACTIVE', message: 'Hole is not active' };
   }
+  if (player.holedThisHole) {
+    return { ok: false, code: 'ALREADY_HOLED', message: 'You have already holed out' };
+  }
   if (!player.atRest) {
     return { ok: false, code: 'BALL_MOVING', message: 'Ball must be at rest to shoot' };
   }

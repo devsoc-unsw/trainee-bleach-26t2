@@ -6,7 +6,7 @@ import { addPlayer, broadcast, checkLobbyReady, createRoom, getRoom, lobbySnapsh
 import { GameState, Player, Room, Vec3 } from './interface.js';
 import { COURSE, COURSE_ID, getHole } from './course.js';
 import { canShoot, markHoled, recordStroke, updateBallState } from './player.js';
-import { checkAllHoled, distance, handleHoleTransition, startCountdown } from './hole.js';
+import { checkAllHoled, distance, sendSnapshots, startCountdown } from './hole.js';
 
 const PORT = parseInt(process.env['PORT'] ?? '8080', 10);
 const IS_PRODUCTION = process.env['NODE_ENV'] === 'production';
@@ -167,6 +167,13 @@ wss.on('connection', (ws: WebSocket) => {
         doStartMatch(joined.player, joined.room);
         break;
       }
+
+      case 'set_mode': {
+        const joined = requireJoined(ws, currentPlayer, currentRoom);
+        if (!joined) break;
+        doSetMode(joined.player, joined.room, result.data.mode);
+        break;
+      }
       
       case 'ball_state': {
         const joined = requireJoined(ws, currentPlayer, currentRoom);
@@ -284,11 +291,13 @@ function doJoin(ws: WebSocket, data: JoinMessage): { player: Player, room: Room 
       t: 'joined',
       playerId: player.id,
       code: room.code,
-      players: lobbySnapshot(room)
+      players: lobbySnapshot(room),
+      gameMode: room.gameMode,
   });
   broadcast(room, {
     t: 'lobby_state',
-    players: lobbySnapshot(room)
+    players: lobbySnapshot(room),
+    gameMode: room.gameMode,
   });
 
   return {
@@ -306,7 +315,8 @@ function doReady(player: Player, room: Room): void {
   togglePlayerReady(room, player.id);
   broadcast(room, {
     t: 'lobby_state',
-    players: lobbySnapshot(room)
+    players: lobbySnapshot(room),
+    gameMode: room.gameMode,
   });
   
 }
@@ -330,7 +340,8 @@ function doStartMatch(player: Player, room: Room): void {
   broadcast(room, {
     t: 'match_start',
     courseId: COURSE_ID,
-    holes: COURSE.map((h) => ({ index: h.index, par: h.par, name: h.name }))
+    holes: COURSE.map((h) => ({ index: h.index, par: h.par, name: h.name })),
+    gameMode: room.gameMode,
   });
   
   startCountdown(room, 0);
@@ -366,6 +377,9 @@ function doHoled(ws: WebSocket, player: Player, room: Room, position: Vec3): voi
     sendError(ws, 'NOT_ACTIVE', 'Hole is not active');
     return;
   }
+  if (player.holedThisHole) {
+    return;
+  }
   
   const hole = getHole(room.currentHoleIndex);
   if (!hole) {
@@ -379,6 +393,7 @@ function doHoled(ws: WebSocket, player: Player, room: Room, position: Vec3): voi
     return;
   }
 
+  updateBallState(player, position, [0, 0, 0], true);
   markHoled(player);
   updateRoomLastModified(room);
   broadcast(room, {
@@ -388,5 +403,26 @@ function doHoled(ws: WebSocket, player: Player, room: Room, position: Vec3): voi
     strokes: player.strokes,
   });
 
+  sendSnapshots(room);
   checkAllHoled(room);
+}
+
+function doSetMode(player: Player, room: Room, mode: Room['gameMode']): void {
+  if (!player.isHost) {
+    sendError(player.ws, 'NOT_HOST', 'Only the host can change the game mode');
+    return;
+  }
+
+  if (room.state !== GameState.LOBBY) {
+    sendError(player.ws, 'NOT_IN_LOBBY', 'Cannot change mode after the match has started');
+    return;
+  }
+
+  room.gameMode = mode;
+  updateRoomLastModified(room);
+  broadcast(room, {
+    t: 'lobby_state',
+    players: lobbySnapshot(room),
+    gameMode: room.gameMode,
+  });
 }

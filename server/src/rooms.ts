@@ -21,8 +21,11 @@ export function createRoom(): Room {
     players: new Map(),
     hostId: null,
     state: GameState.LOBBY,
+    gameMode: 'turn_by_turn',
     currentHoleIndex: 0,
     holeTimerHandle: null,
+    snapshotHandle: null,
+    snapshotTick: 0,
     createdAt: Date.now(),
     lastModified: Date.now(),
     availableColours: [...PLAYER_COLOURS],
@@ -114,6 +117,14 @@ export function removePlayer(room: Room, playerId: string): void {
   updateRoomLastModified(room);
   // freeze ghost ball, dont wait on them for hole completion
   if (room.players.size === 0) {
+    if (room.holeTimerHandle) {
+      clearTimeout(room.holeTimerHandle);
+      room.holeTimerHandle = null;
+    }
+    if (room.snapshotHandle) {
+      clearInterval(room.snapshotHandle);
+      room.snapshotHandle = null;
+    }
     deleteRoom(room.code);
   }
 }
