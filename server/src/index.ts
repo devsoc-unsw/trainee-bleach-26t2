@@ -281,7 +281,7 @@ wss.on('connection', (ws: WebSocket) => {
 });
 
 async function route(ws: WebSocket, type: string, msg: Record<string, unknown>): Promise<void> {
-  if (phone.isPhoneSocket(ws) && type !== 'swing' && type !== 'pose' && type !== 'ping' && type !== 'phone_link' && type !== 'power' && type !== 'type') {
+  if (phone.isPhoneSocket(ws) && type !== 'swing' && type !== 'pose' && type !== 'ping' && type !== 'phone_link' && type !== 'power' && type !== 'type' && type !== 'restart') {
     return;
   }
   switch (type) {
@@ -321,9 +321,16 @@ async function route(ws: WebSocket, type: string, msg: Record<string, unknown>):
       break;
     }
     case 'power': {
-      const used = phone.powerFrom(ws, msg['kind']);
+      const used = phone.powerFrom(ws, msg['kind'], msg['slot']);
       if (typeof used === 'string') {
         sendError(ws, 'PHONE_FAILED', used);
+      }
+      break;
+    }
+    case 'restart': {
+      const reset = phone.restartFrom(ws);
+      if (typeof reset === 'string') {
+        sendError(ws, 'PHONE_FAILED', reset);
       }
       break;
     }
@@ -423,7 +430,7 @@ async function route(ws: WebSocket, type: string, msg: Record<string, unknown>):
         sendError(ws, 'START_FAILED', started);
         return;
       }
-      rooms.broadcast(started, { t: 'match_start', mapId: started.mapId });
+      rooms.broadcast(started, rooms.matchStartPayload(started));
       broadcastLobbyList();
       break;
     }
@@ -433,14 +440,14 @@ async function route(ws: WebSocket, type: string, msg: Record<string, unknown>):
         sendError(ws, 'START_FAILED', started);
         return;
       }
-      rooms.broadcast(started, { t: 'match_start', mapId: started.mapId });
+      rooms.broadcast(started, rooms.matchStartPayload(started));
       broadcastLobbyList();
       break;
     }
     case 'shot': {
       const player = rooms.playerFor(ws);
       const room = rooms.roomFor(ws);
-      if (!player || !room || room.phase !== 'playing') {
+      if (!player || !room || room.phase !== 'playing' || room.summaryPending) {
         return;
       }
       player.strokes += 1;
@@ -478,7 +485,7 @@ async function route(ws: WebSocket, type: string, msg: Record<string, unknown>):
     case 'ball_state': {
       const player = rooms.playerFor(ws);
       const room = rooms.roomFor(ws);
-      if (!player || !room || room.phase !== 'playing') {
+      if (!player || !room || room.phase !== 'playing' || room.summaryPending) {
         return;
       }
       player.ball = {
@@ -543,7 +550,7 @@ async function route(ws: WebSocket, type: string, msg: Record<string, unknown>):
     case 'oob': {
       const player = rooms.playerFor(ws);
       const room = rooms.roomFor(ws);
-      if (!player || !room) {
+      if (!player || !room || room.phase !== 'playing' || room.summaryPending) {
         return;
       }
       player.strokes += 1;
@@ -617,8 +624,13 @@ function onHoleAdvance(room: rooms.Room, result: rooms.SummaryAdvance, endsAt?: 
 }
 
 rooms.setVoteEndedHandler((room) => {
-  rooms.broadcast(room, { t: 'match_start', mapId: room.mapId });
+  rooms.broadcast(room, rooms.matchStartPayload(room));
   broadcastLobbyList();
+});
+
+rooms.setHoleExpiredHandler((room) => {
+  rooms.broadcast(room, rooms.holeEndPayload(room));
+  rooms.scheduleHoleAdvance(room, onHoleAdvance);
 });
 
 const secureServer = remoteHttps.createHttpsServer();
@@ -639,6 +651,12 @@ const mux = net.createServer((socket) => {
 
 mux.listen(PORT, HOST, () => {
   const securePort = remoteHttps.httpsPort(PORT);
+  const publicUrl = (process.env['PUTT_PUBLIC_URL'] ?? '').trim()
+    || (process.env['RAILWAY_PUBLIC_DOMAIN'] ? `https://${process.env['RAILWAY_PUBLIC_DOMAIN']}` : '')
+    || (process.env['FLY_APP_NAME'] ? `https://${process.env['FLY_APP_NAME']}.fly.dev` : '');
+  if (publicUrl && !process.env['PUTT_PUBLIC_URL']) {
+    process.env['PUTT_PUBLIC_URL'] = publicUrl;
+  }
   log({
     ts: new Date().toISOString(),
     event: 'server_start',
@@ -648,10 +666,11 @@ mux.listen(PORT, HOST, () => {
     https: secureServer != null,
     host: HOST,
     port: PORT,
+    publicUrl: publicUrl || 'none',
     env: IS_PRODUCTION ? 'production' : 'development',
     webRoot: WEB_ROOT,
   });
-  if (process.env['PUTT_SKIP_HOST_PROBE'] === '1') {
+  if (IS_PRODUCTION || process.env['PUTT_SKIP_HOST_PROBE'] === '1') {
     return;
   }
   setImmediate(() => {

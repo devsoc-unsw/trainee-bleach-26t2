@@ -1,0 +1,13 @@
+.git
+.godot
+**/node_modules
+server/dist
+client/.godot
+**/*.import
+.env
+.env.*
+server/certs
+**/*key.pem
+**/Thumbs.db
+.DS_Store
+assets

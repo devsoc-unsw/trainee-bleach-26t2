@@ -57,6 +57,25 @@ describe('phone remote', () => {
     delete process.env['PUTT_PHONE_HOST'];
   });
 
+  it('uses PUTT_PUBLIC_URL without a private LAN port', async () => {
+    process.env['PUTT_PUBLIC_URL'] = 'https://putt.example.com/';
+    const pc = fakeSocket();
+    const opened = await phone.openPair(pc.ws, 8080);
+    assert.equal(opened.urls[0], `https://putt.example.com/remote?c=${opened.code}`);
+    assert.equal(opened.urls.length, 1);
+    delete process.env['PUTT_PUBLIC_URL'];
+  });
+
+  it('drops the listen port for production phone hosts', async () => {
+    process.env['NODE_ENV'] = 'production';
+    process.env['PUTT_PHONE_HOST'] = 'putt.example.com';
+    const pc = fakeSocket();
+    const opened = await phone.openPair(pc.ws, 8080);
+    assert.equal(opened.urls[0], `https://putt.example.com/remote?c=${opened.code}`);
+    delete process.env['PUTT_PHONE_HOST'];
+    delete process.env['NODE_ENV'];
+  });
+
   it('keeps each phone on its own player ball', async () => {
     const host = fakeSocket();
     const guest = fakeSocket();
@@ -91,7 +110,22 @@ describe('phone remote', () => {
     const hit = pc.sent.at(-1);
     assert.equal(hit?.['t'], 'phone_power');
     assert.equal(hit?.['kind'], 'shield');
+    const gust = phone.powerFrom(handset.ws, 'gust');
+    assert.notEqual(typeof gust, 'string');
+    assert.equal(pc.sent.at(-1)?.['kind'], 'gust');
     assert.equal(typeof phone.powerFrom(handset.ws, 'nope'), 'string');
+  });
+
+  it('forwards a phone restart tap to that player', async () => {
+    const pc = fakeSocket();
+    const handset = fakeSocket();
+    const opened = await phone.openPair(pc.ws, 8080);
+    phone.linkPhone(handset.ws, opened.code);
+    const reset = phone.restartFrom(handset.ws);
+    assert.notEqual(typeof reset, 'string');
+    const hit = pc.sent.at(-1);
+    assert.equal(hit?.['t'], 'phone_restart');
+    assert.equal(typeof phone.restartFrom(fakeSocket().ws), 'string');
   });
 
   it('forwards typed text from the phone to the PC', async () => {
@@ -139,6 +173,7 @@ describe('phone remote', () => {
       rightLeft: 4.2,
       rank: 2,
       rankText: '2nd',
+      rankCaption: 'STANDINGS',
     });
     assert.notEqual(typeof sent, 'string');
     const snap = handset.sent.at(-1);
@@ -147,6 +182,7 @@ describe('phone remote', () => {
     assert.equal(snap?.['rightLeft'], 4.2);
     assert.equal(snap?.['rank'], 2);
     assert.equal(snap?.['rankText'], '2nd');
+    assert.equal(snap?.['rankCaption'], 'STANDINGS');
   });
 
   it('reads Windows IPv4 addresses from ipconfig text', () => {

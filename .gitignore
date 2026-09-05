@@ -1,6 +1,11 @@
 # Node
 node_modules/
 dist/
+.tools/
+
+# Local CLI installs at repo root
+/package-lock.json
+/node_modules/
 
 # Godot
 .godot/

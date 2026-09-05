@@ -19,10 +19,9 @@ export function httpsPort(httpPort: number): number {
 }
 
 export function remotePageUrls(port: number): string[] {
-  const forced = (process.env['PUTT_PHONE_HOST'] ?? '').trim();
-  if (forced) {
-    const host = forced.replace(/^https?:\/\//i, '').replace(/\/.*$/, '').replace(/:\d+$/, '');
-    return [`https://${host}:${port}/remote`];
+  const origin = phone.publicOrigin(port);
+  if (origin) {
+    return [`${origin}/remote`];
   }
   const hosts = phone.discoverPhoneHosts();
   const urls = hosts.slice(0, 1).map((host) => `https://${host}:${port}/remote`);
@@ -33,9 +32,10 @@ export function remotePageUrls(port: number): string[] {
 }
 
 export function remoteInfo(port: number): { urls: string[]; local: string } {
+  const urls = remotePageUrls(port);
   return {
-    urls: remotePageUrls(port),
-    local: `https://127.0.0.1:${port}/remote`,
+    urls,
+    local: urls[0] ?? `https://127.0.0.1:${port}/remote`,
   };
 }
 
@@ -57,12 +57,13 @@ export function createHttpsServer(): https.Server | null {
 export function tryPhoneApi(req: http.IncomingMessage, res: http.ServerResponse): boolean {
   const url = new URL(req.url ?? '/', 'https://localhost');
   const pathName = url.pathname;
-  if (req.method === 'OPTIONS' && (pathName === '/pose' || pathName === '/hit' || pathName === '/swing' || pathName === '/power')) {
+  const postPaths = new Set(['/pose', '/hit', '/swing', '/power', '/restart', '/type']);
+  if (req.method === 'OPTIONS' && postPaths.has(pathName)) {
     res.writeHead(204, { 'Access-Control-Allow-Origin': '*' });
     res.end();
     return true;
   }
-  if (req.method === 'POST' && (pathName === '/pose' || pathName === '/hit' || pathName === '/swing' || pathName === '/power')) {
+  if (req.method === 'POST' && postPaths.has(pathName)) {
     proxyGodot(req, res, pathName);
     return true;
   }

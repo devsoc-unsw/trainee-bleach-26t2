@@ -73,10 +73,27 @@ export function trySharePortOnWindows(port: number): string {
   }
 }
 
+/** Public site origin for phone QR links, e.g. https://putt.example.com */
+export function publicOrigin(port: number): string {
+  const raw = (process.env['PUTT_PUBLIC_URL'] ?? process.env['PUTT_PHONE_HOST'] ?? '').trim();
+  if (!raw) {
+    return '';
+  }
+  if (/^https?:\/\//i.test(raw)) {
+    return raw.replace(/\/$/, '');
+  }
+  const host = raw.replace(/\/.*$/, '');
+  // Production reverse proxies terminate TLS on 443. Do not append :PORT.
+  if (process.env['NODE_ENV'] === 'production' && !/:\d+$/.test(host)) {
+    return `https://${host}`;
+  }
+  return `https://${hostWithPort(host, port)}`;
+}
+
 export function phonePageUrls(port: number): string[] {
-  const forced = (process.env['PUTT_PHONE_HOST'] ?? '').trim();
-  if (forced) {
-    return [`http://${hostWithPort(forced, port)}/phone`];
+  const origin = publicOrigin(port);
+  if (origin) {
+    return [`${origin}/phone`];
   }
   const hosts = preferredHosts.length > 0 ? preferredHosts : nodeLanIps();
   const urls = hosts.map((host) => `http://${host}:${port}/phone`);
@@ -88,6 +105,11 @@ export function phonePageUrls(port: number): string[] {
 
 export function pairLinks(port: number, code: string): string[] {
   const query = `?c=${encodeURIComponent(code)}`;
+  const origin = publicOrigin(port);
+  if (origin) {
+    // Public deploys need a secure remote page for motion sensors.
+    return [`${origin}/remote${query}`];
+  }
   const urls: string[] = [];
   for (const page of phonePageUrls(port)) {
     const remote = page.replace(/\/phone\/?$/, '/remote');
@@ -209,20 +231,31 @@ export function poseFrom(phoneWs: WebSocket, data: Record<string, unknown>): Pai
     c: Number(data['c'] ?? 0),
     lx: clampAxis(data['lx']),
     ly: clampAxis(data['ly']),
+    z: clampAxis(data['z']),
   });
   return pair;
 }
 
-export function powerFrom(phoneWs: WebSocket, raw: unknown): Pair | string {
+export function powerFrom(phoneWs: WebSocket, raw: unknown, slotRaw: unknown = -1): Pair | string {
   const pair = pairByPhone.get(phoneWs);
   if (!pair) {
     return 'Link a code first';
   }
   const kind = String(raw ?? '');
-  if (kind !== 'shield' && kind !== 'shrink') {
+  if (kind !== 'shield' && kind !== 'shrink' && kind !== 'gust') {
     return 'Unknown power';
   }
-  send(pair.playerWs, { t: 'phone_power', kind });
+  const slot = Number(slotRaw);
+  send(pair.playerWs, { t: 'phone_power', kind, slot: slot === 1 ? 1 : slot === 0 ? 0 : -1 });
+  return pair;
+}
+
+export function restartFrom(phoneWs: WebSocket): Pair | string {
+  const pair = pairByPhone.get(phoneWs);
+  if (!pair) {
+    return 'Link a code first';
+  }
+  send(pair.playerWs, { t: 'phone_restart' });
   return pair;
 }
 
@@ -271,6 +304,7 @@ export function forwardPowers(playerWs: WebSocket, data: Record<string, unknown>
       rightLeft: Number(data['rightLeft'] ?? 0),
       rank: Number(data['rank'] ?? 0),
       rankText: String(data['rankText'] ?? ''),
+      rankCaption: String(data['rankCaption'] ?? ''),
     });
   }
   return pair;
