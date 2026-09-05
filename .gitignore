@@ -10,10 +10,8 @@ dist/
 # Godot
 .godot/
 *.import
+# Godot intermediates (client/build is tracked for Docker/Railway)
 *.translation
-
-# Godot web export build
-client/build/
 
 # OS
 .DS_Store
