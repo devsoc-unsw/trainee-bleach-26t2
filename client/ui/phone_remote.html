@@ -1,0 +1,929 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta http-equiv="Cache-Control" content="no-store" />
+  <title>Putt Party Remote</title>
+  <style>
+    :root {
+      --cream: #f6f1e6;
+      --ink: #3a322c;
+      --teal: #4cb8b0;
+      --teal-press: #3a9a93;
+      --brown: #8a7e72;
+    }
+    * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+    html, body {
+      margin: 0;
+      height: 100%;
+      background: var(--cream);
+      color: var(--ink);
+      font-family: ui-sans-serif, system-ui, sans-serif;
+      touch-action: none;
+      user-select: none;
+      overflow: hidden;
+    }
+    body { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 16px; }
+    h1 { margin: 0 0 6px; font-size: 20px; letter-spacing: 0.04em; }
+    p { margin: 0 0 10px; color: var(--brown); text-align: center; }
+    #play { width: min(420px, 100%); display: flex; flex-direction: column; align-items: center; gap: 10px; }
+    #pad {
+      width: min(68vw, 240px);
+      height: min(68vw, 240px);
+      border-radius: 50%;
+      border: 6px solid #e4dcce;
+      background: #fffbf5;
+      box-shadow: 0 10px 24px rgba(58, 50, 44, 0.14);
+      position: relative;
+      touch-action: none;
+    }
+    #pad.held { border-color: var(--teal); }
+    #meter {
+      position: absolute;
+      inset: 12px;
+      border-radius: 50%;
+      border: 10px solid #e4dcce;
+      pointer-events: none;
+    }
+    #knob {
+      width: 42%;
+      height: 42%;
+      border-radius: 50%;
+      background: var(--teal);
+      color: #fff;
+      font-size: 18px;
+      font-weight: 800;
+      letter-spacing: 0.08em;
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      transform: translate(-50%, -50%);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 8px 18px rgba(58, 50, 44, 0.18);
+      pointer-events: none;
+    }
+    #pad.held #knob { background: var(--teal-press); }
+    #status { min-height: 1.4em; }
+    #swing {
+      width: 100%;
+      height: 132px;
+      border-radius: 20px;
+      border: 4px solid #e4dcce;
+      background: #fffbf5;
+      position: relative;
+      overflow: hidden;
+      touch-action: none;
+      box-shadow: 0 8px 18px rgba(58, 50, 44, 0.12);
+    }
+    #swing.back { border-color: var(--teal); }
+    #swing.hit { border-color: #e23b3b; }
+    #swing-fill {
+      position: absolute;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      height: 0%;
+      background: #d9f0ed;
+    }
+    #swing.back #swing-fill { background: #b7e4de; }
+    #swing-label {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 17px;
+      font-weight: 800;
+      letter-spacing: 0.08em;
+      color: var(--ink);
+      pointer-events: none;
+    }
+    #sensors {
+      width: 100%;
+      background: #fffbf5;
+      border: 2px solid #e4dcce;
+      border-radius: 16px;
+      padding: 10px 12px;
+      font-size: 12px;
+      line-height: 1.45;
+      color: var(--ink);
+    }
+    #sensors.live { border-color: var(--teal); }
+    #sensors .row { display: flex; justify-content: space-between; gap: 8px; }
+    #sensors .dim { color: var(--brown); }
+    #bar {
+      height: 12px;
+      margin-top: 8px;
+      border-radius: 999px;
+      background: #e4dcce;
+      overflow: hidden;
+    }
+    #bar > i {
+      display: block;
+      height: 100%;
+      width: 0%;
+      background: var(--teal);
+    }
+    #bar.hot > i { background: #e23b3b; }
+    #tune {
+      width: 100%;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      align-items: stretch;
+    }
+    #calibrate {
+      border: none;
+      border-radius: 999px;
+      background: var(--teal);
+      color: #fff;
+      font-family: inherit;
+      font-size: 15px;
+      font-weight: 800;
+      letter-spacing: 0.08em;
+      padding: 12px 18px;
+      touch-action: manipulation;
+    }
+    #calibrate:disabled { background: var(--brown-soft, #8a7e72); }
+    #tune label { font-size: 12px; color: var(--brown); text-align: center; }
+    #sens { width: 100%; }
+  </style>
+</head>
+<body>
+  <div id="play">
+    <h1>PHONE REMOTE</h1>
+    <p id="status">Drag AIM for power and direction. Then swing the phone up and down.</p>
+    <div id="pad"><div id="meter"></div><div id="knob">AIM</div></div>
+    <div id="swing"><div id="swing-fill"></div><div id="swing-label">SWING BAR (backup)</div></div>
+    <div id="tune">
+      <button id="calibrate" type="button">CALIBRATE</button>
+      <label for="sens">Swing effort <span id="sens-val">5</span></label>
+      <input id="sens" type="range" min="1" max="10" step="1" value="5" />
+    </div>
+    <div id="sensors">
+      <div class="row"><span class="dim">Link</span><span id="s-state">connecting...</span></div>
+      <div class="row"><span class="dim">Page</span><span id="s-origin">-</span></div>
+      <div class="row"><span class="dim">Motion</span><span id="s-motion">waiting</span></div>
+      <div class="row"><span class="dim">Up / down</span><span id="s-acc">0.00 g</span></div>
+      <div class="row"><span class="dim">Swing</span><span id="s-phase">idle</span></div>
+      <div class="row"><span class="dim">Needs</span><span id="s-peak">-</span></div>
+      <div id="bar"><i id="s-fill"></i></div>
+    </div>
+  </div>
+  <script>
+    const status = document.getElementById("status");
+    const pad = document.getElementById("pad");
+    const knob = document.getElementById("knob");
+    const meter = document.getElementById("meter");
+    const sensors = document.getElementById("sensors");
+    const sState = document.getElementById("s-state");
+    const sOrigin = document.getElementById("s-origin");
+    const sMotion = document.getElementById("s-motion");
+    const sAcc = document.getElementById("s-acc");
+    const sPhase = document.getElementById("s-phase");
+    const sPeak = document.getElementById("s-peak");
+    const sFill = document.getElementById("s-fill");
+    const swing = document.getElementById("swing");
+    const swingFill = document.getElementById("swing-fill");
+    const swingLabel = document.getElementById("swing-label");
+    const BACK_PX = 46;
+    const DOWN_PX = 54;
+    let lanePointer = null;
+    let laneStartY = 0;
+    let laneUp = 0;
+    let laneUpAt = 0;
+    let laneBack = false;
+    const calibrateBtn = document.getElementById("calibrate");
+    const sensInput = document.getElementById("sens");
+    const sensVal = document.getElementById("sens-val");
+    const SETTLE_MS = 300;
+    // Thresholds are fractions of gravity, so they hold whether the browser
+    // reports m/s^2 or g, and whichever way up the phone is held.
+    const BACK_G = 0.30;
+    const TOP_G = 0.14;
+    const DOWN_G = 0.34;
+    const MIN_BACK_MS = 90;
+    const MIN_TOP_MS = 40;
+    const BACK_MAX_MS = 1500;
+    const DOWN_MAX_MS = 700;
+    const CAL_MS = 1100;
+    let holding = false;
+    let fired = false;
+    let sx = 0;
+    let sy = 0;
+    let power = 0;
+    let beta = 75;
+    let gamma = 0;
+    let alpha = 0;
+    let lift = 0;
+    let motionNow = 0;
+    let recenter = false;
+    let poseBusy = false;
+    let poseQueued = false;
+    let poseTimer = null;
+    let holdAt = 0;
+    let peakAccel = 0;
+    let phase = "hold";
+    let backAt = 0;
+    let backSince = 0;
+    let topSince = 0;
+    let topAt = 0;
+    let vertical = 0;
+    let gravMag = 0;
+    let calibrating = false;
+    let calStart = 0;
+    let calSamples = 0;
+    let calX = 0;
+    let calY = 0;
+    let calZ = 0;
+    let calibrated = false;
+    let sensitivity = 5;
+    let motionHits = 0;
+    let poseOk = false;
+    let poseFails = 0;
+    let poseSentAt = 0;
+    let lastTouchAt = 0;
+    let firedAt = 0;
+    let displayPeak = 0;
+    let motionWarned = false;
+    let hasLinear = false;
+    let gravReady = false;
+    let gravX = 0;
+    let gravY = 0;
+    let gravZ = 0;
+    const POSE_TIMEOUT_MS = 1200;
+    const REARM_MS = 1400;
+    const pairCode = (new URLSearchParams(location.search).get("c") || "").replace(/\s+/g, "").toUpperCase();
+    let pairWs = null;
+    let pairLinked = false;
+
+    function poseBody() {
+      return {
+        b: beta,
+        g: gamma,
+        h: holding ? 1 : 0,
+        sx: sx,
+        sy: sy,
+        p: power,
+        u: lift,
+        a: motionNow,
+        al: alpha,
+        c: recenter ? 1 : 0,
+      };
+    }
+
+    function connectPair() {
+      if (!pairCode || (pairWs && (pairWs.readyState === 0 || pairWs.readyState === 1))) {
+        return;
+      }
+      const proto = location.protocol === "https:" ? "wss:" : "ws:";
+      pairWs = new WebSocket(proto + "//" + location.host);
+      pairWs.onopen = function () {
+        pairWs.send(JSON.stringify({ t: "phone_link", code: pairCode }));
+      };
+      pairWs.onmessage = function (ev) {
+        try {
+          const msg = JSON.parse(ev.data);
+          if (msg.t === "phone_ok") {
+            pairLinked = true;
+            poseOk = true;
+            poseFails = 0;
+          }
+          if (msg.t === "buzz") {
+            buzzHit(msg.power);
+          }
+        } catch (_) {}
+      };
+      pairWs.onclose = function () {
+        pairLinked = false;
+        pairWs = null;
+        setTimeout(connectPair, 800);
+      };
+      pairWs.onerror = function () {
+        poseFails += 1;
+      };
+    }
+
+    function sendPose() {
+      if (poseBusy) {
+        if (performance.now() - poseSentAt > POSE_TIMEOUT_MS) {
+          poseBusy = false;
+          poseFails += 1;
+        } else {
+          poseQueued = true;
+          return;
+        }
+      }
+      poseBusy = true;
+      poseSentAt = performance.now();
+      if (pairCode && pairWs && pairWs.readyState === 1) {
+        try {
+          pairWs.send(JSON.stringify(Object.assign({ t: "pose" }, poseBody())));
+          poseOk = pairLinked;
+          poseFails = pairLinked ? 0 : poseFails;
+        } catch (_) {
+          poseFails += 1;
+        }
+        recenter = false;
+        poseBusy = false;
+        if (poseQueued) {
+          poseQueued = false;
+          sendPose();
+        }
+        return;
+      }
+      const ctrl = new AbortController();
+      const bail = setTimeout(() => ctrl.abort(), POSE_TIMEOUT_MS);
+      fetch("/pose", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        cache: "no-store",
+        signal: ctrl.signal,
+        body: JSON.stringify(poseBody()),
+      }).then((res) => {
+        if (res.ok) {
+          poseOk = true;
+          poseFails = 0;
+        } else {
+          poseFails += 1;
+        }
+      }).catch(() => {
+        poseFails += 1;
+      }).finally(() => {
+        clearTimeout(bail);
+        recenter = false;
+        poseBusy = false;
+        if (poseQueued) {
+          poseQueued = false;
+          sendPose();
+        }
+      });
+    }
+
+    function startPoseStream() {
+      if (poseTimer) return;
+      poseTimer = setInterval(sendPose, 50);
+    }
+
+    function stopPoseStream() {
+      if (poseTimer) {
+        clearInterval(poseTimer);
+        poseTimer = null;
+      }
+      sendPose();
+    }
+
+    function powerColor(value) {
+      if (value < 0.45) return "#4cb8b0";
+      if (value < 0.75) return "#f2d04b";
+      return "#e23b3b";
+    }
+
+    function stickFromEvent(ev) {
+      const box = pad.getBoundingClientRect();
+      const cx = box.left + box.width * 0.5;
+      const cy = box.top + box.height * 0.5;
+      const max = box.width * 0.38;
+      let dx = ev.clientX - cx;
+      let dy = ev.clientY - cy;
+      const mag = Math.hypot(dx, dy);
+      const dead = max * 0.12;
+      const t = mag < dead ? 0 : Math.min(1, (mag - dead) / (max - dead));
+      const nx = mag > 0.001 ? dx / mag : 0;
+      const ny = mag > 0.001 ? dy / mag : 0;
+      dx = nx * t * max;
+      dy = ny * t * max;
+      lastTouchAt = performance.now();
+      knob.style.transform = "translate(calc(-50% + " + dx + "px), calc(-50% + " + dy + "px))";
+      sx = nx * t;
+      sy = -ny * t;
+      power = t;
+      meter.style.borderColor = powerColor(power);
+      if (!fired) showAimStatus();
+    }
+
+    function resetSwing() {
+      peakAccel = 0;
+      phase = "hold";
+      backAt = 0;
+      backSince = 0;
+      topSince = 0;
+      topAt = 0;
+    }
+
+    function phaseLabel() {
+      if (laneBack) return "bar: now down";
+      if (lanePointer !== null) return "bar: take it back";
+      if (motionHits === 0) return "no motion yet";
+      if (calibrating) return "calibrating";
+      if (!calibrated) return "tap CALIBRATE";
+      if (phase === "back") return "backswing";
+      if (phase === "top") return "top, swing down!";
+      return "ready, swing up";
+    }
+
+    function showAimStatus() {
+      if (fired) return;
+      status.textContent = "Power " + Math.round(power * 100) + "%. " + phaseLabel() + ".";
+    }
+
+    function buzz(pattern) {
+      try {
+        if (navigator.vibrate) navigator.vibrate(pattern);
+      } catch (_) {}
+    }
+
+    function armHaptics() {
+      buzz(1);
+    }
+
+    function buzzHit(amount) {
+      const p = Math.max(0, Math.min(1, Number(amount) || 0.5));
+      const strike = Math.round(22 + p * 48);
+      if (p >= 0.75) {
+        buzz([strike, 28, Math.round(strike * 0.45)]);
+      } else {
+        buzz(strike);
+      }
+    }
+
+    async function sendHit(speed) {
+      let shotX = sx;
+      let shotY = sy;
+      let shotPower = Math.max(0.18, power);
+      if (Math.hypot(shotX, shotY) < 0.06) {
+        shotX = 0;
+        shotY = 1;
+        shotPower = speed > 0 ? Math.min(1, 0.25 + speed * 0.25) : Math.max(shotPower, 0.28);
+      }
+      buzzHit(shotPower);
+      if (pairCode && pairWs && pairWs.readyState === 1) {
+        try {
+          pairWs.send(JSON.stringify({ t: "swing", power: shotPower, sx: shotX, sy: shotY }));
+          status.textContent = "Hit! " + Math.round(shotPower * 100) + "%";
+        } catch (_) {
+          status.textContent = "Lost the game server. Keep this page open.";
+          fired = false;
+        }
+        return;
+      }
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), 2500);
+      try {
+        const res = await fetch("/hit", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ power: shotPower, sx: shotX, sy: shotY }),
+          signal: ctrl.signal,
+          keepalive: true,
+        });
+        if (!res.ok) throw new Error("bad");
+        status.textContent = "Hit! " + Math.round(shotPower * 100) + "%";
+      } catch (_) {
+        status.textContent = "Cannot reach the PC. Keep this hole open.";
+        fired = false;
+      } finally {
+        clearTimeout(timer);
+      }
+    }
+
+    function fireShot() {
+      if (fired) return;
+      fired = true;
+      firedAt = performance.now();
+      knob.textContent = "HIT";
+      sendHit(0);
+    }
+
+    function laneReset(label) {
+      lanePointer = null;
+      laneBack = false;
+      laneUp = 0;
+      swing.classList.remove("back");
+      swingFill.style.height = "0%";
+      swingLabel.textContent = label;
+    }
+
+    function laneDown(ev) {
+      ev.preventDefault();
+      if (ev.pointerId != null && swing.setPointerCapture) {
+        try { swing.setPointerCapture(ev.pointerId); } catch (_) {}
+      }
+      askSensors();
+      armHaptics();
+      lanePointer = ev.pointerId != null ? ev.pointerId : 0;
+      laneStartY = ev.clientY;
+      laneUp = 0;
+      laneBack = false;
+      fired = false;
+      lastTouchAt = performance.now();
+      swing.classList.remove("hit");
+      swingLabel.textContent = "TAKE IT BACK";
+      showAimStatus();
+      sendPose();
+    }
+
+    function laneMove(ev) {
+      if (lanePointer === null || fired) return;
+      ev.preventDefault();
+      lastTouchAt = performance.now();
+      const up = laneStartY - ev.clientY;
+      if (up > laneUp) {
+        laneUp = up;
+        laneUpAt = performance.now();
+      }
+      swingFill.style.height = Math.min(100, Math.round((laneUp / BACK_PX) * 100)) + "%";
+      if (!laneBack && laneUp >= BACK_PX) {
+        laneBack = true;
+        swing.classList.add("back");
+        swingLabel.textContent = "NOW SWING DOWN";
+        showAimStatus();
+      }
+      if (laneBack && laneUp - up >= DOWN_PX) {
+        const dt = Math.max(1, performance.now() - laneUpAt);
+        laneFire((laneUp - up) / dt);
+      }
+    }
+
+    function laneUpEvent(ev) {
+      if (ev) ev.preventDefault();
+      if (lanePointer === null) return;
+      const took = laneBack;
+      laneReset("SWING");
+      if (!fired && !took) {
+        status.textContent = "Swipe further up, then flick down.";
+      }
+    }
+
+    function laneFire(speed) {
+      if (fired) return;
+      fired = true;
+      firedAt = performance.now();
+      laneReset("HIT");
+      swing.classList.add("hit");
+      sendHit(speed);
+    }
+
+    function motionReason() {
+      if (motionHits > 0) {
+        return hasLinear ? "on (linear)" : "on (gravity)";
+      }
+      if (typeof DeviceMotionEvent === "undefined") return "unsupported browser";
+      if (!window.isSecureContext) return "blocked: page is http";
+      return "no events yet";
+    }
+
+    // Returns acceleration along the "up" axis in units of gravity: positive
+    // while the phone accelerates upward, negative on the way down. Direction is
+    // what makes a golf swing distinguishable from a random shake, and dividing
+    // by gravity keeps it honest whether the browser reports m/s^2 or g.
+    function motionScore(event) {
+      motionHits += 1;
+      const g = event.accelerationIncludingGravity;
+      if (!g || (g.x == null && g.y == null && g.z == null)) {
+        // Only linear acceleration available: gravity is already removed, so
+        // there is nothing to calibrate. Take the device's own vertical axis,
+        // which is up whenever the phone is held upright.
+        const a = event.acceleration;
+        if (a) {
+          hasLinear = true;
+          calibrated = true;
+          vertical = (a.y || 0) / 9.81;
+          lift = a.y || 0;
+          motionNow = Math.abs(vertical);
+        }
+        return vertical;
+      }
+      const gx = g.x || 0;
+      const gy = g.y || 0;
+      const gz = g.z || 0;
+      if (calibrating) {
+        collectCalibration(gx, gy, gz);
+        return 0;
+      }
+      if (!gravReady) {
+        gravX = gx;
+        gravY = gy;
+        gravZ = gz;
+        gravReady = true;
+      } else {
+        // While idle, track which way is up so the phone can be re-oriented.
+        // Mid-swing, crawl instead: a fast filter would absorb the swing itself
+        // and drag the reading back toward zero before it crosses a threshold.
+        const follow = phase === "hold" ? 0.08 : 0.02;
+        gravX += (gx - gravX) * follow;
+        gravY += (gy - gravY) * follow;
+        gravZ += (gz - gravZ) * follow;
+      }
+      const mag = Math.hypot(gravX, gravY, gravZ) || 1;
+      const scale = gravMag > 0.2 ? gravMag : mag;
+      // At rest an accelerometer reads +1g along up, so the resting vector is
+      // the up axis. Subtracting its length leaves signed proper acceleration.
+      vertical = ((gx * gravX + gy * gravY + gz * gravZ) / mag - mag) / scale;
+      lift = vertical * 9.81;
+      motionNow = Math.abs(vertical);
+      return vertical;
+    }
+
+
+    function collectCalibration(gx, gy, gz) {
+      calSamples += 1;
+      calX += gx;
+      calY += gy;
+      calZ += gz;
+      if (performance.now() - calStart < CAL_MS) return;
+      calibrating = false;
+      calibrateBtn.disabled = false;
+      calibrateBtn.textContent = "CALIBRATE";
+      if (calSamples < 5) {
+        status.textContent = "No sensor readings during calibration. Use the SWING bar.";
+        return;
+      }
+      gravX = calX / calSamples;
+      gravY = calY / calSamples;
+      gravZ = calZ / calSamples;
+      gravMag = Math.hypot(gravX, gravY, gravZ);
+      gravReady = true;
+      calibrated = gravMag > 0.2;
+      if (!calibrated) {
+        status.textContent = "Calibration read no gravity. Hold the phone still and retry.";
+        return;
+      }
+      saveTuning();
+      resetSwing();
+      status.textContent = "Calibrated. Swing the phone up, pause, then down through the ball.";
+    }
+
+
+    function startCalibration() {
+      if (calibrating) return;
+      calibrating = true;
+      calStart = performance.now();
+      calSamples = 0;
+      calX = 0;
+      calY = 0;
+      calZ = 0;
+      calibrateBtn.disabled = true;
+      calibrateBtn.textContent = "HOLD STILL...";
+      status.textContent = "Hold the phone still in your stance...";
+    }
+
+
+    function threshold(base) {
+      // Slider 1 is a gentle swing, 10 demands a hard one.
+      return base * (0.55 + sensitivity * 0.09);
+    }
+
+
+    function saveTuning() {
+      try {
+        localStorage.setItem("puttTune", JSON.stringify({
+          gx: gravX, gy: gravY, gz: gravZ, mag: gravMag, sens: sensitivity,
+        }));
+      } catch (_) {}
+    }
+
+
+    function loadTuning() {
+      let saved = null;
+      try {
+        saved = JSON.parse(localStorage.getItem("puttTune") || "null");
+      } catch (_) {}
+      if (saved && typeof saved.mag === "number" && saved.mag > 0.2) {
+        gravX = saved.gx;
+        gravY = saved.gy;
+        gravZ = saved.gz;
+        gravMag = saved.mag;
+        gravReady = true;
+        calibrated = true;
+      }
+      if (saved && typeof saved.sens === "number") {
+        sensitivity = Math.min(10, Math.max(1, Math.round(saved.sens)));
+      }
+      sensInput.value = String(sensitivity);
+      sensVal.textContent = String(sensitivity);
+    }
+
+    function updateSensors() {
+      if (poseTimer === null && !document.hidden) {
+        startPoseStream();
+      }
+      if (poseFails > 2) {
+        sensors.classList.remove("live");
+        sState.textContent = "Lost the PC. Keep Play open on the same Wi-Fi.";
+      } else if (poseOk) {
+        sensors.classList.add("live");
+        sState.textContent = motionHits > 0 ? "linked, motion on" : "linked, no motion";
+      } else {
+        sState.textContent = "connecting...";
+      }
+      if (calibrating && performance.now() - calStart > CAL_MS + 700) {
+        // No gravity samples arrived, so calibration can never complete here.
+        calibrating = false;
+        calibrateBtn.disabled = false;
+        calibrateBtn.textContent = "CALIBRATE";
+        if (!calibrated) {
+          status.textContent = "This phone reports no gravity reading. Use the SWING bar to putt.";
+        }
+      }
+      sOrigin.textContent = location.origin + (window.isSecureContext ? " (secure)" : " (NOT secure)");
+      sMotion.textContent = motionReason();
+      if (motionHits === 0 && performance.now() > 2500 && !motionWarned) {
+        motionWarned = true;
+        status.textContent = window.isSecureContext
+          ? "No motion events. Check Chrome site settings > Motion sensors, or use the SWING bar."
+          : "This is the plain http page, so Chrome blocks the motion sensor. Re-scan the QR in the game to open the secure https page, then swinging works. Or use the SWING bar.";
+      }
+      const arrow = vertical > 0.03 ? "up " : (vertical < -0.03 ? "down " : "");
+      sAcc.textContent = arrow + Math.abs(vertical).toFixed(2) + " g";
+      sPhase.textContent = fired ? "hit" : phaseLabel();
+      const need = phase === "top" ? -threshold(DOWN_G) : threshold(BACK_G);
+      sPeak.textContent = (need < 0 ? "down " : "up ") + Math.abs(need).toFixed(2) + " g";
+      const target = phase === "top" ? threshold(DOWN_G) : threshold(BACK_G);
+      const towards = phase === "top" ? Math.max(0, -vertical) : Math.max(0, vertical);
+      if (towards > displayPeak) displayPeak = towards;
+      else displayPeak *= 0.9;
+      const pct = Math.min(100, Math.round((displayPeak / target) * 100));
+      sFill.style.width = pct + "%";
+      document.getElementById("bar").classList.toggle("hot", pct >= 100);
+    }
+
+    // A real golf stroke, in order: accelerate up (backswing), settle briefly at
+    // the top, then accelerate down (downswing) to strike. Requiring all three in
+    // sequence, each with a minimum duration, is what stops a random shake from
+    // registering, since a shake never holds a direction long enough.
+    function maybeSwing(score) {
+      const now = performance.now();
+      if (fired) {
+        if (now - firedAt > REARM_MS) {
+          fired = false;
+          resetSwing();
+          knob.textContent = "AIM";
+        }
+        return;
+      }
+      if (!calibrated || now - lastTouchAt < SETTLE_MS) {
+        resetSwing();
+        return;
+      }
+      const backNeed = threshold(BACK_G);
+      const topNeed = threshold(TOP_G);
+      const downNeed = threshold(DOWN_G);
+      if (score > peakAccel) peakAccel = score;
+
+      if (phase === "hold") {
+        if (score >= backNeed) {
+          if (backSince === 0) backSince = now;
+          if (now - backSince >= MIN_BACK_MS) {
+            phase = "back";
+            backAt = now;
+          }
+        } else {
+          backSince = 0;
+        }
+        showAimStatus();
+        return;
+      }
+      if (phase === "back") {
+        // A brisk stroke goes straight from backswing into the downswing, so
+        // strike as soon as the reading turns hard negative.
+        if (score <= -downNeed) {
+          fireShot();
+          return;
+        }
+        if (Math.abs(score) <= topNeed) {
+          if (topSince === 0) topSince = now;
+          if (now - topSince >= MIN_TOP_MS) {
+            phase = "top";
+            topAt = now;
+          }
+        } else {
+          topSince = 0;
+        }
+        if (now - backAt > BACK_MAX_MS) resetSwing();
+        showAimStatus();
+        return;
+      }
+      if (phase === "top") {
+        if (score <= -downNeed) {
+          fireShot();
+          return;
+        }
+        if (score >= backNeed) {
+          // Went back up again, treat this as a fresh backswing.
+          phase = "back";
+          backAt = now;
+          topSince = 0;
+        }
+        if (now - topAt > DOWN_MAX_MS) resetSwing();
+        showAimStatus();
+      }
+    }
+
+    function askSensors() {
+      try {
+        if (typeof DeviceMotionEvent !== "undefined" && typeof DeviceMotionEvent.requestPermission === "function") {
+          DeviceMotionEvent.requestPermission().catch(() => {});
+        }
+        if (typeof DeviceOrientationEvent !== "undefined" && typeof DeviceOrientationEvent.requestPermission === "function") {
+          DeviceOrientationEvent.requestPermission().catch(() => {});
+        }
+      } catch (_) {}
+    }
+
+    function holdStart(ev) {
+      ev.preventDefault();
+      if (ev.pointerId != null && pad.setPointerCapture) {
+        try { pad.setPointerCapture(ev.pointerId); } catch (_) {}
+      }
+      askSensors();
+      armHaptics();
+      holding = true;
+      fired = false;
+      holdAt = performance.now();
+      resetSwing();
+      pad.classList.add("held");
+      knob.textContent = "AIM";
+      swing.classList.remove("hit");
+      stickFromEvent(ev);
+      status.textContent = "Drag to aim, then swipe the SWING bar.";
+      sendPose();
+      startPoseStream();
+    }
+
+    function holdMove(ev) {
+      if (!holding || fired) return;
+      ev.preventDefault();
+      stickFromEvent(ev);
+      sendPose();
+    }
+
+    function holdEnd(ev) {
+      if (ev) ev.preventDefault();
+      if (!holding) return;
+      holding = false;
+      lastTouchAt = performance.now();
+      pad.classList.remove("held");
+      if (!fired) {
+        status.textContent = "Aim held at " + Math.round(power * 100) + "%. Now swing the phone up, then down.";
+      }
+      sendPose();
+    }
+
+    window.addEventListener("deviceorientation", (event) => {
+      if (event.alpha != null) alpha = event.alpha;
+      if (event.beta != null) beta = event.beta;
+      if (event.gamma != null) gamma = event.gamma;
+    }, true);
+
+    window.addEventListener("devicemotion", (event) => {
+      const score = motionScore(event);
+      maybeSwing(score);
+    }, { passive: true, capture: true });
+
+    pad.addEventListener("pointerdown", holdStart);
+    pad.addEventListener("pointermove", holdMove);
+    pad.addEventListener("pointerup", holdEnd);
+    pad.addEventListener("pointercancel", holdEnd);
+    swing.addEventListener("pointerdown", laneDown);
+    swing.addEventListener("pointermove", laneMove);
+    swing.addEventListener("pointerup", laneUpEvent);
+    swing.addEventListener("pointercancel", laneUpEvent);
+    document.addEventListener("visibilitychange", () => {
+      if (document.hidden) {
+        holding = false;
+        pad.classList.remove("held");
+        laneReset("SWING");
+        stopPoseStream();
+      } else {
+        startPoseStream();
+      }
+    });
+    calibrateBtn.addEventListener("click", () => {
+      askSensors();
+      armHaptics();
+      startCalibration();
+    });
+    sensInput.addEventListener("input", () => {
+      sensitivity = Math.min(10, Math.max(1, Number(sensInput.value) || 5));
+      sensVal.textContent = String(sensitivity);
+      saveTuning();
+    });
+    loadTuning();
+    if (pairCode) connectPair();
+    askSensors();
+    startPoseStream();
+    // First run has nothing saved, so calibrate as soon as samples arrive. The
+    // phone is sitting still while the page is being read.
+    setTimeout(() => {
+      if (!calibrated && !calibrating && motionHits > 0) startCalibration();
+    }, 900);
+    setInterval(updateSensors, 80);
+  </script>
+</body>
+</html>

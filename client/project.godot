@@ -19,6 +19,7 @@ config/icon="res://icon.svg"
 
 GameSession="*res://scripts/game_session.gd"
 NetworkClient="*res://scripts/network_client.gd"
+PhoneLink="*res://scripts/phone_link.gd"
 
 [display]
 
