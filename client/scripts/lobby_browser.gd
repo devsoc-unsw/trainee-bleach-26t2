@@ -192,14 +192,14 @@ func _fill_players(people: Variant) -> void:
 		row.alignment = BoxContainer.ALIGNMENT_CENTER
 		var swatch := ColorRect.new()
 		swatch.custom_minimum_size = Vector2(12, 12)
-		swatch.color = Color(str(p.get("color", "#E23B3B")))
-		var name := Label.new()
+		swatch.color = UiStyle.to_color(p.get("color", "#E23B3B"))
+		var name_label := Label.new()
 		var suffix := "  (host)" if bool(p.get("host", false)) else ""
-		name.text = "%s%s" % [str(p.get("name", "Player")), suffix]
-		name.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		UiStyle.apply_font(name, true, 14, UiStyle.INK)
+		name_label.text = "%s%s" % [str(p.get("name", "Player")), suffix]
+		name_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		UiStyle.apply_font(name_label, true, 14, UiStyle.INK)
 		row.add_child(swatch)
-		row.add_child(name)
+		row.add_child(name_label)
 		_player_list.add_child(row)
 
 

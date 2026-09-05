@@ -3,6 +3,7 @@ extends Button
 const GOLD_SHADER: Shader = preload("res://shaders/ui_gold_check.gdshader")
 
 signal hovered
+signal unhovered
 
 var selected := false
 
@@ -20,7 +21,7 @@ func _ready() -> void:
 	flat = true
 	size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
 	mouse_entered.connect(func() -> void: hovered.emit())
-	resized.connect(_sync_view)
+	mouse_exited.connect(func() -> void: unhovered.emit())
 	_setup_preview()
 	_apply_chrome()
 	set_process(true)
@@ -75,12 +76,6 @@ func _process(delta: float) -> void:
 	scale = Vector2.ONE * sc
 
 
-func _sync_view() -> void:
-	if _view == null:
-		return
-	_view.size = Vector2i(maxi(ceili(size.x), 8), maxi(ceili(size.y), 8))
-
-
 func _apply_chrome() -> void:
 	var idle := StyleBoxEmpty.new()
 	idle.content_margin_left = 10
@@ -103,4 +98,3 @@ func _apply_chrome() -> void:
 	_label.add_theme_constant_override("outline_size", 12)
 	_label.offset_left = 10
 	_label.offset_right = -8
-	call_deferred("_sync_view")

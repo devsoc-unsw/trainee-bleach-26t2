@@ -2,6 +2,7 @@ class_name CourseTile
 extends VBoxContainer
 
 signal hovered
+signal unhovered
 signal chosen
 
 var map_id := ""
@@ -23,6 +24,7 @@ func _ready() -> void:
 	size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	size_flags_vertical = Control.SIZE_EXPAND_FILL
 	mouse_entered.connect(func() -> void: hovered.emit())
+	mouse_exited.connect(func() -> void: unhovered.emit())
 	gui_input.connect(_on_gui)
 
 

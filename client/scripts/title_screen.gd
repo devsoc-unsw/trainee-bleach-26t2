@@ -12,12 +12,16 @@ const ITEM_SCRIPT := preload("res://scripts/title_menu_item.gd")
 @onready var player_name_label: Label = $UI/Root/PlayerBar/Row/Name
 @onready var settings_dimmer: ColorRect = $UI/SettingsDimmer
 
-var _index := 0
+var _index := -1
 var _items: Array[Button] = []
 var _actions: Array[Callable] = []
 var _settings_open := false
 var _cam_base: Transform3D
 var _t := 0.0
+var _phone_urls: Label
+var _phone_local: Label
+var _phone_qr: TextureRect
+var _phone_hint: Label
 
 
 func _ready() -> void:
@@ -29,13 +33,13 @@ func _ready() -> void:
 	get_viewport().size_changed.connect(_apply_responsive)
 	_apply_responsive()
 	_play_intro()
-	_select(0)
 
 
 func _process(delta: float) -> void:
 	_t += delta
 	camera.global_position = _cam_base.origin + MapKit.menu_camera_orbit(_t)
 	camera.look_at(MapKit.MENU_CAM_LOOK, Vector3.UP)
+	_sync_phone_selection()
 
 
 func _build_course() -> void:
@@ -93,13 +97,50 @@ func _build_menu() -> void:
 		btn.add_theme_font_override("font", font_var)
 		btn.add_theme_font_size_override("font_size", 28)
 		var idx := i
-		btn.hovered.connect(func() -> void: _select(idx))
+		btn.hovered.connect(func() -> void:
+			if PhoneLink.pointer_live():
+				return
+			_select(idx)
+		)
+		btn.unhovered.connect(func() -> void:
+			if PhoneLink.pointer_live():
+				return
+			if _index == idx:
+				_select(-1)
+		)
 		btn.pressed.connect(func() -> void: _activate(idx))
 		menu_list.add_child(btn)
 		_items.append(btn)
 
 
+func _sync_phone_selection() -> void:
+	if _settings_open or not PhoneLink.pointer_live():
+		return
+	var idx := _index_of_hovered()
+	if idx != _index:
+		_select(idx)
+
+
+func _index_of_hovered() -> int:
+	var hit := PhoneLink.hovered_control()
+	if hit == null:
+		return -1
+	var node: Node = hit
+	while node != null:
+		for i in _items.size():
+			if _items[i] == node:
+				return i
+		node = node.get_parent()
+	return -1
+
+
 func _select(index: int) -> void:
+	if index < 0 or _items.is_empty():
+		_index = -1
+		for item in _items:
+			if item.has_method("set_selected"):
+				item.set_selected(false)
+		return
 	_index = clampi(index, 0, _items.size() - 1)
 	for i in _items.size():
 		if _items[i].has_method("set_selected"):
@@ -172,6 +213,73 @@ func _setup_settings() -> void:
 		GameSession.set_master_volume(v)
 		_set_volume_label(v)
 	)
+	var layout: VBoxContainer = $UI/SettingsDimmer/Card/Layout
+	var spacer: Control = layout.get_node("Spacer")
+	var phone_label := Label.new()
+	phone_label.text = "PHONE REMOTE"
+	UiStyle.apply_font(phone_label, true, 12, UiStyle.INK)
+	layout.add_child(phone_label)
+	layout.move_child(phone_label, spacer.get_index())
+	_phone_qr = TextureRect.new()
+	_phone_qr.custom_minimum_size = Vector2(140, 140)
+	_phone_qr.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	_phone_qr.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	_phone_qr.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	_phone_qr.visible = false
+	layout.add_child(_phone_qr)
+	layout.move_child(_phone_qr, spacer.get_index())
+	_phone_urls = Label.new()
+	_phone_urls.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_phone_urls.autowrap_mode = TextServer.AUTOWRAP_OFF
+	UiStyle.apply_font(_phone_urls, false, 12, UiStyle.TEAL)
+	layout.add_child(_phone_urls)
+	layout.move_child(_phone_urls, spacer.get_index())
+	_phone_local = Label.new()
+	_phone_local.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	UiStyle.apply_font(_phone_local, false, 12, UiStyle.BROWN_SOFT)
+	layout.add_child(_phone_local)
+	layout.move_child(_phone_local, spacer.get_index())
+	_phone_hint = Label.new()
+	_phone_hint.text = "Scan the code (use the https one for swing sensors). Tap CALIBRATE once, drag AIM for power, then swing the phone up and down."
+	_phone_hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_phone_hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_phone_hint.custom_minimum_size = Vector2(320, 0)
+	UiStyle.apply_font(_phone_hint, false, 13, UiStyle.INK)
+	layout.add_child(_phone_hint)
+	layout.move_child(_phone_hint, spacer.get_index())
+	if not PhoneLink.qr_ready.is_connected(_on_settings_qr):
+		PhoneLink.qr_ready.connect(_on_settings_qr)
+	if not PhoneLink.urls_changed.is_connected(_on_phone_urls):
+		PhoneLink.urls_changed.connect(_on_phone_urls)
+	_refresh_phone_settings()
+
+
+func _refresh_phone_settings() -> void:
+	PhoneLink.ensure_listening()
+	if _phone_urls:
+		_phone_urls.text = "\n".join(PhoneLink.public_urls())
+	if _phone_local:
+		_phone_local.text = "This PC: %s" % PhoneLink.local_url()
+	PhoneLink.fetch_qr()
+
+
+func _on_phone_urls() -> void:
+	if _phone_urls:
+		_phone_urls.text = "\n".join(PhoneLink.public_urls())
+	if _phone_local:
+		_phone_local.text = "This PC: %s" % PhoneLink.local_url()
+	# The secure URL arrives a moment after boot, so repoint the QR at it.
+	PhoneLink.fetch_qr()
+
+
+func _on_settings_qr(bytes: PackedByteArray) -> void:
+	if _phone_qr == null or bytes.is_empty():
+		return
+	var img := Image.new()
+	if img.load_png_from_buffer(bytes) != OK:
+		return
+	_phone_qr.texture = ImageTexture.create_from_image(img)
+	_phone_qr.visible = true
 
 
 func _set_volume_label(amount: float) -> void:
@@ -190,6 +298,7 @@ func _on_multiplayer() -> void:
 func _on_settings() -> void:
 	_settings_open = true
 	settings_dimmer.visible = true
+	_refresh_phone_settings()
 	var tw := create_tween()
 	tw.tween_property(settings_dimmer, "modulate:a", 1.0, 0.2)
 

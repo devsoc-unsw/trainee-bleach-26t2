@@ -10,7 +10,7 @@ const COLS := 3
 @onready var title_label: Label = $UI/Root/Margin/Layout/Header/Title
 @onready var spacer: Control = $UI/Root/Margin/Layout/Header/Spacer
 
-var _index := 0
+var _index := -1
 var _tiles: Array[CourseTile] = []
 var _cam_base: Transform3D
 var _t := 0.0
@@ -25,7 +25,6 @@ func _ready() -> void:
 	_build_vote_chrome()
 	back_btn.pressed.connect(_go_back)
 	GameSession.vote_updated.connect(_refresh_votes)
-	_select(0)
 	_refresh_votes()
 	_tick_countdown()
 
@@ -35,6 +34,7 @@ func _process(delta: float) -> void:
 	camera.global_position = _cam_base.origin + MapKit.menu_camera_orbit(_t)
 	camera.look_at(MapKit.MENU_CAM_LOOK, Vector3.UP)
 	_tick_countdown()
+	_sync_phone_selection()
 
 
 func _build_backdrop() -> void:
@@ -106,7 +106,17 @@ func _build_tiles() -> void:
 		grid.add_child(tile)
 		tile.setup_map(GameSession.get_map(id))
 		var captured := _tiles.size()
-		tile.hovered.connect(func() -> void: _select(captured))
+		tile.hovered.connect(func() -> void:
+			if PhoneLink.pointer_live():
+				return
+			_select(captured)
+		)
+		tile.unhovered.connect(func() -> void:
+			if PhoneLink.pointer_live():
+				return
+			if _index == captured:
+				_select(-1)
+		)
 		tile.chosen.connect(func() -> void:
 			_select(captured)
 			_play_selected()
@@ -124,8 +134,32 @@ func _refresh_votes() -> void:
 	_tick_countdown()
 
 
+func _sync_phone_selection() -> void:
+	if not PhoneLink.pointer_live():
+		return
+	var idx := _index_of_hovered()
+	if idx != _index:
+		_select(idx)
+
+
+func _index_of_hovered() -> int:
+	var hit := PhoneLink.hovered_control()
+	if hit == null:
+		return -1
+	var node: Node = hit
+	while node != null:
+		for i in _tiles.size():
+			if _tiles[i] == node:
+				return i
+		node = node.get_parent()
+	return -1
+
+
 func _select(index: int) -> void:
-	if _tiles.is_empty():
+	if _tiles.is_empty() or index < 0:
+		_index = -1
+		for tile in _tiles:
+			tile.set_selected(false)
 		return
 	_index = clampi(index, 0, _tiles.size() - 1)
 	for i in _tiles.size():
@@ -158,14 +192,14 @@ func _unhandled_input(event: InputEvent) -> void:
 		_play_selected()
 		get_viewport().set_input_as_handled()
 	elif event.is_action_pressed("ui_left"):
-		_select(_index - 1)
+		_select(_tiles.size() - 1 if _index < 0 else _index - 1)
 		get_viewport().set_input_as_handled()
 	elif event.is_action_pressed("ui_right"):
-		_select(_index + 1)
+		_select(0 if _index < 0 else _index + 1)
 		get_viewport().set_input_as_handled()
 	elif event.is_action_pressed("ui_down"):
-		_select(_index + COLS)
+		_select(0 if _index < 0 else _index + COLS)
 		get_viewport().set_input_as_handled()
 	elif event.is_action_pressed("ui_up"):
-		_select(_index - COLS)
+		_select(_tiles.size() - 1 if _index < 0 else _index - COLS)
 		get_viewport().set_input_as_handled()
