@@ -180,26 +180,30 @@ func _setup_settings() -> void:
 	settings_dimmer.visible = false
 	settings_dimmer.modulate.a = 0.0
 	settings_dimmer.gui_input.connect(_on_dimmer_gui)
-	$UI/SettingsDimmer/Shell/Scroll/Center/Card/Layout/Back.pressed.connect(_close_settings)
+	$UI/SettingsDimmer/Shell/Center/Card/Layout/Back.pressed.connect(_close_settings)
 	player_name_edit.text_changed.connect(_on_name_typed)
 	player_name_edit.focus_exited.connect(_commit_name)
 	player_name_edit.text_submitted.connect(func(_v: String) -> void: _commit_name())
-	var layout: VBoxContainer = $UI/SettingsDimmer/Shell/Scroll/Center/Card/Layout
+	var layout: VBoxContainer = $UI/SettingsDimmer/Shell/Center/Card/Layout
 	var old_row := layout.get_node_or_null("VolumeRow") as Control
 	var old_slider := layout.get_node_or_null("Volume") as Control
 	if old_row:
 		old_row.visible = false
 	if old_slider:
 		old_slider.visible = false
+	var title := layout.get_node_or_null("Title") as Control
+	if title:
+		title.visible = false
 	var spacer: Control = layout.get_node("Spacer")
-	UiStyle.add_audio_sliders(layout, spacer.get_index())
+	UiStyle.add_audio_sliders(layout, spacer.get_index(), true)
 	var phone_label := Label.new()
 	phone_label.text = "PHONE REMOTE"
-	UiStyle.apply_font(phone_label, true, 12, UiStyle.INK)
+	phone_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	UiStyle.apply_font(phone_label, true, 11, UiStyle.INK)
 	layout.add_child(phone_label)
 	layout.move_child(phone_label, spacer.get_index())
 	_phone_qr = TextureRect.new()
-	_phone_qr.custom_minimum_size = Vector2(140, 140)
+	_phone_qr.custom_minimum_size = Vector2(108, 108)
 	_phone_qr.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	_phone_qr.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	_phone_qr.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
@@ -207,11 +211,11 @@ func _setup_settings() -> void:
 	layout.add_child(_phone_qr)
 	layout.move_child(_phone_qr, spacer.get_index())
 	_phone_hint = Label.new()
-	_phone_hint.text = "Scan the code to open the phone remote. Tap CALIBRATE once, drag AIM for power, then swing the phone up and down."
+	_phone_hint.text = "Scan to open the remote on any Wi-Fi. CALIBRATE, AIM, then swing."
 	_phone_hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_phone_hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	_phone_hint.custom_minimum_size = Vector2(320, 0)
-	UiStyle.apply_font(_phone_hint, false, 13, UiStyle.INK)
+	_phone_hint.custom_minimum_size = Vector2(300, 0)
+	UiStyle.apply_font(_phone_hint, false, 11, UiStyle.INK)
 	layout.add_child(_phone_hint)
 	layout.move_child(_phone_hint, spacer.get_index())
 	if not PhoneLink.qr_ready.is_connected(_on_settings_qr):
@@ -226,18 +230,18 @@ func _setup_settings() -> void:
 
 func _fit_settings_card() -> void:
 	var shell := $UI/SettingsDimmer/Shell as MarginContainer
-	var card := $UI/SettingsDimmer/Shell/Scroll/Center/Card as PanelContainer
+	var card := $UI/SettingsDimmer/Shell/Center/Card as PanelContainer
 	if shell == null or card == null:
 		return
 	var view := get_viewport().get_visible_rect().size
 	var wide := view.x >= 900.0
-	var side := 28 if wide else 16
-	var vertical := 48 if wide else 36
+	var side := 24 if wide else 14
+	var vertical := 24 if wide else 16
 	shell.add_theme_constant_override("margin_left", side)
 	shell.add_theme_constant_override("margin_right", side)
 	shell.add_theme_constant_override("margin_top", vertical)
 	shell.add_theme_constant_override("margin_bottom", vertical)
-	card.custom_minimum_size.x = 460.0 if wide else minf(420.0, view.x - float(side * 2))
+	card.custom_minimum_size.x = 400.0 if wide else minf(360.0, view.x - float(side * 2))
 
 
 func _refresh_phone_settings() -> void:
@@ -245,7 +249,7 @@ func _refresh_phone_settings() -> void:
 		NetworkClient.ensure_connected()
 		NetworkClient.send_phone_open()
 		if _phone_hint:
-			_phone_hint.text = "Scan the code to open the phone remote on any Wi-Fi. Tap CALIBRATE once, drag AIM for power, then swing."
+			_phone_hint.text = "Scan to open the remote on any Wi-Fi. CALIBRATE, AIM, then swing."
 		return
 	PhoneLink.ensure_listening()
 	PhoneLink.fetch_qr()
@@ -306,7 +310,7 @@ func _on_settings_qr(bytes: PackedByteArray) -> void:
 
 
 func _set_volume_label(amount: float) -> void:
-	var label: Label = $UI/SettingsDimmer/Shell/Scroll/Center/Card/Layout/VolumeRow/VolumeValue
+	var label: Label = $UI/SettingsDimmer/Shell/Center/Card/Layout/VolumeRow/VolumeValue
 	label.text = "%d%%" % int(round(amount * 100.0))
 
 

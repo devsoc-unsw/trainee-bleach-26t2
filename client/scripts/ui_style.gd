@@ -94,7 +94,7 @@ static func input_box() -> StyleBoxFlat:
 	return style
 
 
-static func add_audio_sliders(parent: Node, insert_at: int = -1) -> void:
+static func add_audio_sliders(parent: Node, insert_at: int = -1, compact: bool = false) -> void:
 	var specs: Array = [
 		["MASTER", GameSession.master_volume, "set_master_volume"],
 		["MUSIC", GameSession.music_volume, "set_music_volume"],
@@ -102,17 +102,21 @@ static func add_audio_sliders(parent: Node, insert_at: int = -1) -> void:
 		["UI EFFECTS", GameSession.ui_volume, "set_ui_volume"],
 	]
 	var idx := insert_at
+	var label_size := 11 if compact else 12
+	var value_size := 12 if compact else 13
+	var slider_h := 16.0 if compact else 22.0
+	var track_pad := 4 if compact else 6
 	for spec in specs:
 		var row := HBoxContainer.new()
 		var caption := Label.new()
 		caption.text = str(spec[0])
 		caption.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		apply_font(caption, true, 12, INK)
+		apply_font(caption, true, label_size, INK)
 		var pct := Label.new()
 		var amount := float(spec[1])
 		pct.text = "%d%%" % int(round(amount * 100.0))
 		pct.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-		apply_font(pct, true, 13, TEAL)
+		apply_font(pct, true, value_size, TEAL)
 		row.add_child(caption)
 		row.add_child(pct)
 		var slider := HSlider.new()
@@ -120,12 +124,12 @@ static func add_audio_sliders(parent: Node, insert_at: int = -1) -> void:
 		slider.max_value = 1.0
 		slider.step = 0.01
 		slider.value = amount
-		slider.custom_minimum_size = Vector2(0, 22)
+		slider.custom_minimum_size = Vector2(0, slider_h)
 		var track := StyleBoxFlat.new()
 		track.bg_color = Color("E4DCCE")
 		track.set_corner_radius_all(8)
-		track.content_margin_top = 6
-		track.content_margin_bottom = 6
+		track.content_margin_top = track_pad
+		track.content_margin_bottom = track_pad
 		var fill := StyleBoxFlat.new()
 		fill.bg_color = TEAL
 		fill.set_corner_radius_all(8)
@@ -143,10 +147,9 @@ static func add_audio_sliders(parent: Node, insert_at: int = -1) -> void:
 		if idx >= 0:
 			parent.add_child(row)
 			parent.move_child(row, idx)
-			idx += 1
 			parent.add_child(slider)
-			parent.move_child(slider, idx)
-			idx += 1
+			parent.move_child(slider, idx + 1)
+			idx += 2
 		else:
 			parent.add_child(row)
 			parent.add_child(slider)
