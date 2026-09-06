@@ -22,6 +22,8 @@ var _phone_qr: TextureRect
 var _phone_hint: Label
 var _vol_fill: StyleBox
 var _vol_empty := StyleBoxEmpty.new()
+var _name_js_cb: JavaScriptObject
+var _web_name_open := false
 
 
 func _ready() -> void:
@@ -47,9 +49,17 @@ func _setup_name_field() -> void:
 	player_name_edit.text_submitted.connect(func(_v: String) -> void: _commit_name())
 	player_name_edit.focus_entered.connect(_show_name_keyboard)
 	player_name_edit.gui_input.connect(_on_name_gui)
+	if OS.has_feature("web"):
+		# Godot's canvas VK is unreliable on phones; use an HTML input overlay instead.
+		player_name_edit.focus_mode = Control.FOCUS_NONE
+		player_name_edit.editable = false
+		player_name_edit.mouse_default_cursor_shape = Control.CURSOR_IBEAM
 
 
 func _show_name_keyboard() -> void:
+	if OS.has_feature("web"):
+		_open_web_name_prompt()
+		return
 	if not DisplayServer.has_feature(DisplayServer.FEATURE_VIRTUAL_KEYBOARD):
 		return
 	DisplayServer.virtual_keyboard_show(
@@ -61,15 +71,98 @@ func _show_name_keyboard() -> void:
 
 
 func _on_name_gui(event: InputEvent) -> void:
+	var tap := false
 	if event is InputEventMouseButton:
 		var mouse := event as InputEventMouseButton
-		if mouse.pressed and mouse.button_index == MOUSE_BUTTON_LEFT:
-			# Touch/click should always surface the soft keyboard on web builds.
-			call_deferred("_show_name_keyboard")
+		tap = mouse.pressed and mouse.button_index == MOUSE_BUTTON_LEFT
 	elif event is InputEventScreenTouch:
-		var touch := event as InputEventScreenTouch
-		if touch.pressed:
-			call_deferred("_show_name_keyboard")
+		tap = (event as InputEventScreenTouch).pressed
+	if not tap:
+		return
+	get_viewport().set_input_as_handled()
+	if OS.has_feature("web"):
+		_open_web_name_prompt()
+	else:
+		player_name_edit.grab_focus()
+		call_deferred("_show_name_keyboard")
+
+
+func _open_web_name_prompt() -> void:
+	if not OS.has_feature("web") or _web_name_open:
+		return
+	_web_name_open = true
+	if _name_js_cb == null:
+		_name_js_cb = JavaScriptBridge.create_callback(_on_web_name_result)
+	var window_obj: Variant = JavaScriptBridge.get_interface("window")
+	if window_obj == null:
+		_web_name_open = false
+		return
+	window_obj._puttNameDone = _name_js_cb
+	var name_json := JSON.stringify(player_name_edit.text)
+	var js := """
+(function(){
+  var cb = window._puttNameDone;
+  var old = document.getElementById('putt-name-overlay');
+  if (old) old.remove();
+  var wrap = document.createElement('div');
+  wrap.id = 'putt-name-overlay';
+  wrap.setAttribute('style', 'position:fixed;inset:0;z-index:2147483646;background:rgba(16,12,10,0.55);display:flex;align-items:flex-start;justify-content:center;padding:max(18px,env(safe-area-inset-top)) 14px 14px;touch-action:manipulation;');
+  var card = document.createElement('div');
+  card.setAttribute('style', 'width:min(420px,100%);background:#fffbf5;border-radius:18px;padding:14px;box-shadow:0 18px 40px rgba(0,0,0,0.28);display:flex;flex-direction:column;gap:10px;');
+  var label = document.createElement('div');
+  label.textContent = 'YOUR NAME';
+  label.setAttribute('style', 'font:800 12px system-ui,sans-serif;letter-spacing:0.08em;color:#3a322c;');
+  var row = document.createElement('div');
+  row.setAttribute('style', 'display:flex;gap:8px;align-items:stretch;');
+  var input = document.createElement('input');
+  input.type = 'text';
+  input.inputMode = 'text';
+  input.enterKeyHint = 'done';
+  input.autocomplete = 'nickname';
+  input.maxLength = 16;
+  input.value = %s;
+  input.setAttribute('style', 'flex:1;min-width:0;font:700 18px system-ui,sans-serif;padding:12px 14px;border-radius:14px;border:2px solid #e4dcce;color:#3a322c;outline:none;');
+  var go = document.createElement('button');
+  go.type = 'button';
+  go.setAttribute('aria-label', 'Save');
+  go.innerHTML = '<svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path fill="currentColor" d="M3.4 20.6 21 12 3.4 3.4 3 10.1 14.2 12 3 13.9z"/></svg>';
+  go.setAttribute('style', 'flex:0 0 54px;border:none;border-radius:14px;background:#4cb8b0;color:#fff;display:grid;place-items:center;');
+  var finish = function(save){
+    var value = save ? String(input.value || '') : '__cancel__';
+    wrap.remove();
+    try { cb([value]); } catch (e) {}
+  };
+  go.addEventListener('click', function(ev){ ev.preventDefault(); finish(true); });
+  input.addEventListener('keydown', function(ev){
+    if (ev.key === 'Enter') { ev.preventDefault(); finish(true); }
+    if (ev.key === 'Escape') { ev.preventDefault(); finish(false); }
+  });
+  wrap.addEventListener('pointerdown', function(ev){
+    if (ev.target === wrap) finish(false);
+  });
+  row.appendChild(input);
+  row.appendChild(go);
+  card.appendChild(label);
+  card.appendChild(row);
+  wrap.appendChild(card);
+  document.body.appendChild(wrap);
+  setTimeout(function(){
+    input.focus({ preventScroll: false });
+    try { input.setSelectionRange(0, input.value.length); } catch (e) {}
+  }, 30);
+})();
+""" % name_json
+	JavaScriptBridge.eval(js)
+
+
+func _on_web_name_result(args: Array) -> void:
+	_web_name_open = false
+	if args.is_empty():
+		return
+	var value := str(args[0])
+	if value == "__cancel__":
+		return
+	_apply_name(value, true)
 
 
 func _process(delta: float) -> void:

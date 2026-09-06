@@ -262,7 +262,34 @@
       border-radius: 22px;
       padding: 12px;
       box-shadow: 0 16px 36px rgba(58, 50, 44, 0.22);
+      position: relative;
     }
+    #type-hint {
+      display: none;
+      margin: 0 0 8px;
+      text-align: center;
+      font-size: 13px;
+      font-weight: 800;
+      letter-spacing: 0.06em;
+      color: var(--brown);
+    }
+    #type-view.needs-tap #type-hint { display: block; }
+    #type-tap {
+      display: none;
+      position: absolute;
+      inset: 12px;
+      z-index: 2;
+      border: none;
+      border-radius: 16px;
+      background: rgba(255, 251, 245, 0.94);
+      color: var(--ink);
+      font: inherit;
+      font-size: 18px;
+      font-weight: 800;
+      letter-spacing: 0.04em;
+      touch-action: manipulation;
+    }
+    #type-view.needs-tap #type-tap { display: grid; place-items: center; }
     #type-row {
       display: flex;
       align-items: stretch;
@@ -371,14 +398,16 @@
   </div>
   <div id="type-view">
     <div id="type-card">
+      <p id="type-hint">TAP TO OPEN KEYBOARD</p>
       <div id="type-row">
-        <input id="type-input" type="text" inputmode="text" enterkeyhint="send" autocomplete="off" autocapitalize="words" autocorrect="off" spellcheck="false" />
+        <input id="type-input" type="text" inputmode="text" enterkeyhint="send" autocomplete="nickname" autocapitalize="words" autocorrect="off" spellcheck="false" />
         <button type="button" id="type-go" aria-label="Send">
           <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" focusable="false">
             <path fill="currentColor" d="M3.4 20.6 21 12 3.4 3.4 3 10.1 14.2 12 3 13.9z"/>
           </svg>
         </button>
       </div>
+      <button type="button" id="type-tap">TAP TO TYPE</button>
     </div>
   </div>
   <button type="button" id="restart" aria-label="Restart ball">RESTART</button>
@@ -469,9 +498,11 @@
     const typeCard = document.getElementById("type-card");
     const typeInput = document.getElementById("type-input");
     const typeGo = document.getElementById("type-go");
+    const typeTap = document.getElementById("type-tap");
     let typingOpen = false;
     let typeSendAt = 0;
     let typeClosing = false;
+    let typeArmed = false;
     const calibrateBtn = document.getElementById("calibrate");
     const sensInput = document.getElementById("sens");
     const sensVal = document.getElementById("sens-val");
@@ -606,10 +637,21 @@
         resetSwing();
         holding = false;
         pad.classList.remove("held");
-        focusType();
+        // Mobile browsers only open the soft keyboard after a real tap.
+        typeArmed = false;
+        typeView.classList.add("needs-tap");
+        typeInput.blur();
       } else {
+        typeArmed = false;
+        typeView.classList.remove("needs-tap");
         typeInput.blur();
       }
+    }
+
+    function armTypeKeyboard() {
+      typeArmed = true;
+      typeView.classList.remove("needs-tap");
+      focusType();
     }
 
     function focusType() {
@@ -618,14 +660,12 @@
           typeInput.focus({ preventScroll: false });
           const end = typeInput.value.length;
           typeInput.setSelectionRange(end, end);
-          // Some mobiles only open the soft keyboard after a second focus tick.
-          typeInput.click();
         } catch (_) {}
       };
       kick();
       requestAnimationFrame(kick);
-      setTimeout(kick, 50);
-      setTimeout(kick, 180);
+      setTimeout(kick, 40);
+      setTimeout(kick, 160);
     }
 
     function sendType(done, closing) {
@@ -1304,14 +1344,31 @@
     });
     typeGo.addEventListener("click", (ev) => {
       ev.preventDefault();
-      sendType(true);
-    });
-    typeCard.addEventListener("pointerdown", (ev) => {
-      if (ev.target === typeInput || ev.target === typeGo || (typeGo && typeGo.contains(ev.target))) {
+      if (!typeArmed) {
+        armTypeKeyboard();
         return;
       }
-      // User gesture: reliably open the soft keyboard when renaming from the phone.
-      focusType();
+      sendType(true);
+    });
+    if (typeTap) {
+      typeTap.addEventListener("pointerdown", (ev) => {
+        ev.preventDefault();
+        ev.stopPropagation();
+        armTypeKeyboard();
+      });
+      typeTap.addEventListener("click", (ev) => {
+        ev.preventDefault();
+        armTypeKeyboard();
+      });
+    }
+    typeInput.addEventListener("pointerdown", () => {
+      if (!typeArmed) armTypeKeyboard();
+    });
+    typeCard.addEventListener("pointerdown", (ev) => {
+      if (ev.target === typeInput || ev.target === typeGo || (typeGo && typeGo.contains(ev.target)) || ev.target === typeTap) {
+        return;
+      }
+      if (!typeArmed) armTypeKeyboard();
     });
     typeView.addEventListener("pointerdown", (ev) => {
       ev.stopPropagation();
