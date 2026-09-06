@@ -293,12 +293,12 @@
       border-radius: 14px;
       background: var(--teal);
       color: #fff;
-      font-family: inherit;
-      font-size: 22px;
-      font-weight: 800;
-      line-height: 1;
+      display: grid;
+      place-items: center;
+      padding: 0;
       touch-action: manipulation;
     }
+    #type-go svg { display: block; }
     #rank-place {
       font-size: min(28vw, 140px);
       font-weight: 800;
@@ -372,8 +372,12 @@
   <div id="type-view">
     <div id="type-card">
       <div id="type-row">
-        <input id="type-input" type="text" inputmode="text" enterkeyhint="done" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" />
-        <button type="button" id="type-go" aria-label="Done">-></button>
+        <input id="type-input" type="text" inputmode="text" enterkeyhint="send" autocomplete="off" autocapitalize="words" autocorrect="off" spellcheck="false" />
+        <button type="button" id="type-go" aria-label="Send">
+          <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" focusable="false">
+            <path fill="currentColor" d="M3.4 20.6 21 12 3.4 3.4 3 10.1 14.2 12 3 13.9z"/>
+          </svg>
+        </button>
       </div>
     </div>
   </div>
@@ -462,6 +466,7 @@
     const rankView = document.getElementById("rank-view");
     const rankPlace = document.getElementById("rank-place");
     const typeView = document.getElementById("type-view");
+    const typeCard = document.getElementById("type-card");
     const typeInput = document.getElementById("type-input");
     const typeGo = document.getElementById("type-go");
     let typingOpen = false;
@@ -608,11 +613,19 @@
     }
 
     function focusType() {
-      try {
-        typeInput.focus({ preventScroll: true });
-        const end = typeInput.value.length;
-        typeInput.setSelectionRange(end, end);
-      } catch (_) {}
+      const kick = () => {
+        try {
+          typeInput.focus({ preventScroll: false });
+          const end = typeInput.value.length;
+          typeInput.setSelectionRange(end, end);
+          // Some mobiles only open the soft keyboard after a second focus tick.
+          typeInput.click();
+        } catch (_) {}
+      };
+      kick();
+      requestAnimationFrame(kick);
+      setTimeout(kick, 50);
+      setTimeout(kick, 180);
     }
 
     function sendType(done, closing) {
@@ -1292,6 +1305,13 @@
     typeGo.addEventListener("click", (ev) => {
       ev.preventDefault();
       sendType(true);
+    });
+    typeCard.addEventListener("pointerdown", (ev) => {
+      if (ev.target === typeInput || ev.target === typeGo || (typeGo && typeGo.contains(ev.target))) {
+        return;
+      }
+      // User gesture: reliably open the soft keyboard when renaming from the phone.
+      focusType();
     });
     typeView.addEventListener("pointerdown", (ev) => {
       ev.stopPropagation();

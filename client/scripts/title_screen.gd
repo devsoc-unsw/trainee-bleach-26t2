@@ -29,6 +29,7 @@ func _ready() -> void:
 	_cam_base = MapKit.frame_menu_camera(camera)
 	_build_menu()
 	_setup_settings()
+	_setup_name_field()
 	_apply_name(GameSession.player_name, true)
 	get_viewport().size_changed.connect(_apply_responsive)
 	_apply_responsive()
@@ -36,6 +37,39 @@ func _ready() -> void:
 	GameSession.play_music("play_title")
 	if not NetworkClient.phone_ready.is_connected(_on_cloud_phone_ready):
 		NetworkClient.phone_ready.connect(_on_cloud_phone_ready)
+
+
+func _setup_name_field() -> void:
+	player_name_edit.virtual_keyboard_enabled = true
+	player_name_edit.select_all_on_focus = true
+	player_name_edit.text_changed.connect(_on_name_typed)
+	player_name_edit.focus_exited.connect(_commit_name)
+	player_name_edit.text_submitted.connect(func(_v: String) -> void: _commit_name())
+	player_name_edit.focus_entered.connect(_show_name_keyboard)
+	player_name_edit.gui_input.connect(_on_name_gui)
+
+
+func _show_name_keyboard() -> void:
+	if not DisplayServer.has_feature(DisplayServer.FEATURE_VIRTUAL_KEYBOARD):
+		return
+	DisplayServer.virtual_keyboard_show(
+		player_name_edit.text,
+		player_name_edit.get_global_rect(),
+		DisplayServer.KEYBOARD_TYPE_DEFAULT,
+		player_name_edit.max_length,
+	)
+
+
+func _on_name_gui(event: InputEvent) -> void:
+	if event is InputEventMouseButton:
+		var mouse := event as InputEventMouseButton
+		if mouse.pressed and mouse.button_index == MOUSE_BUTTON_LEFT:
+			# Touch/click should always surface the soft keyboard on web builds.
+			call_deferred("_show_name_keyboard")
+	elif event is InputEventScreenTouch:
+		var touch := event as InputEventScreenTouch
+		if touch.pressed:
+			call_deferred("_show_name_keyboard")
 
 
 func _process(delta: float) -> void:
@@ -181,9 +215,7 @@ func _setup_settings() -> void:
 	settings_dimmer.modulate.a = 0.0
 	settings_dimmer.gui_input.connect(_on_dimmer_gui)
 	$UI/SettingsDimmer/Shell/Center/Card/Layout/Back.pressed.connect(_close_settings)
-	player_name_edit.text_changed.connect(_on_name_typed)
-	player_name_edit.focus_exited.connect(_commit_name)
-	player_name_edit.text_submitted.connect(func(_v: String) -> void: _commit_name())
+	# Name field wiring lives in _setup_name_field().
 	var layout: VBoxContainer = $UI/SettingsDimmer/Shell/Center/Card/Layout
 	var old_row := layout.get_node_or_null("VolumeRow") as Control
 	var old_slider := layout.get_node_or_null("Volume") as Control
@@ -283,6 +315,8 @@ func _on_name_typed(value: String) -> void:
 
 func _commit_name() -> void:
 	_apply_name(player_name_edit.text, true)
+	if DisplayServer.has_feature(DisplayServer.FEATURE_VIRTUAL_KEYBOARD):
+		DisplayServer.virtual_keyboard_hide()
 
 
 func _apply_name(value: String, commit: bool) -> void:
