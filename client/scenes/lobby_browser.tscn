@@ -33,10 +33,10 @@ corner_radius_top_left = 32
 corner_radius_top_right = 32
 corner_radius_bottom_right = 32
 corner_radius_bottom_left = 32
-content_margin_left = 28.0
-content_margin_top = 24.0
-content_margin_right = 28.0
-content_margin_bottom = 24.0
+content_margin_left = 32.0
+content_margin_top = 36.0
+content_margin_right = 32.0
+content_margin_bottom = 36.0
 shadow_color = Color(0.42, 0.33, 0.27, 0.22)
 shadow_size = 18
 shadow_offset = Vector2(0, 6)
@@ -157,9 +157,9 @@ anchor_right = 1.0
 anchor_bottom = 1.0
 mouse_filter = 2
 theme_override_constants/margin_left = 56
-theme_override_constants/margin_top = 28
+theme_override_constants/margin_top = 48
 theme_override_constants/margin_right = 56
-theme_override_constants/margin_bottom = 28
+theme_override_constants/margin_bottom = 48
 
 [node name="ListView" type="VBoxContainer" parent="UI/Root/Content"]
 layout_mode = 2
@@ -285,21 +285,31 @@ theme_override_styles/focus = SubResource("StyleBoxFlat_ghost")
 text = "JOIN WITH CODE"
 script = ExtResource("6_fancy")
 
-[node name="RoomView" type="CenterContainer" parent="UI/Root/Content"]
+[node name="RoomView" type="ScrollContainer" parent="UI/Root/Content"]
 visible = false
 layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
+horizontal_scroll_mode = 0
+vertical_scroll_mode = 1
+mouse_filter = 0
+
+[node name="Center" type="CenterContainer" parent="UI/Root/Content/RoomView"]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
 mouse_filter = 2
 
-[node name="Card" type="PanelContainer" parent="UI/Root/Content/RoomView"]
+[node name="Card" type="PanelContainer" parent="UI/Root/Content/RoomView/Center"]
 custom_minimum_size = Vector2(460, 0)
 layout_mode = 2
 theme_override_styles/panel = SubResource("StyleBoxFlat_card")
 
-[node name="Layout" type="VBoxContainer" parent="UI/Root/Content/RoomView/Card"]
+[node name="Layout" type="VBoxContainer" parent="UI/Root/Content/RoomView/Center/Card"]
 layout_mode = 2
 theme_override_constants/separation = 14
 
-[node name="LobbyName" type="Label" parent="UI/Root/Content/RoomView/Card/Layout"]
+[node name="LobbyName" type="Label" parent="UI/Root/Content/RoomView/Center/Card/Layout"]
 layout_mode = 2
 theme_override_fonts/font = ExtResource("4_extra")
 theme_override_font_sizes/font_size = 24
@@ -309,7 +319,7 @@ horizontal_alignment = 1
 clip_text = true
 text_overrun_behavior = 3
 
-[node name="Code" type="Label" parent="UI/Root/Content/RoomView/Card/Layout"]
+[node name="Code" type="Label" parent="UI/Root/Content/RoomView/Center/Card/Layout"]
 layout_mode = 2
 theme_override_fonts/font = ExtResource("4_extra")
 theme_override_font_sizes/font_size = 42
@@ -317,7 +327,7 @@ theme_override_colors/font_color = Color(0.298, 0.722, 0.69, 1)
 text = "----"
 horizontal_alignment = 1
 
-[node name="Meta" type="Label" parent="UI/Root/Content/RoomView/Card/Layout"]
+[node name="Meta" type="Label" parent="UI/Root/Content/RoomView/Center/Card/Layout"]
 layout_mode = 2
 theme_override_fonts/font = ExtResource("5_bold")
 theme_override_font_sizes/font_size = 16
@@ -326,7 +336,7 @@ horizontal_alignment = 1
 clip_text = true
 text_overrun_behavior = 3
 
-[node name="Start" type="Button" parent="UI/Root/Content/RoomView/Card/Layout"]
+[node name="Start" type="Button" parent="UI/Root/Content/RoomView/Center/Card/Layout"]
 unique_name_in_owner = true
 visible = false
 custom_minimum_size = Vector2(0, 48)
@@ -343,7 +353,7 @@ theme_override_styles/focus = SubResource("StyleBoxFlat_teal")
 text = "START GAME"
 script = ExtResource("6_fancy")
 
-[node name="Leave" type="Button" parent="UI/Root/Content/RoomView/Card/Layout"]
+[node name="Leave" type="Button" parent="UI/Root/Content/RoomView/Center/Card/Layout"]
 custom_minimum_size = Vector2(0, 48)
 layout_mode = 2
 focus_mode = 0
@@ -369,24 +379,42 @@ anchor_right = 1.0
 anchor_bottom = 1.0
 color = Color(0.16, 0.12, 0.1, 0.46)
 
-[node name="Card" type="PanelContainer" parent="UI/Root/CreateDimmer"]
+[node name="Shell" type="MarginContainer" parent="UI/Root/CreateDimmer"]
 layout_mode = 1
-anchors_preset = 8
-anchor_left = 0.5
-anchor_top = 0.5
-anchor_right = 0.5
-anchor_bottom = 0.5
-offset_left = -210.0
-offset_top = -214.0
-offset_right = 210.0
-offset_bottom = 214.0
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+theme_override_constants/margin_left = 24
+theme_override_constants/margin_top = 40
+theme_override_constants/margin_right = 24
+theme_override_constants/margin_bottom = 40
+
+[node name="Scroll" type="ScrollContainer" parent="UI/Root/CreateDimmer/Shell"]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
+horizontal_scroll_mode = 0
+vertical_scroll_mode = 1
+
+[node name="Center" type="CenterContainer" parent="UI/Root/CreateDimmer/Shell/Scroll"]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
+mouse_filter = 2
+
+[node name="Card" type="PanelContainer" parent="UI/Root/CreateDimmer/Shell/Scroll/Center"]
+custom_minimum_size = Vector2(420, 0)
+layout_mode = 2
 theme_override_styles/panel = SubResource("StyleBoxFlat_card")
 
-[node name="Layout" type="VBoxContainer" parent="UI/Root/CreateDimmer/Card"]
+[node name="Layout" type="VBoxContainer" parent="UI/Root/CreateDimmer/Shell/Scroll/Center/Card"]
 layout_mode = 2
 theme_override_constants/separation = 12
 
-[node name="Title" type="Label" parent="UI/Root/CreateDimmer/Card/Layout"]
+[node name="Title" type="Label" parent="UI/Root/CreateDimmer/Shell/Scroll/Center/Card/Layout"]
 layout_mode = 2
 theme_override_fonts/font = ExtResource("4_extra")
 theme_override_font_sizes/font_size = 24
@@ -394,29 +422,29 @@ theme_override_colors/font_color = Color(0.298, 0.722, 0.69, 1)
 text = "CREATE LOBBY"
 horizontal_alignment = 1
 
-[node name="NameLabel" type="Label" parent="UI/Root/CreateDimmer/Card/Layout"]
+[node name="NameLabel" type="Label" parent="UI/Root/CreateDimmer/Shell/Scroll/Center/Card/Layout"]
 layout_mode = 2
 theme_override_fonts/font = ExtResource("4_extra")
 theme_override_font_sizes/font_size = 13
 text = "LOBBY NAME"
 
-[node name="NameEdit" type="LineEdit" parent="UI/Root/CreateDimmer/Card/Layout"]
+[node name="NameEdit" type="LineEdit" parent="UI/Root/CreateDimmer/Shell/Scroll/Center/Card/Layout"]
 layout_mode = 2
 theme_override_styles/normal = SubResource("StyleBoxFlat_input")
 max_length = 24
 caret_blink = true
 
-[node name="VisLabel" type="Label" parent="UI/Root/CreateDimmer/Card/Layout"]
+[node name="VisLabel" type="Label" parent="UI/Root/CreateDimmer/Shell/Scroll/Center/Card/Layout"]
 layout_mode = 2
 theme_override_fonts/font = ExtResource("4_extra")
 theme_override_font_sizes/font_size = 13
 text = "VISIBILITY"
 
-[node name="Visibility" type="HBoxContainer" parent="UI/Root/CreateDimmer/Card/Layout"]
+[node name="Visibility" type="HBoxContainer" parent="UI/Root/CreateDimmer/Shell/Scroll/Center/Card/Layout"]
 layout_mode = 2
 theme_override_constants/separation = 10
 
-[node name="Public" type="Button" parent="UI/Root/CreateDimmer/Card/Layout/Visibility"]
+[node name="Public" type="Button" parent="UI/Root/CreateDimmer/Shell/Scroll/Center/Card/Layout/Visibility"]
 custom_minimum_size = Vector2(0, 44)
 layout_mode = 2
 size_flags_horizontal = 3
@@ -427,7 +455,7 @@ theme_override_font_sizes/font_size = 15
 text = "PUBLIC"
 script = ExtResource("6_fancy")
 
-[node name="Private" type="Button" parent="UI/Root/CreateDimmer/Card/Layout/Visibility"]
+[node name="Private" type="Button" parent="UI/Root/CreateDimmer/Shell/Scroll/Center/Card/Layout/Visibility"]
 custom_minimum_size = Vector2(0, 44)
 layout_mode = 2
 size_flags_horizontal = 3
@@ -438,7 +466,7 @@ theme_override_font_sizes/font_size = 15
 text = "PRIVATE"
 script = ExtResource("6_fancy")
 
-[node name="Confirm" type="Button" parent="UI/Root/CreateDimmer/Card/Layout"]
+[node name="Confirm" type="Button" parent="UI/Root/CreateDimmer/Shell/Scroll/Center/Card/Layout"]
 custom_minimum_size = Vector2(0, 48)
 layout_mode = 2
 focus_mode = 0
@@ -453,7 +481,7 @@ theme_override_styles/focus = SubResource("StyleBoxFlat_teal")
 text = "CREATE"
 script = ExtResource("6_fancy")
 
-[node name="Back" type="Button" parent="UI/Root/CreateDimmer/Card/Layout"]
+[node name="Back" type="Button" parent="UI/Root/CreateDimmer/Shell/Scroll/Center/Card/Layout"]
 custom_minimum_size = Vector2(0, 48)
 layout_mode = 2
 focus_mode = 0
@@ -557,12 +585,12 @@ script = ExtResource("6_fancy")
 [connection signal="pressed" from="UI/Root/Content/ListView/Header/Back" to="." method="_on_back_pressed"]
 [connection signal="pressed" from="UI/Root/Content/ListView/Actions/Create" to="." method="_on_create_pressed"]
 [connection signal="pressed" from="UI/Root/Content/ListView/Actions/Join" to="." method="_on_join_code_pressed"]
-[connection signal="pressed" from="UI/Root/Content/RoomView/Card/Layout/Start" to="." method="_on_start_pressed"]
-[connection signal="pressed" from="UI/Root/Content/RoomView/Card/Layout/Leave" to="." method="_on_leave_pressed"]
-[connection signal="pressed" from="UI/Root/CreateDimmer/Card/Layout/Visibility/Public" to="." method="_on_public_pressed"]
-[connection signal="pressed" from="UI/Root/CreateDimmer/Card/Layout/Visibility/Private" to="." method="_on_private_pressed"]
-[connection signal="pressed" from="UI/Root/CreateDimmer/Card/Layout/Confirm" to="." method="_on_confirm_create"]
-[connection signal="pressed" from="UI/Root/CreateDimmer/Card/Layout/Back" to="." method="_on_create_back_pressed"]
+[connection signal="pressed" from="UI/Root/Content/RoomView/Center/Card/Layout/Start" to="." method="_on_start_pressed"]
+[connection signal="pressed" from="UI/Root/Content/RoomView/Center/Card/Layout/Leave" to="." method="_on_leave_pressed"]
+[connection signal="pressed" from="UI/Root/CreateDimmer/Shell/Scroll/Center/Card/Layout/Visibility/Public" to="." method="_on_public_pressed"]
+[connection signal="pressed" from="UI/Root/CreateDimmer/Shell/Scroll/Center/Card/Layout/Visibility/Private" to="." method="_on_private_pressed"]
+[connection signal="pressed" from="UI/Root/CreateDimmer/Shell/Scroll/Center/Card/Layout/Confirm" to="." method="_on_confirm_create"]
+[connection signal="pressed" from="UI/Root/CreateDimmer/Shell/Scroll/Center/Card/Layout/Back" to="." method="_on_create_back_pressed"]
 [connection signal="pressed" from="UI/Root/JoinDimmer/Card/Layout/Confirm" to="." method="_on_confirm_join"]
 [connection signal="pressed" from="UI/Root/JoinDimmer/Card/Layout/Back" to="." method="_on_join_back_pressed"]
 [connection signal="text_submitted" from="UI/Root/JoinDimmer/Card/Layout/CodeEdit" to="." method="_on_confirm_join"]

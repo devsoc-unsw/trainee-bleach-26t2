@@ -180,11 +180,11 @@ func _setup_settings() -> void:
 	settings_dimmer.visible = false
 	settings_dimmer.modulate.a = 0.0
 	settings_dimmer.gui_input.connect(_on_dimmer_gui)
-	$UI/SettingsDimmer/Card/Layout/Back.pressed.connect(_close_settings)
+	$UI/SettingsDimmer/Shell/Scroll/Center/Card/Layout/Back.pressed.connect(_close_settings)
 	player_name_edit.text_changed.connect(_on_name_typed)
 	player_name_edit.focus_exited.connect(_commit_name)
 	player_name_edit.text_submitted.connect(func(_v: String) -> void: _commit_name())
-	var layout: VBoxContainer = $UI/SettingsDimmer/Card/Layout
+	var layout: VBoxContainer = $UI/SettingsDimmer/Shell/Scroll/Center/Card/Layout
 	var old_row := layout.get_node_or_null("VolumeRow") as Control
 	var old_slider := layout.get_node_or_null("Volume") as Control
 	if old_row:
@@ -219,6 +219,25 @@ func _setup_settings() -> void:
 	if not PhoneLink.urls_changed.is_connected(_on_phone_urls):
 		PhoneLink.urls_changed.connect(_on_phone_urls)
 	_refresh_phone_settings()
+	_fit_settings_card()
+	if not get_viewport().size_changed.is_connected(_fit_settings_card):
+		get_viewport().size_changed.connect(_fit_settings_card)
+
+
+func _fit_settings_card() -> void:
+	var shell := $UI/SettingsDimmer/Shell as MarginContainer
+	var card := $UI/SettingsDimmer/Shell/Scroll/Center/Card as PanelContainer
+	if shell == null or card == null:
+		return
+	var view := get_viewport().get_visible_rect().size
+	var wide := view.x >= 900.0
+	var side := 28 if wide else 16
+	var vertical := 48 if wide else 36
+	shell.add_theme_constant_override("margin_left", side)
+	shell.add_theme_constant_override("margin_right", side)
+	shell.add_theme_constant_override("margin_top", vertical)
+	shell.add_theme_constant_override("margin_bottom", vertical)
+	card.custom_minimum_size.x = 460.0 if wide else minf(420.0, view.x - float(side * 2))
 
 
 func _refresh_phone_settings() -> void:
@@ -287,7 +306,7 @@ func _on_settings_qr(bytes: PackedByteArray) -> void:
 
 
 func _set_volume_label(amount: float) -> void:
-	var label: Label = $UI/SettingsDimmer/Card/Layout/VolumeRow/VolumeValue
+	var label: Label = $UI/SettingsDimmer/Shell/Scroll/Center/Card/Layout/VolumeRow/VolumeValue
 	label.text = "%d%%" % int(round(amount * 100.0))
 
 

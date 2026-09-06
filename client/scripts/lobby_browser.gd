@@ -12,16 +12,16 @@ const CREATE_CARD_W := 420.0
 @onready var scroll: ScrollContainer = $UI/Root/Content/ListView/LobbyBox/Scroll
 @onready var rows: VBoxContainer = $UI/Root/Content/ListView/LobbyBox/Scroll/Pad/Rows
 @onready var empty_label: Label = $UI/Root/Content/ListView/LobbyBox/Empty
-@onready var room_code: Label = $UI/Root/Content/RoomView/Card/Layout/Code
-@onready var room_title: Label = $UI/Root/Content/RoomView/Card/Layout/LobbyName
-@onready var room_meta: Label = $UI/Root/Content/RoomView/Card/Layout/Meta
+@onready var room_code: Label = $UI/Root/Content/RoomView/Center/Card/Layout/Code
+@onready var room_title: Label = $UI/Root/Content/RoomView/Center/Card/Layout/LobbyName
+@onready var room_meta: Label = $UI/Root/Content/RoomView/Center/Card/Layout/Meta
 @onready var create_dimmer: ColorRect = $UI/Root/CreateDimmer
 @onready var join_dimmer: ColorRect = $UI/Root/JoinDimmer
-@onready var name_edit: LineEdit = $UI/Root/CreateDimmer/Card/Layout/NameEdit
+@onready var name_edit: LineEdit = $UI/Root/CreateDimmer/Shell/Scroll/Center/Card/Layout/NameEdit
 @onready var join_edit: LineEdit = $UI/Root/JoinDimmer/Card/Layout/CodeEdit
 @onready var join_error: Label = $UI/Root/JoinDimmer/Card/Layout/Error
-@onready var public_btn: Button = $UI/Root/CreateDimmer/Card/Layout/Visibility/Public
-@onready var private_btn: Button = $UI/Root/CreateDimmer/Card/Layout/Visibility/Private
+@onready var public_btn: Button = $UI/Root/CreateDimmer/Shell/Scroll/Center/Card/Layout/Visibility/Public
+@onready var private_btn: Button = $UI/Root/CreateDimmer/Shell/Scroll/Center/Card/Layout/Visibility/Private
 @onready var start_btn: Button = %Start
 
 var _public_visibility := true
@@ -61,8 +61,8 @@ func _ready() -> void:
 	_make_mode_picker()
 	_make_room_mode_controls()
 	_make_profile_controls()
-	_lock_card_width($UI/Root/Content/RoomView/Card, ROOM_CARD_W)
-	_lock_card_width($UI/Root/CreateDimmer/Card, CREATE_CARD_W)
+	_lock_card_width($UI/Root/Content/RoomView/Center/Card, ROOM_CARD_W)
+	_lock_card_width($UI/Root/CreateDimmer/Shell/Scroll/Center/Card, CREATE_CARD_W)
 	create_dimmer.gui_input.connect(func(e: InputEvent) -> void: _dimmer_close(e, create_dimmer))
 	join_dimmer.gui_input.connect(func(e: InputEvent) -> void: _dimmer_close(e, join_dimmer))
 	join_edit.text_changed.connect(_on_join_code_typed)
@@ -70,8 +70,8 @@ func _ready() -> void:
 	for path in [
 		"UI/Root/Content/ListView/Header/Back",
 		"UI/Root/Content/ListView/Actions/Join",
-		"UI/Root/Content/RoomView/Card/Layout/Leave",
-		"UI/Root/CreateDimmer/Card/Layout/Back",
+		"UI/Root/Content/RoomView/Center/Card/Layout/Leave",
+		"UI/Root/CreateDimmer/Shell/Scroll/Center/Card/Layout/Back",
 		"UI/Root/JoinDimmer/Card/Layout/Back",
 	]:
 		var ghost := get_node_or_null(path) as BaseButton
@@ -152,7 +152,7 @@ func _build_backdrop() -> void:
 
 
 func _make_player_list() -> void:
-	var layout: VBoxContainer = $UI/Root/Content/RoomView/Card/Layout
+	var layout: VBoxContainer = $UI/Root/Content/RoomView/Center/Card/Layout
 	var meta: Label = room_meta
 	_player_list = VBoxContainer.new()
 	_player_list.name = "PlayerList"
@@ -176,11 +176,29 @@ func _set_status(text: String) -> void:
 
 
 func _apply_responsive() -> void:
-	var pad := 28 if get_viewport().get_visible_rect().size.x < 800.0 else 56
+	var view := get_viewport().get_visible_rect().size
+	var pad := 28 if view.x < 800.0 else 56
+	var top := 56 if view.y >= 720.0 else 44
+	var bottom := 56 if view.y >= 720.0 else 40
 	content.add_theme_constant_override("margin_left", pad)
 	content.add_theme_constant_override("margin_right", pad)
-	content.add_theme_constant_override("margin_top", 36)
-	content.add_theme_constant_override("margin_bottom", 72)
+	content.add_theme_constant_override("margin_top", top)
+	content.add_theme_constant_override("margin_bottom", bottom)
+	_fit_scroll_center($UI/Root/Content/RoomView, $UI/Root/Content/RoomView/Center)
+	var create_shell := $UI/Root/CreateDimmer/Shell as MarginContainer
+	if create_shell:
+		create_shell.add_theme_constant_override("margin_left", pad)
+		create_shell.add_theme_constant_override("margin_right", pad)
+		create_shell.add_theme_constant_override("margin_top", top)
+		create_shell.add_theme_constant_override("margin_bottom", bottom)
+	_fit_scroll_center($UI/Root/CreateDimmer/Shell/Scroll, $UI/Root/CreateDimmer/Shell/Scroll/Center)
+
+
+func _fit_scroll_center(scroll: Control, center: Control) -> void:
+	if scroll == null or center == null:
+		return
+	# Let short cards sit in the middle; tall cards scroll with top/bottom breathing room.
+	center.custom_minimum_size = scroll.size
 
 
 func _lock_card_width(card: Control, width: float) -> void:
@@ -392,13 +410,9 @@ func _on_join_code_pressed() -> void:
 
 
 func _make_rounds_picker() -> void:
-	var layout: VBoxContainer = $UI/Root/CreateDimmer/Card/Layout
-	var vis: Control = $UI/Root/CreateDimmer/Card/Layout/Visibility
-	var card: PanelContainer = $UI/Root/CreateDimmer/Card
-	card.offset_left = -CREATE_CARD_W * 0.5
-	card.offset_right = CREATE_CARD_W * 0.5
-	card.offset_top = -310.0
-	card.offset_bottom = 310.0
+	var layout: VBoxContainer = $UI/Root/CreateDimmer/Shell/Scroll/Center/Card/Layout
+	var vis: Control = $UI/Root/CreateDimmer/Shell/Scroll/Center/Card/Layout/Visibility
+	var card: PanelContainer = $UI/Root/CreateDimmer/Shell/Scroll/Center/Card
 	card.custom_minimum_size.x = CREATE_CARD_W
 	var caption := Label.new()
 	caption.text = "ROUNDS"
@@ -454,7 +468,7 @@ func _mode_label(mode: String) -> String:
 
 
 func _make_mode_picker() -> void:
-	var layout: VBoxContainer = $UI/Root/CreateDimmer/Card/Layout
+	var layout: VBoxContainer = $UI/Root/CreateDimmer/Shell/Scroll/Center/Card/Layout
 	var caption := Label.new()
 	caption.text = "MODE"
 	UiStyle.apply_font(caption, true, 13, UiStyle.INK)
@@ -476,7 +490,7 @@ func _make_mode_picker() -> void:
 	_ffa_btn.focus_mode = Control.FOCUS_NONE
 	_ffa_btn.pressed.connect(func() -> void: _set_create_mode("free_for_all"))
 	row.add_child(_ffa_btn)
-	var confirm: Control = $UI/Root/CreateDimmer/Card/Layout/Confirm
+	var confirm: Control = $UI/Root/CreateDimmer/Shell/Scroll/Center/Card/Layout/Confirm
 	layout.move_child(caption, confirm.get_index())
 	layout.move_child(row, confirm.get_index())
 	_set_create_mode(_create_mode)
@@ -491,7 +505,7 @@ func _set_create_mode(mode: String) -> void:
 
 
 func _make_profile_controls() -> void:
-	var layout: VBoxContainer = $UI/Root/Content/RoomView/Card/Layout
+	var layout: VBoxContainer = $UI/Root/Content/RoomView/Center/Card/Layout
 	var name_cap := Label.new()
 	name_cap.text = "YOUR NAME"
 	name_cap.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -624,7 +638,7 @@ func _pick_colour(hex: String) -> void:
 
 
 func _make_room_mode_controls() -> void:
-	var layout: VBoxContainer = $UI/Root/Content/RoomView/Card/Layout
+	var layout: VBoxContainer = $UI/Root/Content/RoomView/Center/Card/Layout
 	_room_mode_label = Label.new()
 	_room_mode_label.text = "MODE"
 	_room_mode_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER

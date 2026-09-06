@@ -49,10 +49,10 @@ static func card(radius: int = 28) -> StyleBoxFlat:
 	style.bg_color = CREAM
 	style.set_corner_radius_all(radius)
 	style.corner_detail = 16
-	style.content_margin_left = 22
-	style.content_margin_right = 22
-	style.content_margin_top = 20
-	style.content_margin_bottom = 20
+	style.content_margin_left = 28
+	style.content_margin_right = 28
+	style.content_margin_top = 28
+	style.content_margin_bottom = 28
 	style.shadow_color = Color(0.42, 0.33, 0.27, 0.2)
 	style.shadow_size = 16
 	style.shadow_offset = Vector2(0, 6)

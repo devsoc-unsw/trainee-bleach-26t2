@@ -46,10 +46,10 @@ corner_radius_top_left = 28
 corner_radius_top_right = 28
 corner_radius_bottom_right = 28
 corner_radius_bottom_left = 28
-content_margin_left = 32.0
-content_margin_top = 28.0
-content_margin_right = 32.0
-content_margin_bottom = 28.0
+content_margin_left = 36.0
+content_margin_top = 36.0
+content_margin_right = 36.0
+content_margin_bottom = 36.0
 shadow_color = Color(0.42, 0.33, 0.27, 0.22)
 shadow_size = 18
 shadow_offset = Vector2(0, 6)
@@ -229,25 +229,44 @@ anchor_bottom = 1.0
 theme = ExtResource("2_theme")
 color = Color(0.1, 0.08, 0.06, 0.58)
 
-[node name="Card" type="PanelContainer" parent="UI/SettingsDimmer"]
+[node name="Shell" type="MarginContainer" parent="UI/SettingsDimmer"]
 layout_mode = 1
-anchors_preset = 8
-anchor_left = 0.5
-anchor_top = 0.5
-anchor_right = 0.5
-anchor_bottom = 0.5
-offset_left = -230.0
-offset_top = -390.0
-offset_right = 230.0
-offset_bottom = 390.0
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+theme_override_constants/margin_left = 24
+theme_override_constants/margin_top = 40
+theme_override_constants/margin_right = 24
+theme_override_constants/margin_bottom = 40
+
+[node name="Scroll" type="ScrollContainer" parent="UI/SettingsDimmer/Shell"]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
+horizontal_scroll_mode = 0
+vertical_scroll_mode = 1
+mouse_filter = 0
+
+[node name="Center" type="CenterContainer" parent="UI/SettingsDimmer/Shell/Scroll"]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
+mouse_filter = 2
+
+[node name="Card" type="PanelContainer" parent="UI/SettingsDimmer/Shell/Scroll/Center"]
+custom_minimum_size = Vector2(460, 0)
+layout_mode = 2
 mouse_filter = 0
 theme_override_styles/panel = SubResource("StyleBoxFlat_card")
 
-[node name="Layout" type="VBoxContainer" parent="UI/SettingsDimmer/Card"]
+[node name="Layout" type="VBoxContainer" parent="UI/SettingsDimmer/Shell/Scroll/Center/Card"]
 layout_mode = 2
-theme_override_constants/separation = 8
+theme_override_constants/separation = 10
 
-[node name="Title" type="Label" parent="UI/SettingsDimmer/Card/Layout"]
+[node name="Title" type="Label" parent="UI/SettingsDimmer/Shell/Scroll/Center/Card/Layout"]
 layout_mode = 2
 theme_override_fonts/font = ExtResource("3_extra")
 theme_override_font_sizes/font_size = 26
@@ -255,10 +274,11 @@ theme_override_colors/font_color = Color(0.18, 0.15, 0.13, 1)
 text = "SETTINGS"
 horizontal_alignment = 1
 
-[node name="VolumeRow" type="HBoxContainer" parent="UI/SettingsDimmer/Card/Layout"]
+[node name="VolumeRow" type="HBoxContainer" parent="UI/SettingsDimmer/Shell/Scroll/Center/Card/Layout"]
+visible = false
 layout_mode = 2
 
-[node name="VolumeLabel" type="Label" parent="UI/SettingsDimmer/Card/Layout/VolumeRow"]
+[node name="VolumeLabel" type="Label" parent="UI/SettingsDimmer/Shell/Scroll/Center/Card/Layout/VolumeRow"]
 layout_mode = 2
 size_flags_horizontal = 3
 theme_override_fonts/font = ExtResource("3_extra")
@@ -266,7 +286,7 @@ theme_override_font_sizes/font_size = 12
 theme_override_colors/font_color = Color(0.22, 0.18, 0.15, 1)
 text = "VOLUME"
 
-[node name="VolumeValue" type="Label" parent="UI/SettingsDimmer/Card/Layout/VolumeRow"]
+[node name="VolumeValue" type="Label" parent="UI/SettingsDimmer/Shell/Scroll/Center/Card/Layout/VolumeRow"]
 layout_mode = 2
 theme_override_fonts/font = ExtResource("3_extra")
 theme_override_font_sizes/font_size = 13
@@ -274,7 +294,8 @@ theme_override_colors/font_color = Color(0.22, 0.52, 0.5, 1)
 text = "80%"
 horizontal_alignment = 2
 
-[node name="Volume" type="HSlider" parent="UI/SettingsDimmer/Card/Layout"]
+[node name="Volume" type="HSlider" parent="UI/SettingsDimmer/Shell/Scroll/Center/Card/Layout"]
+visible = false
 custom_minimum_size = Vector2(0, 22)
 layout_mode = 2
 theme_override_styles/slider = SubResource("StyleBoxFlat_slider")
@@ -284,11 +305,11 @@ max_value = 1.0
 step = 0.01
 value = 0.8
 
-[node name="Spacer" type="Control" parent="UI/SettingsDimmer/Card/Layout"]
-custom_minimum_size = Vector2(0, 10)
+[node name="Spacer" type="Control" parent="UI/SettingsDimmer/Shell/Scroll/Center/Card/Layout"]
+custom_minimum_size = Vector2(0, 14)
 layout_mode = 2
 
-[node name="Back" type="Button" parent="UI/SettingsDimmer/Card/Layout"]
+[node name="Back" type="Button" parent="UI/SettingsDimmer/Shell/Scroll/Center/Card/Layout"]
 custom_minimum_size = Vector2(0, 48)
 layout_mode = 2
 focus_mode = 0

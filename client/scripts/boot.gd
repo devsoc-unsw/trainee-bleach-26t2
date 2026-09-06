@@ -1,8 +1,8 @@
 extends Control
 
 const TITLE_SCENE := "res://scenes/title.tscn"
-const MIN_TIME := 2.4
-const MAX_TIME := 6.0
+const MIN_TIME := 1.0
+const MAX_TIME := 8.0
 
 const MESSAGES: Array[String] = [
 	"Warming up the cart",

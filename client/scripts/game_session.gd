@@ -124,6 +124,7 @@ var _spinner: LoadSpinner
 
 func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
+	_apply_web_performance()
 	_load_audio()
 	_ensure_audio_buses()
 	apply_audio_volumes()
@@ -136,6 +137,19 @@ func _ready() -> void:
 	NetworkClient.match_over.connect(_on_match_over)
 	NetworkClient.vote_state_received.connect(_on_vote_state)
 	NetworkClient.error_received.connect(_on_net_error)
+
+
+func _apply_web_performance() -> void:
+	if not OS.has_feature("web"):
+		return
+	# Browser builds pay for every GPU pixel and uncapped frames.
+	Engine.max_fps = 60
+	var vp := get_viewport()
+	vp.msaa_3d = Viewport.MSAA_DISABLED
+	vp.screen_space_aa = Viewport.SCREEN_SPACE_AA_DISABLED
+	vp.scaling_3d_mode = Viewport.SCALING_3D_MODE_BILINEAR
+	vp.scaling_3d_scale = 0.72
+	vp.physics_object_picking = false
 
 
 func apply_mouse_cursor() -> void:
