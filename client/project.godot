@@ -26,6 +26,7 @@ NetworkClient="*res://scripts/network_client.gd"
 PhoneLink="*res://scripts/phone_link.gd"
 Music="*res://scripts/music_player.gd"
 Sfx="*res://scripts/sfx_player.gd"
+ViewportFit="*res://scripts/viewport_fit.gd"
 
 [display]
 

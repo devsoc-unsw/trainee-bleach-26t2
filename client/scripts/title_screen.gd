@@ -34,6 +34,7 @@ func _ready() -> void:
 	_setup_name_field()
 	_apply_name(GameSession.player_name, true)
 	get_viewport().size_changed.connect(_apply_responsive)
+	add_to_group("layout_fit")
 	_apply_responsive()
 	_play_intro()
 	GameSession.play_music("play_title")
@@ -291,16 +292,38 @@ func _play_intro() -> void:
 	tw.parallel().tween_property(menu_panel, "modulate:a", 1.0, 0.4).set_delay(0.12)
 
 
+func apply_layout() -> void:
+	_apply_responsive()
+	_fit_settings_card()
+
+
 func _apply_responsive() -> void:
 	var size := get_viewport().get_visible_rect().size
+	if size.x < 8.0 or size.y < 8.0:
+		return
 	var wide := size.x >= 900.0
 	var pad := 28.0 if wide else 16.0
 	var col_w := 312.0 if wide else minf(size.x - pad * 2.0, 360.0)
-	$UI/Root/Left.offset_left = pad
-	$UI/Root/Left.offset_top = 22 if wide else 14
-	$UI/Root/Left.offset_right = pad + col_w
+	var left := $UI/Root/Left as Control
+	left.offset_left = pad
+	left.offset_top = 22 if wide else 14
+	left.offset_right = pad + col_w
+	left.offset_bottom = size.y - (16.0 if size.y >= 560.0 else 8.0)
 	$UI/Root/Left/Logo/Unsw.add_theme_font_size_override("font_size", 22 if wide else 16)
 	$UI/Root/Left/Logo/Title.add_theme_font_size_override("font_size", 42 if wide else 28)
+	var bar := $UI/Root/PlayerBar as Control
+	if bar:
+		if size.x < 720.0:
+			bar.offset_left = -minf(248.0, size.x - 28.0)
+			bar.offset_top = 8.0
+			bar.offset_right = -12.0
+		else:
+			bar.offset_left = -280.0
+			bar.offset_top = 16.0
+			bar.offset_right = -16.0
+	if _phone_hint:
+		_phone_hint.custom_minimum_size.x = minf(300.0, maxf(160.0, size.x - 48.0))
+
 
 
 func _setup_settings() -> void:

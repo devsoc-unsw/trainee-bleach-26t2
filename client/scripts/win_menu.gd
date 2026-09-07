@@ -12,6 +12,28 @@ signal replay_pressed
 func _ready() -> void:
 	visible = false
 	layer = 20
+	get_viewport().size_changed.connect(_apply_responsive)
+	add_to_group("layout_fit")
+	_apply_responsive()
+
+
+func apply_layout() -> void:
+	_apply_responsive()
+
+
+func _apply_responsive() -> void:
+	var card := $Dimmer/Card as Control
+	if card == null:
+		return
+	var view := get_viewport().get_visible_rect().size
+	if view.x < 8.0 or view.y < 8.0:
+		return
+	var half_x := minf(210.0, maxf(148.0, view.x * 0.5 - 16.0))
+	var half_y := minf(210.0, maxf(170.0, view.y * 0.5 - 16.0))
+	card.offset_left = -half_x
+	card.offset_right = half_x
+	card.offset_top = -half_y
+	card.offset_bottom = half_y
 
 
 func present(hole: int, par: int, strokes: int, time_text: String) -> void:

@@ -123,6 +123,75 @@ func _ready() -> void:
 		score_title.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_setup_view_buttons()
 	set_chat_visible(GameSession.online)
+	get_viewport().size_changed.connect(_apply_responsive)
+	add_to_group("layout_fit")
+	_apply_responsive()
+
+
+func apply_layout() -> void:
+	_apply_responsive()
+
+
+func _apply_responsive() -> void:
+	var view := get_viewport().get_visible_rect().size
+	if view.x < 8.0 or view.y < 8.0:
+		return
+	var compact := view.x < 960.0
+	var short := view.y < 640.0
+	var stats := $Root/TopBar/Stats as Control
+	var half := minf(460.0, maxf(140.0, view.x * 0.42))
+	stats.offset_left = -half
+	stats.offset_right = half
+	stats.add_theme_constant_override("separation", 10 if compact else 22)
+	var left_btns := $Root/TopBar/LeftButtons as Control
+	left_btns.offset_left = 12.0 if compact else 36.0
+	var right_btns := $Root/TopBar/RightButtons as Control
+	right_btns.offset_left = -120.0 if compact else -146.0
+	right_btns.offset_right = -12.0 if compact else -36.0
+	var top := $Root/TopBar as Control
+	var top_h := 64.0 if short else 80.0
+	top.custom_minimum_size.y = top_h
+	top.offset_bottom = top_h
+	var dock := $Root.get_node_or_null("LeftDock") as Control
+	if dock:
+		dock.offset_left = 12.0 if compact else 24.0
+		dock.offset_right = minf(344.0, maxf(220.0, view.x * 0.38))
+		dock.offset_top = -minf(520.0, maxf(220.0, view.y * 0.72))
+		dock.offset_bottom = -16.0 if short else -24.0
+	if scorecard:
+		scorecard.custom_minimum_size.x = minf(300.0, maxf(188.0, view.x * 0.32))
+	var abilities := $Root.get_node_or_null("Abilities") as Control
+	if abilities:
+		abilities.offset_left = -122.0 if compact else -146.0
+		abilities.offset_right = -12.0 if compact else -24.0
+		abilities.offset_bottom = -16.0 if short else -24.0
+		abilities.offset_top = abilities.offset_bottom - 58.0
+	if _spectate_bar:
+		var spec_half := minf(210.0, maxf(140.0, view.x * 0.42))
+		_spectate_bar.offset_left = -spec_half
+		_spectate_bar.offset_right = spec_half
+		_spectate_bar.offset_bottom = -64.0 if short else -80.0
+		_spectate_bar.offset_top = _spectate_bar.offset_bottom - (88.0 if short else 96.0)
+	if _results_rows:
+		_results_rows.custom_minimum_size.x = minf(780.0, maxf(240.0, view.x - 40.0))
+	if _results_title:
+		_results_title.add_theme_font_size_override("font_size", 36 if compact else 56)
+		_results_title.offset_right = minf(420.0, view.x - 24.0)
+	var pause_card := _pause_dimmer.get_node_or_null("PauseCard") if _pause_dimmer else null
+	if pause_card == null and _pause_dimmer:
+		pause_card = _pause_dimmer.find_child("PauseCard", true, false)
+	if pause_card is Control:
+		(pause_card as Control).custom_minimum_size.x = minf(340.0, maxf(240.0, view.x - 32.0))
+	var phone_card := _phone_dimmer.get_node_or_null("PhoneCard") if _phone_dimmer else null
+	if phone_card == null and _phone_dimmer:
+		phone_card = _phone_dimmer.find_child("PhoneCard", true, false)
+	if phone_card is Control:
+		(phone_card as Control).custom_minimum_size.x = minf(360.0, maxf(240.0, view.x - 32.0))
+	if _phone_qr:
+		var qr := 160.0 if short else 220.0
+		_phone_qr.custom_minimum_size = Vector2(qr, qr)
+	if _phone_status:
+		_phone_status.custom_minimum_size.x = minf(280.0, maxf(160.0, view.x - 48.0))
 
 
 func _process(delta: float) -> void:
@@ -218,8 +287,7 @@ func _ensure_power_hud() -> void:
 	if leftover:
 		leftover.visible = false
 		leftover.queue_free()
-	var bar: Control = $Root/Abilities
-	bar.offset_left = -146.0
+	_apply_responsive()
 
 
 func _bind_power_slot(host: Control, index: int) -> PowerSlot:
@@ -642,6 +710,7 @@ func _build_pause_menu() -> void:
 	_pause_dimmer.add_child(center)
 
 	var card := PanelContainer.new()
+	card.name = "PauseCard"
 	card.add_theme_stylebox_override("panel", UiStyle.card(24))
 	card.custom_minimum_size = Vector2(340, 0)
 	card.gui_input.connect(func(event: InputEvent) -> void:
@@ -813,6 +882,7 @@ func _build_phone_panel() -> void:
 	center.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_phone_dimmer.add_child(center)
 	var card := PanelContainer.new()
+	card.name = "PhoneCard"
 	card.add_theme_stylebox_override("panel", UiStyle.card(24))
 	card.custom_minimum_size = Vector2(360, 0)
 	center.add_child(card)

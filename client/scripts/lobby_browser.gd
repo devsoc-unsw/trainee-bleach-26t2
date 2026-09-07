@@ -51,6 +51,7 @@ func _ready() -> void:
 	_build_backdrop()
 	_cam_base = MapKit.frame_menu_camera(camera)
 	get_viewport().size_changed.connect(_apply_responsive)
+	add_to_group("layout_fit")
 	list_view.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	room_view.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	room_view.size_flags_vertical = Control.SIZE_EXPAND_FILL
@@ -61,8 +62,7 @@ func _ready() -> void:
 	_make_mode_picker()
 	_make_room_mode_controls()
 	_make_profile_controls()
-	_lock_card_width($UI/Root/Content/RoomView/Center/Card, ROOM_CARD_W)
-	_lock_card_width($UI/Root/CreateDimmer/Shell/Scroll/Center/Card, CREATE_CARD_W)
+	_apply_responsive()
 	create_dimmer.gui_input.connect(func(e: InputEvent) -> void: _dimmer_close(e, create_dimmer))
 	join_dimmer.gui_input.connect(func(e: InputEvent) -> void: _dimmer_close(e, join_dimmer))
 	join_edit.text_changed.connect(_on_join_code_typed)
@@ -175,8 +175,14 @@ func _set_status(text: String) -> void:
 		_status.text = text
 
 
+func apply_layout() -> void:
+	_apply_responsive()
+
+
 func _apply_responsive() -> void:
 	var view := get_viewport().get_visible_rect().size
+	if view.x < 8.0 or view.y < 8.0:
+		return
 	var pad := 28 if view.x < 800.0 else 56
 	var top := 56 if view.y >= 720.0 else 44
 	var bottom := 56 if view.y >= 720.0 else 40
@@ -192,6 +198,13 @@ func _apply_responsive() -> void:
 		create_shell.add_theme_constant_override("margin_top", top)
 		create_shell.add_theme_constant_override("margin_bottom", bottom)
 	_fit_scroll_center($UI/Root/CreateDimmer/Shell/Scroll, $UI/Root/CreateDimmer/Shell/Scroll/Center)
+	var usable := maxf(260.0, view.x - float(pad * 2))
+	_lock_card_width($UI/Root/Content/RoomView/Center/Card, minf(ROOM_CARD_W, usable))
+	_lock_card_width($UI/Root/CreateDimmer/Shell/Scroll/Center/Card, minf(CREATE_CARD_W, usable))
+	var join_card := $UI/Root/JoinDimmer/Card as Control
+	if join_card:
+		_lock_card_width(join_card, minf(420.0, usable))
+
 
 
 func _fit_scroll_center(scroll: Control, center: Control) -> void:

@@ -30,6 +30,9 @@ func _ready() -> void:
 	_tick_countdown()
 	GameSession.play_music("play_menus")
 	GameSession.prewarm_maps()
+	get_viewport().size_changed.connect(_apply_responsive)
+	add_to_group("layout_fit")
+	_apply_responsive()
 
 
 func _process(delta: float) -> void:
@@ -90,6 +93,29 @@ func _build_vote_chrome() -> void:
 
 func _voting() -> bool:
 	return GameSession.online and not GameSession.active_lobby.is_empty()
+
+
+func apply_layout() -> void:
+	_apply_responsive()
+
+
+func _apply_responsive() -> void:
+	var view := get_viewport().get_visible_rect().size
+	if view.x < 8.0 or view.y < 8.0:
+		return
+	var cols := COLS
+	if view.x < 720.0:
+		cols = 1
+	elif view.x < 1100.0:
+		cols = 2
+	grid.columns = cols
+	var margin := $UI/Root/Margin as MarginContainer
+	var side := 24 if view.x < 800.0 else 56
+	var vert := 16 if view.y < 640.0 else 28
+	margin.add_theme_constant_override("margin_left", side)
+	margin.add_theme_constant_override("margin_right", side)
+	margin.add_theme_constant_override("margin_top", vert)
+	margin.add_theme_constant_override("margin_bottom", vert)
 
 
 func _tick_countdown() -> void:
