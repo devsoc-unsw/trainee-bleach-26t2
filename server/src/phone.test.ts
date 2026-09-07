@@ -1,0 +1,197 @@
+import assert from 'node:assert/strict';
+import { afterEach, describe, it } from 'node:test';
+import { WebSocket } from 'ws';
+import * as phone from './phone.js';
+
+function fakeSocket(): { ws: WebSocket; sent: Record<string, unknown>[] } {
+  const sent: Record<string, unknown>[] = [];
+  const ws = {
+    readyState: WebSocket.OPEN,
+    OPEN: WebSocket.OPEN,
+    send(data: string) {
+      sent.push(JSON.parse(data) as Record<string, unknown>);
+    },
+  };
+  return { ws: ws as unknown as WebSocket, sent };
+}
+
+afterEach(() => {
+  phone.resetForTests();
+  delete process.env['PUTT_PHONE_HOST'];
+});
+
+describe('phone remote', () => {
+  it('pairs a phone and forwards a swing to the PC', async () => {
+    const pc = fakeSocket();
+    const handset = fakeSocket();
+    const opened = await phone.openPair(pc.ws, 8080);
+    assert.equal(opened.code.length, 4);
+    assert.ok(opened.urls.some((url) => url.includes(`/remote?c=${opened.code}`)));
+    assert.match(opened.qr, /^data:image\/png;base64,/);
+
+    const linked = phone.linkPhone(handset.ws, opened.code);
+    assert.notEqual(typeof linked, 'string');
+    assert.equal(handset.sent.at(-1)?.['t'], 'phone_ok');
+    assert.equal(pc.sent.at(-1)?.['t'], 'phone_linked');
+
+    const swung = phone.swingFrom(handset.ws, 0.7);
+    assert.notEqual(typeof swung, 'string');
+    const hit = pc.sent.at(-1);
+    assert.equal(hit?.['t'], 'phone_hit');
+    assert.equal(hit?.['power'], 0.7);
+  });
+
+  it('rejects a bad code and a weak swing', async () => {
+    const pc = fakeSocket();
+    const handset = fakeSocket();
+    await phone.openPair(pc.ws, 8080);
+    assert.equal(typeof phone.linkPhone(handset.ws, 'NOPE'), 'string');
+    assert.equal(typeof phone.swingFrom(handset.ws, 0.8), 'string');
+  });
+
+  it('prefers PUTT_PHONE_HOST for pair links', async () => {
+    process.env['PUTT_PHONE_HOST'] = '10.0.0.9';
+    const pc = fakeSocket();
+    const opened = await phone.openPair(pc.ws, 8080);
+    assert.equal(opened.urls[0], `https://10.0.0.9:8080/remote?c=${opened.code}`);
+    delete process.env['PUTT_PHONE_HOST'];
+  });
+
+  it('uses PUTT_PUBLIC_URL without a private LAN port', async () => {
+    process.env['PUTT_PUBLIC_URL'] = 'https://putt.example.com/';
+    const pc = fakeSocket();
+    const opened = await phone.openPair(pc.ws, 8080);
+    assert.equal(opened.urls[0], `https://putt.example.com/remote?c=${opened.code}`);
+    assert.equal(opened.urls.length, 1);
+    delete process.env['PUTT_PUBLIC_URL'];
+  });
+
+  it('drops the listen port for production phone hosts', async () => {
+    process.env['NODE_ENV'] = 'production';
+    process.env['PUTT_PHONE_HOST'] = 'putt.example.com';
+    const pc = fakeSocket();
+    const opened = await phone.openPair(pc.ws, 8080);
+    assert.equal(opened.urls[0], `https://putt.example.com/remote?c=${opened.code}`);
+    delete process.env['PUTT_PHONE_HOST'];
+    delete process.env['NODE_ENV'];
+  });
+
+  it('keeps each phone on its own player ball', async () => {
+    const host = fakeSocket();
+    const guest = fakeSocket();
+    const hostPhone = fakeSocket();
+    const guestPhone = fakeSocket();
+    const hostPair = await phone.openPair(host.ws, 8080);
+    const guestPair = await phone.openPair(guest.ws, 8080);
+    assert.notEqual(hostPair.code, guestPair.code);
+    phone.linkPhone(hostPhone.ws, hostPair.code);
+    phone.linkPhone(guestPhone.ws, guestPair.code);
+    phone.swingFrom(hostPhone.ws, 0.8, { sx: -0.4, sy: 0.9 });
+    phone.poseFrom(guestPhone.ws, { sx: 0.5, sy: 0.2, h: 1, p: 0.4, lx: -0.6, ly: 0.1 });
+    const hostHit = host.sent.filter((m) => m['t'] === 'phone_hit');
+    const guestHit = guest.sent.filter((m) => m['t'] === 'phone_hit');
+    const guestPose = guest.sent.filter((m) => m['t'] === 'phone_pose');
+    const hostPose = host.sent.filter((m) => m['t'] === 'phone_pose');
+    assert.equal(hostHit.length, 1);
+    assert.equal(hostHit[0]?.['sx'], -0.4);
+    assert.equal(guestHit.length, 0);
+    assert.equal(guestPose.length, 1);
+    assert.equal(guestPose[0]?.['lx'], -0.6);
+    assert.equal(hostPose.length, 0);
+  });
+
+  it('forwards a phone power tap to that player', async () => {
+    const pc = fakeSocket();
+    const handset = fakeSocket();
+    const opened = await phone.openPair(pc.ws, 8080);
+    phone.linkPhone(handset.ws, opened.code);
+    const used = phone.powerFrom(handset.ws, 'shield');
+    assert.notEqual(typeof used, 'string');
+    const hit = pc.sent.at(-1);
+    assert.equal(hit?.['t'], 'phone_power');
+    assert.equal(hit?.['kind'], 'shield');
+    const gust = phone.powerFrom(handset.ws, 'gust');
+    assert.notEqual(typeof gust, 'string');
+    assert.equal(pc.sent.at(-1)?.['kind'], 'gust');
+    assert.equal(typeof phone.powerFrom(handset.ws, 'nope'), 'string');
+  });
+
+  it('forwards a phone restart tap to that player', async () => {
+    const pc = fakeSocket();
+    const handset = fakeSocket();
+    const opened = await phone.openPair(pc.ws, 8080);
+    phone.linkPhone(handset.ws, opened.code);
+    const reset = phone.restartFrom(handset.ws);
+    assert.notEqual(typeof reset, 'string');
+    const hit = pc.sent.at(-1);
+    assert.equal(hit?.['t'], 'phone_restart');
+    assert.equal(typeof phone.restartFrom(fakeSocket().ws), 'string');
+  });
+
+  it('forwards typed text from the phone to the PC', async () => {
+    const pc = fakeSocket();
+    const handset = fakeSocket();
+    const opened = await phone.openPair(pc.ws, 8080);
+    phone.linkPhone(handset.ws, opened.code);
+    const sent = phone.typeFrom(handset.ws, { text: 'Birdie', done: true });
+    assert.notEqual(typeof sent, 'string');
+    const snap = pc.sent.at(-1);
+    assert.equal(snap?.['t'], 'phone_type');
+    assert.equal(snap?.['text'], 'Birdie');
+    assert.equal(snap?.['done'], true);
+  });
+
+  it('opens the phone keyboard from the PC', async () => {
+    const pc = fakeSocket();
+    const handset = fakeSocket();
+    const opened = await phone.openPair(pc.ws, 8080);
+    phone.linkPhone(handset.ws, opened.code);
+    const sent = phone.forwardType(pc.ws, {
+      typeOn: true,
+      typeText: 'Putt',
+      typeHint: 'Your name',
+      typeMax: 16,
+    });
+    assert.notEqual(typeof sent, 'string');
+    const snap = handset.sent.at(-1);
+    assert.equal(snap?.['t'], 'phone_type');
+    assert.equal(snap?.['typeOn'], true);
+    assert.equal(snap?.['typeText'], 'Putt');
+    assert.equal(snap?.['typeHint'], 'Your name');
+    assert.equal(snap?.['typeMax'], 16);
+  });
+
+  it('forwards stored powers from the PC to the paired phone', async () => {
+    const pc = fakeSocket();
+    const handset = fakeSocket();
+    const opened = await phone.openPair(pc.ws, 8080);
+    phone.linkPhone(handset.ws, opened.code);
+    const sent = phone.forwardPowers(pc.ws, {
+      leftKind: 'shrink',
+      leftLeft: 0,
+      rightKind: 'shield',
+      rightLeft: 4.2,
+      rank: 2,
+      rankText: '2nd',
+      rankCaption: 'STANDINGS',
+    });
+    assert.notEqual(typeof sent, 'string');
+    const snap = handset.sent.at(-1);
+    assert.equal(snap?.['t'], 'phone_powers');
+    assert.equal(snap?.['leftKind'], 'shrink');
+    assert.equal(snap?.['rightLeft'], 4.2);
+    assert.equal(snap?.['rank'], 2);
+    assert.equal(snap?.['rankText'], '2nd');
+    assert.equal(snap?.['rankCaption'], 'STANDINGS');
+  });
+
+  it('reads Windows IPv4 addresses from ipconfig text', () => {
+    const text = [
+      'Wireless LAN adapter Wi-Fi:',
+      '   IPv4 Address. . . . . . . . . . . : 192.168.1.42',
+      '   Subnet Mask . . . . . . . . . . . : 255.255.255.0',
+      '   Default Gateway . . . . . . . . . : 192.168.1.1',
+    ].join('\n');
+    assert.deepEqual(phone.parseIpconfig(text), ['192.168.1.42']);
+  });
+});

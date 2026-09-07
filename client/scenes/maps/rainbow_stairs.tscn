@@ -1,0 +1,7 @@
+[gd_scene format=3 uid="uid://cmaprainbow"]
+
+[ext_resource type="PackedScene" uid="uid://cshwyt7ip23j7" path="res://assets/maps/rainbow_stairs.glb" id="1_glb"]
+[ext_resource type="Script" uid="uid://bliinu2csqyf7" path="res://scripts/glb_course.gd" id="2_script"]
+
+[node name="RainbowStairs" unique_id=1352660862 instance=ExtResource("1_glb")]
+script = ExtResource("2_script")

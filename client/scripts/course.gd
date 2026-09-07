@@ -1,233 +1,1844 @@
 extends Node3D
 
-@export var ball: RigidBody3D
-@export var cup: Area3D
+const BALL_SCENE := preload("res://scenes/Ball.tscn")
+const GHOST_SCRIPT := preload("res://scripts/ghost_ball.gd")
+const SYNC_HZ := 15.0
+const SPECTATE_DELAY := 1.1
+const BALL_RADIUS := 0.15
+const TEE_SPACING := 0.55
+const BALL_HIT_LAYER := 4
+const KICKOFF_BEAT := 0.7
+const KICKOFF_GO := 0.55
+const SHIELD_MS := 5000
+const SHRINK_MS := 10000
+const PICKUP_RESPAWN_MS := 18000
+const GUST_RADIUS := 5.0
+const GUST_SPEED := 14.0
+const POWER_KINDS: Array[String] = ["shield", "shrink", "gust"]
 
-@onready var camera_rig: Node3D = $CameraRig
-@onready var hole_summary_panel: Control = $UILayer/HoleSummaryPanel
-@onready var summary_title_label: Label = $UILayer/HoleSummaryPanel/Panel/TitleLabel
-@onready var summary_results_container: VBoxContainer = $UILayer/HoleSummaryPanel/Panel/ResultsContainer
-@onready var spectate_panel: Control = $UILayer/SpectatePanel
-@onready var spectate_label: Label = $UILayer/SpectatePanel/SpectateLabel
+@onready var hud = $HUD
+@onready var aim_controller: Node3D = $AimController
+@onready var camera_rig: CameraRig = $CameraRig
+@onready var hole: Node3D = $Hole
+@onready var ball: PuttBall = $Ball
+@onready var out_of_bounds: Area3D = $OutOfBounds
 
-var current_hole_index: int = 0
-var current_par: int = 0
-var current_strokes: int = 0
-
-const BALL_STATE_SEND_INTERVAL: float = 1.0 / 15.0
-var _send_timer: float = 0.0
-var _was_moving: bool = false
-
+var _map: Node3D
 var _ghosts: Dictionary = {}
-var _spectating: bool = false
-var _spectate_id: String = ""
+var _sync_acc := 0.0
+var _spectating := false
+var _spectate_follow := true
+var _spectate_index := 0
+var _spectate_id := ""
+var _holed_ids: Dictionary = {}
+var _ghost_club: GhostClub
+var _stick_aim := Vector3.ZERO
+var _phone_look := Vector2.ZERO
+var _phone_zoom := 0.0
+var _phone_preview := false
+var _phone_swing_fired := false
+var _phone_hit_ms := 0
+var _tee_origin := Vector3.ZERO
+var _fairway := Vector3.FORWARD
+var _kickoff := false
+var _oob_wait := false
+var _want_phone_panel := false
+var _bump_at: Dictionary = {}
+var _prev_ball_vel := Vector3.ZERO
+var _pickups: Dictionary = {}
+var _pads: Array[SpeedPad] = []
+var _shield_until := 0
+var _shrink_until := 0
+var _shield_ids: Dictionary = {}
+var _shrink_ids: Dictionary = {}
+var _pending_pickup := ""
+var _slot_kind: Array[String] = ["", ""]
+var _slot_until: Array[int] = [0, 0]
+var _phone_powers_key := ""
+var _phone_rank := 0
+var _phone_rank_text := ""
+var _phone_rank_caption := ""
+var _hole_results: Array = []
+var _last_hole := false
+var _results_page := 0
+var _board_ready := false
+var _leaving_results := false
+var _scores_ends_at := 0.0
+
 
 func _ready() -> void:
-	NetworkClient.hole_started.connect(_on_hole_started)
-	NetworkClient.stroke_updated.connect(_on_stroke_updated)
-	NetworkClient.hole_ended.connect(_on_hole_ended)
-	NetworkClient.snapshot_received.connect(_on_snapshot_received)
-	NetworkClient.player_left.connect(_on_player_left)
-	cup.ball_sunk.connect(_on_ball_sunk)
-	hole_summary_panel.visible = false
-	spectate_panel.visible = false
-	_tint_local_ball()
+	GameSession.play_music("play_game")
+	_load_map()
+
+	hud.set_strokes(0)
+	hud.set_ball_state(BallStatusIndicator.State.READY)
+	if hud.has_method("set_ball_preview"):
+		hud.set_ball_preview(ball)
+
+	if aim_controller.has_signal("shot_taken"):
+		aim_controller.shot_taken.connect(_on_shot_taken)
+	if aim_controller.has_signal("aiming_changed"):
+		aim_controller.aiming_changed.connect(_on_aiming_changed)
+	if aim_controller.has_signal("aim_updated"):
+		aim_controller.aim_updated.connect(_on_aim_updated)
+
+	if ball.has_signal("movement_started"):
+		ball.movement_started.connect(_on_ball_movement_started)
+	if ball.has_signal("movement_stopped"):
+		ball.movement_stopped.connect(_on_ball_movement_stopped)
+
+	hud.camera_pressed.connect(_on_camera_pressed)
+	hud.look_pressed.connect(_on_look_pressed)
+	hole.ball_sunk.connect(_on_ball_sunk)
+	if hole.has_signal("sunk_finished"):
+		hole.sunk_finished.connect(_on_sunk_finished)
+	out_of_bounds.oob_triggered.connect(_on_oob)
+	hud.quit_pressed.connect(_on_quit_pressed)
+	hud.courses_pressed.connect(_on_courses_pressed)
+	hud.phone_link_pressed.connect(_on_phone_link_pressed)
+	if hud.has_signal("aim_mode_changed"):
+		hud.aim_mode_changed.connect(_on_aim_mode_changed)
+	hud.chat_submitted.connect(_on_chat_submitted)
+	hud.spectate_follow_pressed.connect(_on_spectate_follow)
+	hud.spectate_free_pressed.connect(_on_spectate_free)
+	hud.spectate_prev_pressed.connect(func() -> void: _cycle_spectate(-1))
+	hud.spectate_next_pressed.connect(func() -> void: _cycle_spectate(1))
+	if hud.has_signal("power_used"):
+		hud.power_used.connect(_on_power_used)
+	if hud.has_signal("results_skip_pressed"):
+		hud.results_skip_pressed.connect(_on_results_skip)
+	if hud.has_signal("results_hold_finished"):
+		hud.results_hold_finished.connect(_on_results_hold_finished)
+	if hud.has_signal("timer_expired"):
+		hud.timer_expired.connect(_on_timer_expired)
+	if GameSession.online:
+		hud.stop_timer()
+		hud.reset_timer()
+		if GameSession.is_free_for_all():
+			hud.set_countdown_end(GameSession.hole_ends_at_ms)
+	ball.freeze = true
+	ball.apply_color(GameSession.my_color)
+	_setup_scoreboard()
+	_setup_multiplayer()
+	_setup_phone()
+	_refresh_power_hud()
+
+
+func _load_map() -> void:
+	var spec: Dictionary = GameSession.get_map()
+	if hud:
+		hud.set_hole(int(spec.get("hole", 1)))
+		hud.set_par(int(spec.get("par", 3)))
+	_map = GameSession.take_map_instance(str(spec.get("id", GameSession.map_id)))
+	if _map == null:
+		var packed: PackedScene = load(spec.scene) as PackedScene
+		if packed == null:
+			push_error("Could not load map scene: %s" % spec.scene)
+			return
+		_map = packed.instantiate() as Node3D
+	if _map == null:
+		push_error("Map scene did not instantiate: %s" % spec.scene)
+		return
+	_map.name = "Map"
+	add_child(_map)
+	move_child(_map, 0)
+
+	var tee := _find_marker("Tee")
+	var hole_point := _find_marker("HolePoint")
+	var tee_pos: Vector3 = Vector3(0.0, 0.2, 0.0)
+	var hole_pos: Vector3 = Vector3(0.0, 0.2, -20.0)
+	if tee != null:
+		tee_pos = tee.global_position
+	if hole_point != null:
+		hole_pos = hole_point.global_position
+
+	hole.global_position = hole_pos
+	_tee_origin = tee_pos
+	_fairway = _tee_facing(tee_pos, hole_pos)
+	_spawn_ball(_tee_world_pos(_local_player_id()))
+
+	hud.set_hole(int(spec.hole))
+	hud.set_par(int(spec.par))
+	camera_rig.overview_zoom = float(spec.get("overview_zoom", 12.0))
+	camera_rig.max_zoom = maxf(camera_rig.max_zoom, camera_rig.overview_zoom)
+	call_deferred("_place_field_items")
+
+
+func _spawn_ball(tee: Vector3) -> void:
+	ball.freeze = true
+	ball.sleeping = true
+	ball.linear_velocity = Vector3.ZERO
+	ball.angular_velocity = Vector3.ZERO
+	ball.global_position = tee + Vector3(0.0, 0.5, 0.0)
+	ball.last_safe_position = ball.global_position
+	call_deferred("_finish_spawn", tee)
+
+
+func _finish_spawn(tee: Vector3) -> void:
+	await get_tree().physics_frame
+	var pos := _ground_snap(tee)
+	ball.freeze = true
+	ball.global_position = pos
+	ball.last_safe_position = pos
+	ball.linear_velocity = Vector3.ZERO
+	ball.angular_velocity = Vector3.ZERO
+	PhysicsServer3D.body_set_state(ball.get_rid(), PhysicsServer3D.BODY_STATE_TRANSFORM, ball.global_transform)
+	ball.sleeping = true
+	if GameSession.online:
+		_apply_ball_collisions()
+		_place_field_balls()
+		_run_kickoff()
+		return
+	ball.sleeping = false
+	ball.freeze = false
+
+
+func _ground_snap(tee: Vector3) -> Vector3:
+	var space := get_world_3d().direct_space_state
+	var query := PhysicsRayQueryParameters3D.create(
+		tee + Vector3(0.0, 6.0, 0.0),
+		tee + Vector3(0.0, -4.0, 0.0)
+	)
+	var skip: Array[RID] = [ball.get_rid()]
+	for ghost in _ghosts.values():
+		if ghost is CollisionObject3D and is_instance_valid(ghost):
+			skip.append((ghost as CollisionObject3D).get_rid())
+	query.exclude = skip
+	var hit := space.intersect_ray(query)
+	if hit.is_empty():
+		return tee + Vector3(0.0, _ball_radius() + 0.04, 0.0)
+	return hit.position + Vector3(0.0, _ball_radius() + 0.02, 0.0)
+
+
+func _local_player_id() -> String:
+	if GameSession.online and not NetworkClient.player_id.is_empty():
+		return NetworkClient.player_id
+	return "local"
+
+
+func _tee_facing(tee: Vector3, hole_pos: Vector3) -> Vector3:
+	var toward := hole_pos - tee
+	toward.y = 0.0
+	if toward.length_squared() < 0.0001:
+		return Vector3.FORWARD
+	return toward.normalized()
+
+
+func _tee_right() -> Vector3:
+	var right := Vector3.UP.cross(_fairway)
+	if right.length_squared() < 0.0001:
+		right = Vector3.RIGHT
+	return right.normalized()
+
+
+func _tee_world_pos(player_id: String) -> Vector3:
+	if not GameSession.online:
+		return _tee_origin
+	var ids := GameSession.player_ids()
+	var count := maxi(ids.size(), 1)
+	if count <= 1:
+		return _tee_origin
+	var index := ids.find(player_id)
+	if index < 0:
+		index = GameSession.player_slot(player_id) - 1
+	var shift := (float(index) - float(count - 1) * 0.5) * TEE_SPACING
+	return _tee_origin + _tee_right() * shift
+
+
+func _place_field_balls() -> void:
+	if not GameSession.online:
+		return
+	for id in GameSession.player_ids():
+		if id == NetworkClient.player_id:
+			continue
+		var pos := _ground_snap(_tee_world_pos(id))
+		var ghost := _ensure_ghost(id, _color_for(id), pos, _player_name(id))
+		if ghost.has_method("place_at"):
+			ghost.call("place_at", pos)
+		else:
+			ghost.set("target", pos)
+			ghost.global_position = pos
+		ghost.visible = true
+
+
+func _apply_ball_collisions() -> void:
+	var hit := GameSession.online and GameSession.is_free_for_all()
+	var shielded := _has_shield()
+	if hit and not shielded:
+		ball.collision_layer = 1 | BALL_HIT_LAYER
+		ball.collision_mask = 1 | BALL_HIT_LAYER
+	else:
+		ball.collision_layer = 1
+		ball.collision_mask = 1
+	_watch_ball_hits(hit)
+	for ghost in _ghosts.values():
+		if ghost != null and is_instance_valid(ghost) and ghost.has_method("set_solid"):
+			var id := str(ghost.get("player_id"))
+			var solid := hit and not bool(_holed_ids.get(id, false)) and not bool(_shield_ids.get(id, false))
+			ghost.call("set_solid", solid)
+
+
+func _watch_ball_hits(on: bool) -> void:
+	ball.max_contacts_reported = 8 if on else 0
+	ball.contact_monitor = on
+	if on and not ball.body_entered.is_connected(_on_ball_hit_body):
+		ball.body_entered.connect(_on_ball_hit_body)
+	elif not on and ball.body_entered.is_connected(_on_ball_hit_body):
+		ball.body_entered.disconnect(_on_ball_hit_body)
+
+
+func _physics_process(_delta: float) -> void:
+	if ball != null and is_instance_valid(ball):
+		if not _kickoff and GameSession.online and GameSession.is_free_for_all() and not ball.is_holed:
+			_try_player_hits()
+		_prev_ball_vel = ball.linear_velocity
+
+
+func _on_ball_hit_body(other: Node) -> void:
+	if other == null or not ("player_id" in other):
+		return
+	_bump_player(str(other.get("player_id")), other)
+
+
+func _try_player_hits() -> void:
+	for id in _ghosts.keys():
+		var ghost: Node3D = _ghosts[id] as Node3D
+		if ghost == null or not is_instance_valid(ghost):
+			continue
+		var other_r := BALL_RADIUS * (PuttBall.SHRINK_SCALE if ghost.has_method("has_shrink") and ghost.call("has_shrink") else 1.0)
+		if ghost.global_position.distance_to(ball.global_position) > _ball_radius() + other_r + 0.1:
+			continue
+		_bump_player(str(id), ghost)
+
+
+func _bump_player(id: String, other: Node) -> void:
+	if _kickoff or not GameSession.online or not GameSession.is_free_for_all():
+		return
+	if ball == null or ball.is_holed or id.is_empty() or id == NetworkClient.player_id:
+		return
+	if bool(_holed_ids.get(id, false)):
+		return
+	var now := Time.get_ticks_msec()
+	if now - int(_bump_at.get(id, 0)) < 220:
+		return
+	var away: Vector3 = other.global_position - ball.global_position
+	away.y = 0.0
+	var incoming := _prev_ball_vel
+	incoming.y = 0.0
+	if away.length_squared() < 0.0001:
+		away = incoming
+	if away.length_squared() < 0.0001:
+		away = ball.linear_velocity
+		away.y = 0.0
+	if away.length_squared() < 0.0001:
+		return
+	var normal := away.normalized()
+	var approach := maxf(incoming.dot(normal), ball.linear_velocity.dot(normal))
+	var carry := maxf(incoming.length(), ball.linear_velocity.length())
+	if approach < 0.05 and carry < 0.35:
+		return
+	var speed := maxf(maxf(approach * 1.15, carry * 0.7), 4.5)
+	var given := normal * minf(speed, 22.0)
+	given.y = clampf(maxf(_prev_ball_vel.y, 0.0) * 0.2, 0.0, 2.5)
+	_bump_at[id] = now
+	if bool(_shield_ids.get(id, false)) or (other.has_method("has_shield") and other.call("has_shield")):
+		if ball.has_method("nudge"):
+			ball.nudge(-given)
+		NetworkClient.send_ball_state(ball.global_position, ball.linear_velocity, false)
+		return
+	NetworkClient.send_bump(id, given)
+	if other.has_method("apply_knock"):
+		other.call("apply_knock", given)
+
+
+func _on_bump(_from_id: String, velocity: Vector3) -> void:
+	if _kickoff or ball == null or not is_instance_valid(ball) or ball.is_holed:
+		return
+	if _has_shield():
+		return
+	if ball.has_method("nudge"):
+		ball.nudge(velocity)
+	NetworkClient.send_ball_state(ball.global_position, ball.linear_velocity, false)
+
+
+func _run_kickoff() -> void:
+	_kickoff = true
+	ball.freeze = true
+	hud.stop_timer()
+	hud.reset_timer()
+	for word in ["3", "2", "1", "GOLF!"]:
+		if hud.has_method("show_kickoff"):
+			hud.show_kickoff(word)
+		var beat := KICKOFF_GO if word == "GOLF!" else KICKOFF_BEAT
+		await get_tree().create_timer(beat).timeout
+		if not is_inside_tree():
+			return
+	if hud.has_method("hide_kickoff"):
+		hud.hide_kickoff()
+	_kickoff = false
+	_apply_ghost_visibility()
+	ball.sleeping = false
+	ball.freeze = false
+	hud.start_timer()
+
+
+func _find_marker(marker_name: String) -> Node3D:
+	if _map == null:
+		return null
+	var direct := _map.get_node_or_null(marker_name)
+	if direct is Node3D:
+		return direct as Node3D
+	return _map.find_child(marker_name, true, false) as Node3D
+
+
+func _ground_at(pos: Vector3) -> Vector3:
+	return _ground_snap(pos) - Vector3(0.0, _ball_radius() + 0.02, 0.0)
+
+
+func _ball_radius() -> float:
+	if ball != null and ball.has_method("radius"):
+		return ball.radius()
+	return BALL_RADIUS
+
+
+func _has_shield() -> bool:
+	return Time.get_ticks_msec() < _shield_until
+
+
+func _has_shrink() -> bool:
+	return Time.get_ticks_msec() < _shrink_until
+
+
+func _place_field_items() -> void:
+	_spawn_field_items(GameSession.get_map())
+
+
+func _spawn_field_items(spec: Dictionary) -> void:
+	var raw_pickups: Variant = spec.get("pickups", [])
+	if raw_pickups is Array:
+		for item in raw_pickups:
+			if not item is Dictionary:
+				continue
+			var pickup := CoursePickup.new()
+			add_child(pickup)
+			var pos: Vector3 = item.get("pos", Vector3.ZERO)
+			pickup.setup(str(item.get("id", "")), str(item.get("kind", "shield")), _ground_at(pos) + Vector3(0, 0.32, 0))
+			pickup.collected.connect(_on_pickup_touched)
+			_pickups[pickup.pickup_id] = pickup
+	var raw_pads: Variant = spec.get("pads", [])
+	if raw_pads is Array:
+		for item in raw_pads:
+			if not item is Dictionary:
+				continue
+			var pad := SpeedPad.new()
+			add_child(pad)
+			var pos: Vector3 = item.get("pos", Vector3.ZERO)
+			var dir: Vector3 = item.get("dir", -_fairway)
+			pad.setup(_ground_at(pos), dir, float(item.get("len", 2.6)), float(item.get("wid", 1.45)))
+			pad.crossed.connect(_on_pad_crossed)
+			_pads.append(pad)
+
+
+func _on_pickup_touched(kind: String, pickup_id: String) -> void:
+	if _kickoff or ball == null or ball.is_holed or pickup_id.is_empty():
+		return
+	if not _can_store_power(kind):
+		return
+	var pickup: CoursePickup = _pickups.get(pickup_id)
+	if pickup == null or not pickup.live:
+		return
+	if GameSession.online:
+		_pending_pickup = pickup_id
+		pickup.set_live(false)
+		NetworkClient.send_pickup(pickup_id, kind)
+		return
+	_grant_pickup(pickup_id, kind, "local")
+
+
+func _on_pickup_taken(pickup_id: String, player_id: String, kind: String) -> void:
+	_pending_pickup = ""
+	_grant_pickup(pickup_id, kind, player_id)
+
+
+func _on_pickup_error(code: String, _message: String) -> void:
+	if code != "PICKUP_TAKEN":
+		return
+	var pickup: CoursePickup = _pickups.get(_pending_pickup)
+	_pending_pickup = ""
+	if pickup:
+		pickup.set_live(true)
+
+
+func _grant_pickup(pickup_id: String, kind: String, player_id: String) -> void:
+	var pickup: CoursePickup = _pickups.get(pickup_id)
+	if pickup:
+		pickup.set_live(false)
+		get_tree().create_timer(PICKUP_RESPAWN_MS / 1000.0).timeout.connect(func() -> void:
+			if is_instance_valid(pickup):
+				pickup.set_live(true)
+		)
+	var mine := player_id == _local_player_id() or player_id == "local"
+	if not mine:
+		return
+	if not _can_store_power(kind):
+		return
+	var slot := _slot_for_pickup()
+	_put_power_in_slot(slot, kind)
+	GameSession.play_sfx("pickup")
+	_refresh_local_powers()
+
+
+func _can_store_power(kind: String) -> bool:
+	return POWER_KINDS.has(kind)
+
+
+func _first_empty_slot() -> int:
+	for i in 2:
+		if _slot_kind[i].is_empty():
+			return i
+	return -1
+
+
+func _slot_for_pickup() -> int:
+	var empty := _first_empty_slot()
+	if empty >= 0:
+		return empty
+	return 1
+
+
+func _put_power_in_slot(index: int, kind: String) -> void:
+	if index < 0 or index >= 2:
+		return
+	var old := _slot_kind[index]
+	if not old.is_empty() and old != kind:
+		if old == "shield":
+			_shield_until = 0
+		elif old == "shrink":
+			_shrink_until = 0
+	_slot_kind[index] = kind
+	_slot_until[index] = 0
+
+
+func _slot_of(kind: String, stored_only: bool = false) -> int:
+	for i in 2:
+		if _slot_kind[i] != kind:
+			continue
+		if stored_only and _slot_until[i] != 0:
+			continue
+		return i
+	return -1
+
+
+func _slot_remaining(index: int) -> float:
+	if index < 0 or index >= 2 or _slot_kind[index].is_empty() or _slot_until[index] <= 0:
+		return 0.0
+	return maxf(float(_slot_until[index] - Time.get_ticks_msec()) / 1000.0, 0.0)
+
+
+func _compact_power_slots() -> void:
+	var kinds: Array[String] = []
+	var untils: Array[int] = []
+	for i in 2:
+		if _slot_kind[i].is_empty():
+			continue
+		kinds.append(_slot_kind[i])
+		untils.append(_slot_until[i])
+	_slot_kind = ["", ""]
+	_slot_until = [0, 0]
+	for i in kinds.size():
+		_slot_kind[i] = kinds[i]
+		_slot_until[i] = untils[i]
+
+
+func _refresh_local_powers() -> void:
+	if ball == null or not is_instance_valid(ball):
+		return
+	ball.apply_powers(_has_shield(), _has_shrink())
+	_apply_ball_collisions()
+	_refresh_power_hud()
+
+
+func _apply_ghost_powers(player_id: String) -> void:
+	var ghost: Node = _ghosts.get(player_id)
+	if ghost != null and is_instance_valid(ghost) and ghost.has_method("set_powers"):
+		ghost.call("set_powers", bool(_shield_ids.get(player_id, false)), bool(_shrink_ids.get(player_id, false)))
+	_apply_ball_collisions()
+
+
+func _tick_powers() -> void:
+	var now := Time.get_ticks_msec()
+	var changed := false
+	for i in 2:
+		if _slot_until[i] <= 0 or _slot_until[i] > now:
+			continue
+		var kind := _slot_kind[i]
+		_slot_kind[i] = ""
+		_slot_until[i] = 0
+		if kind == "shield":
+			_shield_until = 0
+		elif kind == "shrink":
+			_shrink_until = 0
+		changed = true
+	if changed:
+		_compact_power_slots()
+		_refresh_local_powers()
+	else:
+		_refresh_power_hud()
+
+
+func _on_power_used(kind: String, slot: int = -1) -> void:
+	if _kickoff or ball == null or ball.is_holed:
+		return
+	if slot < 0 or slot > 1 or _slot_kind[slot] != kind or _slot_until[slot] != 0:
+		slot = _slot_of(kind, true)
+	if slot < 0:
+		return
+	GameSession.play_sfx("powerup")
+	var now := Time.get_ticks_msec()
+	if kind == "shield":
+		_shield_until = now + SHIELD_MS
+		_slot_until[slot] = _shield_until
+	elif kind == "shrink":
+		_shrink_until = now + SHRINK_MS
+		_slot_until[slot] = _shrink_until
+	elif kind == "gust":
+		_slot_kind[slot] = ""
+		_slot_until[slot] = 0
+		_compact_power_slots()
+		_fire_gust(ball.global_position, _local_player_id())
+		_refresh_power_hud()
+		if GameSession.online:
+			NetworkClient.send_power_use(kind)
+		return
+	else:
+		return
+	_refresh_local_powers()
+	if GameSession.online:
+		NetworkClient.send_power_use(kind)
+
+
+func _on_remote_power(player_id: String, kind: String) -> void:
+	if player_id.is_empty() or player_id == _local_player_id():
+		return
+	if kind == "shield":
+		_shield_ids[player_id] = true
+		_apply_ghost_powers(player_id)
+		get_tree().create_timer(SHIELD_MS / 1000.0).timeout.connect(func() -> void:
+			_shield_ids.erase(player_id)
+			_apply_ghost_powers(player_id)
+		)
+	elif kind == "shrink":
+		_shrink_ids[player_id] = true
+		_apply_ghost_powers(player_id)
+		get_tree().create_timer(SHRINK_MS / 1000.0).timeout.connect(func() -> void:
+			_shrink_ids.erase(player_id)
+			_apply_ghost_powers(player_id)
+		)
+	elif kind == "gust":
+		var ghost: Node3D = _ghosts.get(player_id) as Node3D
+		if ghost != null and is_instance_valid(ghost):
+			_fire_gust(ghost.global_position, player_id)
+
+
+func _fire_gust(origin: Vector3, caster_id: String) -> void:
+	_spawn_gust_fx(origin)
+	if caster_id != _local_player_id():
+		_gust_push_local(origin)
+	for id in _ghosts.keys():
+		if str(id) == caster_id or bool(_holed_ids.get(id, false)):
+			continue
+		var ghost: Node3D = _ghosts[id] as Node3D
+		if ghost == null or not is_instance_valid(ghost):
+			continue
+		if bool(_shield_ids.get(id, false)) or (ghost.has_method("has_shield") and ghost.call("has_shield")):
+			continue
+		if origin.distance_to(ghost.global_position) > GUST_RADIUS:
+			continue
+		if ghost.has_method("apply_knock"):
+			ghost.call("apply_knock", _gust_velocity(origin, ghost.global_position))
+
+
+func _gust_push_local(origin: Vector3) -> void:
+	if ball == null or not is_instance_valid(ball) or ball.is_holed:
+		return
+	if _has_shield():
+		return
+	if origin.distance_to(ball.global_position) > GUST_RADIUS:
+		return
+	if ball.has_method("nudge"):
+		ball.nudge(_gust_velocity(origin, ball.global_position))
+	if GameSession.online:
+		NetworkClient.send_ball_state(ball.global_position, ball.linear_velocity, false)
+
+
+func _gust_velocity(origin: Vector3, target: Vector3) -> Vector3:
+	var away: Vector3 = target - origin
+	away.y = 0.0
+	if away.length_squared() < 0.0001:
+		away = -_fairway
+		away.y = 0.0
+	if away.length_squared() < 0.0001:
+		away = Vector3.FORWARD
+	var dist := clampf(away.length(), 0.2, GUST_RADIUS)
+	var falloff := 1.0 - (dist / GUST_RADIUS)
+	var speed := GUST_SPEED * (0.62 + 0.38 * falloff)
+	var push := away.normalized() * speed
+	push.y = 2.4 * (0.55 + 0.45 * falloff)
+	return push
+
+
+func _spawn_gust_fx(origin: Vector3) -> void:
+	var fx := Node3D.new()
+	add_child(fx)
+	fx.global_position = origin + Vector3(0.0, 0.16, 0.0)
+	var base := Color("7ED8D0", 0.92)
+	for i in 3:
+		var ring := MeshInstance3D.new()
+		var torus := TorusMesh.new()
+		torus.inner_radius = 0.2
+		torus.outer_radius = 0.3
+		torus.rings = 18
+		torus.ring_segments = 20
+		ring.mesh = torus
+		var mat := StandardMaterial3D.new()
+		mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		mat.albedo_color = base
+		ring.material_override = mat
+		ring.rotation_degrees = Vector3(90.0, 0.0, 0.0)
+		fx.add_child(ring)
+		var grow := 1.4 + float(i) * 1.15
+		var ring_tw := create_tween()
+		ring_tw.set_parallel(true)
+		ring_tw.tween_property(ring, "scale", Vector3(grow, grow, grow), 0.42 + float(i) * 0.06)
+		ring_tw.tween_property(mat, "albedo_color:a", 0.0, 0.42 + float(i) * 0.06)
+	for s in 8:
+		var dash := MeshInstance3D.new()
+		var box := BoxMesh.new()
+		box.size = Vector3(0.08, 0.04, 0.55)
+		dash.mesh = box
+		var dash_mat := StandardMaterial3D.new()
+		dash_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		dash_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		dash_mat.albedo_color = Color("B8F4EE", 0.95)
+		dash.material_override = dash_mat
+		var yaw := TAU * float(s) / 8.0
+		dash.position = Vector3(cos(yaw), 0.08, sin(yaw)) * 0.7
+		dash.rotation = Vector3(0.0, -yaw, 0.0)
+		fx.add_child(dash)
+		var dash_tw := create_tween()
+		dash_tw.set_parallel(true)
+		dash_tw.tween_property(dash, "position", dash.position * 3.2, 0.38)
+		dash_tw.tween_property(dash_mat, "albedo_color:a", 0.0, 0.38)
+	get_tree().create_timer(0.55).timeout.connect(func() -> void:
+		if is_instance_valid(fx):
+			fx.queue_free()
+	)
+
+
+func _refresh_power_hud() -> void:
+	var left_kind := _slot_kind[0]
+	var right_kind := _slot_kind[1]
+	var left_left := _slot_remaining(0)
+	var right_left := _slot_remaining(1)
+	if hud != null and hud.has_method("set_powerups"):
+		hud.set_powerups(left_kind, left_left, right_kind, right_left)
+	_push_phone_powers(left_kind, left_left, right_kind, right_left)
+
+
+func _push_phone_powers(left_kind: String, left_left: float, right_kind: String, right_left: float) -> void:
+	var phone := _phone()
+	if phone.has_method("set_powers"):
+		phone.call("set_powers", left_kind, left_left, right_kind, right_left)
+	if phone.has_method("set_rank"):
+		phone.call("set_rank", _phone_rank, _phone_rank_text, _phone_rank_caption)
+	var key := "%s|%.1f|%s|%.1f|%d|%s|%s" % [
+		left_kind, left_left, right_kind, right_left, _phone_rank, _phone_rank_text, _phone_rank_caption
+	]
+	if key == _phone_powers_key:
+		return
+	_phone_powers_key = key
+	if GameSession.online:
+		NetworkClient.send_phone_powers(
+			left_kind, left_left, right_kind, right_left, _phone_rank, _phone_rank_text, _phone_rank_caption
+		)
+
+
+func _set_phone_rank(place: int, caption: String = "") -> void:
+	_phone_rank = maxi(place, 0)
+	_phone_rank_text = _ordinal(_phone_rank)
+	_phone_rank_caption = caption if _phone_rank > 0 else ""
+	_phone_powers_key = ""
+	_refresh_power_hud()
+
+
+func _ordinal(place: int) -> String:
+	if place < 1:
+		return ""
+	var tens := place % 100
+	var ones := place % 10
+	if tens >= 11 and tens <= 13:
+		return "%dth" % place
+	if ones == 1:
+		return "%dst" % place
+	if ones == 2:
+		return "%dnd" % place
+	if ones == 3:
+		return "%drd" % place
+	return "%dth" % place
+
+
+func _place_from_results(results: Array, field: String) -> int:
+	var mine := _local_player_id()
+	var time_field := _results_time_field(field)
+	var ranked: Array = []
+	for item in results:
+		if item is Dictionary:
+			ranked.append(item)
+	ranked.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
+		return _result_better(a, b, field, time_field)
+	)
+	var place := 1
+	for i in ranked.size():
+		var r: Dictionary = ranked[i]
+		if i > 0 and not _result_tied(ranked[i - 1], r, field, time_field):
+			place = i + 1
+		var id := String(r.get("playerId", ""))
+		if id == mine or (mine.is_empty() and id == "local"):
+			return place
+	var my_name := GameSession.player_name
+	place = 1
+	for i in ranked.size():
+		var named: Dictionary = ranked[i]
+		if i > 0 and not _result_tied(ranked[i - 1], named, field, time_field):
+			place = i + 1
+		if String(named.get("name", "")) == my_name:
+			return place
+	return 1 if ranked.size() == 1 else 0
+
+
+func _results_time_field(score_field: String) -> String:
+	if GameSession.is_free_for_all():
+		return ""
+	return "totalTime" if score_field == "total" else "time"
+
+
+func _result_clock(row: Dictionary, time_field: String) -> float:
+	if time_field.is_empty():
+		return 0.0
+	if row.has(time_field):
+		return float(row.get(time_field, 0))
+	return float(row.get("time", 0))
+
+
+func _result_better(a: Dictionary, b: Dictionary, field: String, time_field: String) -> bool:
+	var left := int(a.get(field, a.get("strokes", 0)))
+	var right := int(b.get(field, b.get("strokes", 0)))
+	var left_t := _result_clock(a, time_field)
+	var right_t := _result_clock(b, time_field)
+	if GameSession.is_free_for_all():
+		if left != right:
+			return left > right
+	else:
+		if left != right:
+			return left < right
+		if not is_equal_approx(left_t, right_t):
+			return left_t < right_t
+	return String(a.get("name", "")) < String(b.get("name", ""))
+
+
+func _result_tied(a: Dictionary, b: Dictionary, field: String, time_field: String) -> bool:
+	if int(a.get(field, a.get("strokes", 0))) != int(b.get(field, b.get("strokes", 0))):
+		return false
+	if GameSession.is_free_for_all():
+		return true
+	return is_equal_approx(_result_clock(a, time_field), _result_clock(b, time_field))
+
+
+func _place_from_placings(placings: Array) -> int:
+	var mine := _local_player_id()
+	for p in placings:
+		if not p is Dictionary:
+			continue
+		var id := String(p.get("playerId", ""))
+		if id == mine or (mine.is_empty() and id == "local"):
+			return int(p.get("place", 0))
+	return 0
+
+
+func _on_pad_crossed(pad: SpeedPad, body: Node) -> void:
+	if pad == null or body != ball or _kickoff or ball.is_holed:
+		return
+	if not pad.can_boost():
+		return
+	pad.mark_used()
+	var dir := pad.boost_dir
+	dir.y = 0.0
+	if dir.length_squared() < 0.0001:
+		dir = _fairway
+	dir = dir.normalized()
+	var along := ball.linear_velocity.dot(dir)
+	var side := ball.linear_velocity - dir * along
+	var boosted := dir * maxf(along, 1.2) + dir * pad.strength + side * 0.35
+	boosted.y = maxf(ball.linear_velocity.y, 0.4)
+	if ball.freeze:
+		ball.freeze = false
+	if ball.has_method("nudge"):
+		ball.nudge(boosted - ball.linear_velocity)
+	else:
+		ball.linear_velocity = boosted
+	if GameSession.online:
+		NetworkClient.send_ball_state(ball.global_position, ball.linear_velocity, false)
+
 
 func _process(delta: float) -> void:
-	if NetworkClient.local_holed:
+	if not is_inside_tree():
 		return
-	if ball.is_moving:
-		_send_timer += delta
-		if _send_timer >= BALL_STATE_SEND_INTERVAL:
-			_send_timer = 0.0
-			NetworkClient.send_ball_state(ball.global_position, ball.linear_velocity, false)
-		_was_moving = true
-	elif _was_moving:
-		NetworkClient.send_ball_state(ball.global_position, ball.linear_velocity, true)
-		_was_moving = false
+	_sync_aim_device()
+	_lock_spectate_for_results()
+	_apply_phone_look(delta)
+	_update_ghost_club()
+	_tick_powers()
+	if not GameSession.online:
+		return
+	_sync_acc += delta
+	if _sync_acc < 1.0 / SYNC_HZ:
+		return
+	_sync_acc = 0.0
+	NetworkClient.send_ball_state(ball.global_position, ball.linear_velocity, not ball.is_moving)
+
+
+func _setup_scoreboard() -> void:
+	var people: Array = []
+	if GameSession.online:
+		var listed: Variant = GameSession.active_lobby.get("player_list", [])
+		if listed is Array:
+			people = listed
+	else:
+		people = [{
+			"id": "local",
+			"name": GameSession.player_name,
+			"color": GameSession.my_color,
+			"strokes": 0,
+			"holed": false,
+		}]
+	hud.set_roster(people)
+	hud.set_chat_visible(GameSession.online)
+
+
+func _phone() -> Node:
+	return get_node("/root/PhoneLink")
+
+
+func _setup_phone() -> void:
+	var phone := _phone()
+	if not phone.hit_received.is_connected(_on_phone_hit):
+		phone.hit_received.connect(_on_phone_hit)
+	if not phone.pose_received.is_connected(_on_phone_pose):
+		phone.pose_received.connect(_on_phone_pose)
+	if not phone.qr_ready.is_connected(_on_phone_qr_png):
+		phone.qr_ready.connect(_on_phone_qr_png)
+	if not NetworkClient.phone_ready.is_connected(_on_phone_ready):
+		NetworkClient.phone_ready.connect(_on_phone_ready)
+	if not NetworkClient.phone_linked.is_connected(_on_phone_linked):
+		NetworkClient.phone_linked.connect(_on_phone_linked)
+	if not NetworkClient.phone_gone.is_connected(_on_phone_gone):
+		NetworkClient.phone_gone.connect(_on_phone_gone)
+	if not NetworkClient.phone_hit.is_connected(_on_phone_hit):
+		NetworkClient.phone_hit.connect(_on_phone_hit)
+	if not NetworkClient.phone_pose.is_connected(_on_phone_pose):
+		NetworkClient.phone_pose.connect(_on_phone_pose)
+	if phone.has_signal("power_used") and not phone.power_used.is_connected(_on_power_used):
+		phone.power_used.connect(_on_power_used)
+	if not NetworkClient.phone_power.is_connected(_on_power_used):
+		NetworkClient.phone_power.connect(_on_power_used)
+	if phone.has_signal("restart_requested") and not phone.restart_requested.is_connected(_on_phone_restart):
+		phone.restart_requested.connect(_on_phone_restart)
+	if phone.has_signal("phone_seen") and not phone.phone_seen.is_connected(_on_local_phone_seen):
+		phone.phone_seen.connect(_on_local_phone_seen)
+	if not NetworkClient.phone_restart.is_connected(_on_phone_restart):
+		NetworkClient.phone_restart.connect(_on_phone_restart)
+	if not NetworkClient.error_received.is_connected(_on_phone_error):
+		NetworkClient.error_received.connect(_on_phone_error)
+	_sync_aim_device()
+
+
+func _exit_tree() -> void:
+	_teardown_phone()
+
+
+func _teardown_phone() -> void:
+	var phone := _phone()
+	if phone.hit_received.is_connected(_on_phone_hit):
+		phone.hit_received.disconnect(_on_phone_hit)
+	if phone.pose_received.is_connected(_on_phone_pose):
+		phone.pose_received.disconnect(_on_phone_pose)
+	if phone.qr_ready.is_connected(_on_phone_qr_png):
+		phone.qr_ready.disconnect(_on_phone_qr_png)
+	if NetworkClient.phone_ready.is_connected(_on_phone_ready):
+		NetworkClient.phone_ready.disconnect(_on_phone_ready)
+	if NetworkClient.phone_linked.is_connected(_on_phone_linked):
+		NetworkClient.phone_linked.disconnect(_on_phone_linked)
+	if NetworkClient.phone_gone.is_connected(_on_phone_gone):
+		NetworkClient.phone_gone.disconnect(_on_phone_gone)
+	if NetworkClient.phone_hit.is_connected(_on_phone_hit):
+		NetworkClient.phone_hit.disconnect(_on_phone_hit)
+	if NetworkClient.phone_pose.is_connected(_on_phone_pose):
+		NetworkClient.phone_pose.disconnect(_on_phone_pose)
+	if phone.has_signal("power_used") and phone.power_used.is_connected(_on_power_used):
+		phone.power_used.disconnect(_on_power_used)
+	if NetworkClient.phone_power.is_connected(_on_power_used):
+		NetworkClient.phone_power.disconnect(_on_power_used)
+	if phone.has_signal("restart_requested") and phone.restart_requested.is_connected(_on_phone_restart):
+		phone.restart_requested.disconnect(_on_phone_restart)
+	if phone.has_signal("phone_seen") and phone.phone_seen.is_connected(_on_local_phone_seen):
+		phone.phone_seen.disconnect(_on_local_phone_seen)
+	if NetworkClient.phone_restart.is_connected(_on_phone_restart):
+		NetworkClient.phone_restart.disconnect(_on_phone_restart)
+	if NetworkClient.error_received.is_connected(_on_phone_error):
+		NetworkClient.error_received.disconnect(_on_phone_error)
+	if NetworkClient.bump_received.is_connected(_on_bump):
+		NetworkClient.bump_received.disconnect(_on_bump)
+	if NetworkClient.pickup_taken.is_connected(_on_pickup_taken):
+		NetworkClient.pickup_taken.disconnect(_on_pickup_taken)
+	if NetworkClient.error_received.is_connected(_on_pickup_error):
+		NetworkClient.error_received.disconnect(_on_pickup_error)
+	if NetworkClient.power_used.is_connected(_on_remote_power):
+		NetworkClient.power_used.disconnect(_on_remote_power)
+
+
+func _on_phone_link_pressed() -> void:
+	_want_phone_panel = true
+	hud.show_phone_panel(true)
+	if _ghost_club == null:
+		_ghost_club = GhostClub.new()
+		add_child(_ghost_club)
+	var use_cloud := GameSession.online or OS.has_feature("web")
+	if use_cloud:
+		hud.set_phone_status("Starting phone remote...")
+		NetworkClient.ensure_connected()
+		NetworkClient.send_phone_open()
+		return
+	var phone := _phone()
+	var err: Error = phone.ensure_listening()
+	if err == OK:
+		hud.set_phone_urls(phone.public_urls(), phone.local_url())
+		var qr: PackedByteArray = phone.last_qr()
+		if not qr.is_empty():
+			hud.set_phone_qr_png(qr)
+		if phone.is_linked():
+			hud.set_phone_status("Still linked. Keep the same phone page open.")
+			_sync_aim_device()
+		else:
+			hud.set_phone_status("Same Wi-Fi. Scan the code, or type the address. Use the https one for swing sensors.")
+		phone.fetch_qr()
+	else:
+		hud.set_phone_status("Phone port blocked (%s)." % phone.last_error())
+
+
+func _on_phone_qr_png(bytes: PackedByteArray) -> void:
+	if not is_inside_tree() or hud == null or not is_instance_valid(hud):
+		return
+	if not _want_phone_panel:
+		return
+	if GameSession.online or OS.has_feature("web"):
+		return
+	var phone := _phone()
+	hud.set_phone_qr_png(bytes)
+	hud.set_phone_urls(phone.public_urls(), phone.local_url())
+
+
+func _on_phone_ready(code: String, urls: PackedStringArray, qr: String) -> void:
+	if not is_inside_tree() or hud == null or not is_instance_valid(hud):
+		return
+	if not _want_phone_panel:
+		return
+	# Desktop solo keeps the LAN remote. Web and online always use the shared
+	# server remote so the phone works off any network.
+	if not GameSession.online and not OS.has_feature("web") and _phone().server != null and _phone().server.is_listening():
+		return
+	hud.set_phone_info(code, false, qr)
+	hud.set_phone_urls(urls)
+	hud.set_phone_status("Scan YOUR code. Phone remote works on any Wi-Fi.")
+	hud.show_phone_panel(true)
+
+
+func _on_local_phone_seen() -> void:
+	_sync_aim_device()
+	if not is_inside_tree() or hud == null or not is_instance_valid(hud):
+		return
+	if not _want_phone_panel:
+		return
+	if GameSession.online:
+		return
+	hud.set_phone_status("Phone linked. Hold to aim, then swing.")
+
+
+func _on_phone_linked() -> void:
+	_phone_powers_key = ""
+	_refresh_power_hud()
+	if not is_inside_tree() or hud == null or not is_instance_valid(hud):
+		return
+	if not GameSession.online and not OS.has_feature("web") and _phone().server != null and _phone().server.is_listening():
+		return
+	GameSession.prefer_mouse = false
+	_sync_aim_device()
+	hud.set_phone_info(_phone_code_text(), true)
+
+
+func _on_phone_gone() -> void:
+	_phone_look = Vector2.ZERO
+	var phone := _phone()
+	if phone.has_method("mark_unlinked"):
+		phone.call("mark_unlinked")
+	_sync_aim_device()
+	if not is_inside_tree() or hud == null or not is_instance_valid(hud):
+		return
+	if not GameSession.online and not OS.has_feature("web") and phone.server != null and phone.server.is_listening():
+		return
+	hud.set_phone_info(_phone_code_text(), false)
+
+
+func _sync_aim_device() -> void:
+	var live := false
+	var phone := _phone()
+	if phone != null and phone.has_method("is_linked"):
+		live = bool(phone.call("is_linked"))
+	var want := live and not GameSession.prefer_mouse
+	if GameSession.aim_with_phone == want:
+		return
+	GameSession.aim_with_phone = want
+	if hud != null and is_instance_valid(hud) and hud.has_method("_refresh_aim_mode_buttons"):
+		hud._refresh_aim_mode_buttons()
+	if not want:
+		_clear_phone_aim()
+
+
+func _on_aim_mode_changed(_use_phone: bool) -> void:
+	_clear_phone_aim()
+	_sync_aim_device()
+
+
+func _clear_phone_aim() -> void:
+	_phone_preview = false
+	_stick_aim = Vector3.ZERO
+	_phone_look = Vector2.ZERO
+	_reset_phone_swing()
+	if aim_controller.has_method("clear_aim"):
+		aim_controller.clear_aim()
+	if _ghost_club:
+		_ghost_club.set_pose(75.0, 0.0, false)
+
+
+func _reset_phone_swing() -> void:
+	_phone_swing_fired = false
+
+
+func _on_phone_restart() -> void:
+	if _kickoff or _oob_wait or _spectating or _leaving_results:
+		return
+	if ball == null or not is_instance_valid(ball) or ball.is_holed:
+		return
+	var pos := _ground_snap(_tee_world_pos(_local_player_id()))
+	ball.reset_to(pos)
+	PhysicsServer3D.body_set_state(ball.get_rid(), PhysicsServer3D.BODY_STATE_TRANSFORM, ball.global_transform)
+	if hud:
+		hud.set_ball_state(BallStatusIndicator.State.READY)
+	_reset_phone_swing()
+	if aim_controller != null and aim_controller.has_method("clear_aim"):
+		aim_controller.clear_aim()
+	if GameSession.online:
+		NetworkClient.send_ball_state(ball.global_position, Vector3.ZERO, true)
+
+
+func _on_phone_hit(power: float, stick_x: float = 0.0, stick_y: float = 0.0) -> void:
+	if not is_inside_tree() or hud == null or not is_instance_valid(hud):
+		return
+	if hud.has_method("can_skip_results") and hud.can_skip_results():
+		_on_results_skip()
+		return
+	if _kickoff or _spectating or not GameSession.aim_with_phone:
+		return
+	if ball != null and ball.is_holed:
+		_hide_ghost_club()
+		return
+	if ball != null and ball.freeze:
+		return
+	_phone_swing_fired = true
+	_phone_preview = false
+	_phone_hit_ms = Time.get_ticks_msec()
+	if _ghost_club:
+		_ghost_club.set_pose(75.0, 0.0, false)
+	if aim_controller.has_method("swing_from_phone"):
+		aim_controller.swing_from_phone(power, stick_x, stick_y)
+	if aim_controller.has_method("clear_aim"):
+		aim_controller.clear_aim()
+
+
+func _on_phone_pose(beta: float, gamma: float, holding: bool, stick_x: float = 0.0, stick_y: float = 0.0, lift: float = 0.0, power: float = -1.0, _accel: float = 0.0, _yaw: float = 0.0, _recenter: bool = false, look_x: float = 0.0, look_y: float = 0.0, zoom: float = 0.0) -> void:
+	_phone_look = Vector2(look_x, look_y)
+	_phone_zoom = zoom
+	if not is_inside_tree() or hud == null or not is_instance_valid(hud):
+		return
+	if aim_controller == null or not is_instance_valid(aim_controller):
+		return
+	if camera_rig == null or not is_instance_valid(camera_rig):
+		return
+	if camera_rig.free_roam and camera_rig.has_method("set_phone_drive"):
+		if holding and (hud == null or not hud.is_showing_results()):
+			camera_rig.set_phone_drive(stick_x, stick_y)
+		else:
+			camera_rig.set_phone_drive(0.0, 0.0)
+	if not GameSession.aim_with_phone or _spectating or (ball != null and ball.is_holed):
+		_hide_ghost_club()
+		return
+	if _ghost_club == null:
+		_ghost_club = GhostClub.new()
+		add_child(_ghost_club)
+	var stick := Vector2(stick_x, stick_y)
+	var aiming := stick.length() > 0.04
+	if aiming:
+		_stick_aim = _world_from_stick(stick_x, stick_y)
+	_ghost_club.set_pose(beta, gamma, holding or aiming, stick_x, stick_y, lift)
+	_update_ghost_club()
+	if _phone_swing_fired:
+		if aim_controller.has_method("clear_aim"):
+			aim_controller.clear_aim()
+		if _ghost_club:
+			_ghost_club.set_pose(75.0, 0.0, false)
+		var settled: bool = ball != null and not ball.is_moving
+		if not holding and settled and Time.get_ticks_msec() - _phone_hit_ms > 600:
+			_reset_phone_swing()
+		return
+	if not aim_controller.has_method("preview_from_phone"):
+		return
+	if aiming:
+		_phone_preview = true
+		var pulled := power if power >= 0.0 else stick.length()
+		aim_controller.preview_from_phone(stick_x, stick_y, pulled)
+	elif _phone_preview:
+		_phone_preview = false
+		aim_controller.preview_from_phone(0.0, 0.0, 0.0)
+
+
+func _lock_spectate_for_results() -> void:
+	if camera_rig == null or not is_instance_valid(camera_rig):
+		return
+	var lock: bool = false
+	if hud != null and hud.has_method("is_showing_results"):
+		lock = bool(hud.is_showing_results())
+	if camera_rig.input_locked != lock:
+		camera_rig.set_input_locked(lock)
+		if lock and camera_rig.has_method("set_phone_drive"):
+			camera_rig.set_phone_drive(0.0, 0.0)
+
+
+func _apply_phone_look(delta: float) -> void:
+	if hud != null and hud.has_method("is_showing_results") and hud.is_showing_results():
+		return
+	if camera_rig == null or not is_instance_valid(camera_rig):
+		return
+	if camera_rig.has_method("apply_zoom_rate"):
+		camera_rig.apply_zoom_rate(_phone_zoom, delta)
+	if not GameSession.aim_with_phone:
+		return
+	if camera_rig.has_method("orbit_look"):
+		camera_rig.orbit_look(_phone_look.x, _phone_look.y, delta)
+
+
+func _world_from_stick(stick_x: float, stick_y: float) -> Vector3:
+	var cam: Camera3D = camera_rig.camera if camera_rig else null
+	if cam == null:
+		return Vector3.FORWARD
+	var cam_right: Vector3 = cam.global_transform.basis.x
+	var cam_fwd: Vector3 = -cam.global_transform.basis.z
+	cam_right.y = 0.0
+	cam_fwd.y = 0.0
+	if cam_right.length_squared() > 0.0001:
+		cam_right = cam_right.normalized()
+	if cam_fwd.length_squared() > 0.0001:
+		cam_fwd = cam_fwd.normalized()
+	else:
+		cam_fwd = Vector3.FORWARD
+	var world := cam_right * stick_x + cam_fwd * stick_y
+	if world.length_squared() < 0.0001:
+		return cam_fwd
+	return world.normalized()
+
+
+func _update_ghost_club() -> void:
+	if _ghost_club == null:
+		return
+	if _kickoff or _spectating or (ball != null and ball.is_holed):
+		_ghost_club.stow()
+		return
+	_ghost_club.follow(ball, _phone_aim())
+
+
+func _hide_ghost_club() -> void:
+	if _ghost_club:
+		_ghost_club.stow()
+
+
+func _phone_aim() -> Vector3:
+	if _stick_aim.length_squared() > 0.0001:
+		return _stick_aim
+	var cam: Camera3D = camera_rig.camera if camera_rig else null
+	if cam == null:
+		return Vector3.FORWARD
+	var aim: Vector3 = -cam.global_transform.basis.z
+	aim.y = 0.0
+	if aim.length_squared() < 0.0001:
+		return Vector3.FORWARD
+	return aim.normalized()
+
+
+func _on_phone_error(code: String, _message: String) -> void:
+	if code != "PHONE_FAILED":
+		return
+	if _phone().server != null and _phone().server.is_listening():
+		return
+	hud.set_phone_info(_phone_code_text(), false)
+
+
+func _phone_code_text() -> String:
+	if hud._phone_code:
+		return hud._phone_code.text
+	return ""
+
+
+func _setup_multiplayer() -> void:
+	if not GameSession.online:
+		return
+	ball.apply_color(GameSession.my_color)
+	NetworkClient.snapshot_received.connect(_on_snapshot)
+	NetworkClient.stroke_updated.connect(_on_stroke_updated)
+	NetworkClient.player_holed.connect(_on_player_holed)
+	NetworkClient.chat_received.connect(_on_chat_received)
+	NetworkClient.lobby_state_received.connect(_on_lobby_state)
+	NetworkClient.hole_ended.connect(_on_hole_ended)
+	if not NetworkClient.results_next.is_connected(_on_results_next):
+		NetworkClient.results_next.connect(_on_results_next)
+	if not NetworkClient.bump_received.is_connected(_on_bump):
+		NetworkClient.bump_received.connect(_on_bump)
+	if not NetworkClient.pickup_taken.is_connected(_on_pickup_taken):
+		NetworkClient.pickup_taken.connect(_on_pickup_taken)
+	if not NetworkClient.error_received.is_connected(_on_pickup_error):
+		NetworkClient.error_received.connect(_on_pickup_error)
+	if not NetworkClient.power_used.is_connected(_on_remote_power):
+		NetworkClient.power_used.connect(_on_remote_power)
+	_apply_ball_collisions()
+	_place_field_balls()
+
+
+func _on_snapshot(balls: Array) -> void:
+	if _kickoff:
+		return
+	for snap in balls:
+		if not snap is Dictionary:
+			continue
+		var id := str(snap.get("id", ""))
+		if id.is_empty() or id == NetworkClient.player_id:
+			continue
+		var pos := Vector3(float(snap.get("x", 0.0)), float(snap.get("y", 0.5)), float(snap.get("z", 0.0)))
+		var ghost := _ensure_ghost(id, _color_for(id), pos, _player_name(id))
+		if ghost.has_method("take_network_pos"):
+			ghost.call("take_network_pos", pos)
+		else:
+			ghost.set("target", pos)
+	if _spectating and _spectate_follow:
+		_apply_spectate_target()
+
+
+func _color_for(id: String) -> Color:
+	var people: Variant = GameSession.active_lobby.get("player_list", [])
+	if people is Array:
+		for p in people:
+			if p is Dictionary and str(p.get("id", "")) == id:
+				return UiStyle.to_color(p.get("color", "#4CB8B0"), UiStyle.TEAL)
+	return Color("4CB8B0")
+
+
+func _ensure_ghost(id: String, tint: Color, pos: Vector3, player_name: String = "") -> Node3D:
+	if _ghosts.has(id) and is_instance_valid(_ghosts[id]):
+		return _ghosts[id]
+	var ghost: Node3D = BALL_SCENE.instantiate()
+	ghost.set_script(GHOST_SCRIPT)
+	add_child(ghost)
+	if ghost.has_method("setup"):
+		if player_name.is_empty():
+			player_name = _player_name(id)
+		ghost.call("setup", id, tint, pos, player_name)
+	if ghost.has_method("set_solid"):
+		ghost.call("set_solid", GameSession.is_free_for_all() and not bool(_holed_ids.get(id, false)) and not bool(_shield_ids.get(id, false)))
+	if ghost.has_method("set_powers"):
+		ghost.call("set_powers", bool(_shield_ids.get(id, false)), bool(_shrink_ids.get(id, false)))
+	ghost.visible = true if _kickoff else _ghosts_visible()
+	_ghosts[id] = ghost
+	return ghost
+
+
+func _local_holed() -> bool:
+	return bool(_holed_ids.get(NetworkClient.player_id, false)) or (ball != null and bool(ball.get("is_holed")))
+
+
+func _ghosts_visible() -> bool:
+	if _kickoff:
+		return true
+	if GameSession.is_turn_by_turn() and not _local_holed() and not _spectating:
+		return false
+	return true
+
+
+func _apply_ghost_visibility() -> void:
+	var shown := _ghosts_visible()
+	for ghost in _ghosts.values():
+		if ghost is Node3D and is_instance_valid(ghost):
+			ghost.visible = shown
+
+
+func _on_shot_taken(_direction: Vector3, _power: float) -> void:
+	hud.add_stroke()
+	var id := NetworkClient.player_id if GameSession.online else "local"
+	hud.set_player_score(id, hud.strokes)
+	if GameSession.online:
+		NetworkClient.send_shot()
+
+
+func _on_aiming_changed(is_aiming: bool) -> void:
+	if is_aiming:
+		hud.set_ball_state(BallStatusIndicator.State.AIMING)
+	elif ball.is_holed:
+		hud.set_ball_state(BallStatusIndicator.State.HOLED)
+	elif ball.is_moving:
+		hud.set_ball_state(BallStatusIndicator.State.ROLLING)
+	else:
+		hud.set_ball_state(BallStatusIndicator.State.READY)
+
+
+func _on_aim_updated(direction: Vector3, power: float) -> void:
+	if not is_inside_tree() or hud == null or not is_instance_valid(hud):
+		return
+	hud.set_aim_preview(direction, power)
+
+
+func _on_ball_movement_started() -> void:
+	hud.set_ball_state(BallStatusIndicator.State.ROLLING)
+
+
+func _on_ball_movement_stopped() -> void:
+	if GameSession.online:
+		NetworkClient.send_ball_state(ball.global_position, Vector3.ZERO, true)
+	if ball.is_holed:
+		hud.set_ball_state(BallStatusIndicator.State.HOLED)
+		return
+	hud.set_ball_state(BallStatusIndicator.State.READY)
+
+
+func _on_camera_pressed() -> void:
+	if camera_rig.has_method("reset_view"):
+		camera_rig.reset_view()
+
+
+func _on_look_pressed() -> void:
+	if camera_rig.has_method("set_overview"):
+		camera_rig.set_overview(true)
+
+
+func _on_courses_pressed() -> void:
+	if GameSession.online:
+		return
+	GameSession.open_select()
+
+
+func _on_quit_pressed() -> void:
+	GameSession.leave_match()
+
+
+func _on_chat_submitted(text: String) -> void:
+	NetworkClient.send_chat(text)
+
+
+func _on_chat_received(payload: Dictionary) -> void:
+	hud.append_chat(payload)
+
+
+func _on_stroke_updated(player_id: String, value: int) -> void:
+	hud.set_player_score(player_id, value)
+
+
+func _on_player_holed(player_id: String, value: int) -> void:
+	hud.set_player_score(player_id, value, true)
+	_holed_ids[player_id] = true
+	var ghost: Node = _ghosts.get(player_id)
+	if ghost != null and is_instance_valid(ghost) and ghost.has_method("set_solid"):
+		ghost.call("set_solid", false)
+	if _spectating:
+		_apply_spectate_target()
+
+
+func _on_lobby_state(_lobby: Dictionary) -> void:
+	var people: Variant = GameSession.active_lobby.get("player_list", [])
+	if people is Array:
+		hud.set_roster(people)
+		var live: Dictionary = {}
+		for p in people:
+			if p is Dictionary:
+				live[str(p.get("id", ""))] = true
+		var gone: Array = []
+		for id in _ghosts.keys():
+			if not live.has(id):
+				gone.append(id)
+		for id in gone:
+			var ghost = _ghosts[id]
+			_ghosts.erase(id)
+			if ghost is Node and is_instance_valid(ghost):
+				ghost.queue_free()
+
+
+func _on_ball_sunk() -> void:
+	_clear_powers()
+	hud.stop_timer()
+	hud.set_ball_state(BallStatusIndicator.State.HOLED)
+	var id := NetworkClient.player_id if GameSession.online else "local"
+	hud.set_player_score(id, hud.strokes, true)
+	_holed_ids[id] = true
+	ball.collision_layer = 1
+	ball.collision_mask = 1
+	_hide_ghost_club()
+	if GameSession.online:
+		NetworkClient.send_holed()
+		_apply_ghost_visibility()
+
+
+func _on_sunk_finished() -> void:
+	if GameSession.online:
+		await get_tree().create_timer(SPECTATE_DELAY).timeout
+		if not is_inside_tree() or not GameSession.online:
+			return
+		_enter_spectate()
+		return
+	_clear_powers()
+	var colour := "#%s" % GameSession.my_color.to_html(false)
+	var results: Array = [{
+		"playerId": "local",
+		"name": GameSession.player_name,
+		"color": colour,
+		"strokes": hud.strokes,
+		"total": hud.strokes,
+		"time": hud.elapsed,
+		"holed": true,
+	}]
+	_hole_results = results
+	_last_hole = true
+	_results_page = 1
+	_board_ready = true
+	_set_phone_rank(1, "THIS HOLE")
+	await hud.show_round_results(maxi(hud.hole - 1, 0), true, results, hud.par)
+	if not is_inside_tree():
+		return
+	hud.begin_results_hold(0.0, true)
+
 
 func _unhandled_input(event: InputEvent) -> void:
 	if not _spectating:
 		return
+	if hud != null and hud.is_showing_results():
+		return
 	if event is InputEventKey and event.pressed and not event.echo:
 		if event.physical_keycode == KEY_TAB:
-			_cycle_spectate_target()
+			_cycle_spectate(1)
 			get_viewport().set_input_as_handled()
 
-func _on_hole_started(hole_index: int, par: int, _timer_ms: float, spawn: Vector3) -> void:
-	current_hole_index = hole_index
-	current_par = par
-	current_strokes = 0
-	_was_moving = false
-	_send_timer = 0.0
-	hole_summary_panel.visible = false
-	_exit_spectate()
-	_clear_ghosts()
-	_tint_local_ball()
-	ball.reset_to(spawn)
-
-func _on_stroke_updated(player_id: String, hole_index: int, strokes: int) -> void:
-	if player_id != NetworkClient.my_player_id:
-		return
-	current_strokes = strokes
-	# TODO: update HUD display once it exists (CL-13)
-
-func _on_ball_sunk() -> void:
-	NetworkClient.local_holed = true
-	NetworkClient.send_holed(ball.global_position)
-	if not NetworkClient.is_ffa():
-		_enter_spectate()
-
-func _on_hole_ended(hole_index: int, results: Array) -> void:
-	_exit_spectate()
-	_clear_ghosts()
-	summary_title_label.text = "Hole %d Complete" % (hole_index + 1)
-
-	for child in summary_results_container.get_children():
-		child.queue_free()
-
-	for r in results:
-		var row := Label.new()
-		row.text = "%s  —  %d strokes" % [r["name"], r["strokes"]]
-		row.add_theme_color_override("font_color", Color(r["colour"]))
-		summary_results_container.add_child(row)
-
-	hole_summary_panel.visible = true
-
-func _on_snapshot_received(_tick: int, balls: Array) -> void:
-	if not _should_show_ghosts():
-		_clear_ghosts()
-		return
-
-	var seen: Dictionary = {}
-	for ball_data in balls:
-		var id: String = ball_data["id"]
-		if id == NetworkClient.my_player_id:
-			continue
-		var is_holed: bool = ball_data["holed"]
-		if not NetworkClient.is_ffa() and is_holed:
-			_remove_ghost(id)
-			continue
-		seen[id] = true
-		_upsert_ghost(id, ball_data)
-
-	for id in _ghosts.keys():
-		if not seen.has(id):
-			_remove_ghost(id)
-
-	if _spectating:
-		_refresh_spectate_target()
-
-func _on_player_left(player_id: String) -> void:
-	_remove_ghost(player_id)
-	if _spectating:
-		_refresh_spectate_target()
-
-func _should_show_ghosts() -> bool:
-	if NetworkClient.is_ffa():
-		return true
-	return NetworkClient.local_holed
-
-func _upsert_ghost(id: String, ball_data: Dictionary) -> void:
-	var pos_arr: Array = ball_data["pos"]
-	var pos := Vector3(float(pos_arr[0]), float(pos_arr[1]), float(pos_arr[2]))
-	var ghost: GhostBall = _ghosts.get(id)
-	if ghost == null:
-		ghost = GhostBall.new()
-		ghost.setup(id, _player_name(id), _player_colour(id))
-		add_child(ghost)
-		_ghosts[id] = ghost
-	ghost.apply_state(pos, ball_data["holed"])
-
-func _remove_ghost(id: String) -> void:
-	if not _ghosts.has(id):
-		return
-	var ghost: GhostBall = _ghosts[id]
-	_ghosts.erase(id)
-	if is_instance_valid(ghost):
-		ghost.queue_free()
-	if _spectate_id == id:
-		_spectate_id = ""
-
-func _clear_ghosts() -> void:
-	for id in _ghosts.keys():
-		var ghost: GhostBall = _ghosts[id]
-		if is_instance_valid(ghost):
-			ghost.queue_free()
-	_ghosts.clear()
-	_spectate_id = ""
 
 func _enter_spectate() -> void:
 	_spectating = true
-	spectate_panel.visible = true
-	spectate_label.text = "Spectating — waiting for other players"
-	_refresh_spectate_target()
-
-func _exit_spectate() -> void:
-	_spectating = false
+	_hide_ghost_club()
+	if hole.has_node("WinMenu"):
+		hole.get_node("WinMenu").visible = false
+	hud.show_spectate(true)
+	_spectate_follow = true
+	_spectate_index = 0
 	_spectate_id = ""
-	spectate_panel.visible = false
-	if camera_rig:
-		camera_rig.target = ball
-
-func _refresh_spectate_target() -> void:
-	if not _spectating:
-		return
-	var remaining := _remaining_ghost_ids()
-	if remaining.is_empty():
-		spectate_label.text = "Spectating — waiting for other players"
-		if camera_rig:
-			camera_rig.target = ball
-		return
-	if _spectate_id == "" or not remaining.has(_spectate_id):
-		_spectate_id = remaining[0]
+	_apply_ghost_visibility()
 	_apply_spectate_target()
 
-func _cycle_spectate_target() -> void:
-	var remaining := _remaining_ghost_ids()
-	if remaining.size() <= 1:
-		return
-	var idx := remaining.find(_spectate_id)
-	_spectate_id = remaining[(idx + 1) % remaining.size()]
+
+func _on_spectate_follow() -> void:
+	_spectate_follow = true
 	_apply_spectate_target()
 
-func _apply_spectate_target() -> void:
-	if not _ghosts.has(_spectate_id):
-		return
-	var ghost: GhostBall = _ghosts[_spectate_id]
-	if camera_rig:
-		camera_rig.target = ghost
-	var hint := "  (Tab to switch)" if _ghosts.size() > 1 else ""
-	spectate_label.text = "Spectating %s — right-drag to look%s" % [ghost.display_name, hint]
 
-func _remaining_ghost_ids() -> Array[String]:
+func _on_spectate_free() -> void:
+	_spectate_follow = false
+	_apply_spectate_target()
+
+
+func _cycle_spectate(step: int) -> void:
+	var ids := _watchable_ids()
+	if ids.is_empty():
+		_spectate_follow = false
+		_apply_spectate_target()
+		return
+	_spectate_follow = true
+	_spectate_index = posmod(_spectate_index + step, ids.size())
+	_apply_spectate_target()
+
+
+func _watchable_ids() -> Array[String]:
 	var ids: Array[String] = []
+	var seen: Dictionary = {}
+	var add := func(id: String) -> void:
+		if id.is_empty() or seen.has(id):
+			return
+		if id == NetworkClient.player_id or bool(_holed_ids.get(id, false)):
+			return
+		seen[id] = true
+		ids.append(id)
+	for id in GameSession.player_ids():
+		add.call(id)
+	var people: Variant = GameSession.active_lobby.get("player_list", [])
+	if people is Array:
+		for p in people:
+			if not p is Dictionary:
+				continue
+			var id := str(p.get("id", ""))
+			if bool(p.get("holed", false)):
+				_holed_ids[id] = true
+				continue
+			add.call(id)
 	for id in _ghosts.keys():
-		var ghost: GhostBall = _ghosts[id]
-		if is_instance_valid(ghost) and not ghost.holed:
-			ids.append(id)
-	ids.sort()
+		add.call(str(id))
 	return ids
 
+
 func _player_name(id: String) -> String:
-	if NetworkClient.players.has(id):
-		return NetworkClient.players[id]["name"]
+	var people: Variant = GameSession.active_lobby.get("player_list", [])
+	if people is Array:
+		for p in people:
+			if p is Dictionary and str(p.get("id", "")) == id:
+				return str(p.get("name", "Player"))
 	return "Player"
 
-func _player_colour(id: String) -> Color:
-	if NetworkClient.players.has(id):
-		return Color(NetworkClient.players[id]["colour"])
-	return Color.WHITE
 
-func _tint_local_ball() -> void:
-	if ball == null:
+func _apply_spectate_target() -> void:
+	var ids := _watchable_ids()
+	hud.set_spectate_mode(_spectate_follow and not ids.is_empty())
+	if not _spectate_follow or ids.is_empty():
+		_spectate_follow = false
+		camera_rig.set_free_roam(camera_rig.global_position)
+		hud.set_spectate_target_name("FREE ROAM")
 		return
-	var colour := Color.WHITE
-	if NetworkClient.players.has(NetworkClient.my_player_id):
-		colour = Color(NetworkClient.players[NetworkClient.my_player_id]["colour"])
-	var mesh := ball.get_node_or_null("MeshInstance3D") as MeshInstance3D
-	if mesh == null:
+	_spectate_index = clampi(_spectate_index, 0, ids.size() - 1)
+	var id := ids[_spectate_index]
+	var ghost: Node3D = _ghosts.get(id) as Node3D
+	if ghost == null or not is_instance_valid(ghost):
+		ghost = _ensure_ghost(id, _color_for(id), _tee_world_pos(id), _player_name(id))
+	var switched := id != _spectate_id
+	_spectate_id = id
+	camera_rig.set_follow(ghost)
+	if switched and camera_rig.has_method("reset_view"):
+		camera_rig.reset_view()
+	ghost.visible = true
+	hud.set_spectate_target_name(_player_name(id))
+
+
+func _clear_powers() -> void:
+	_slot_kind = ["", ""]
+	_slot_until = [0, 0]
+	_shield_until = 0
+	_shrink_until = 0
+	_refresh_local_powers()
+
+
+func is_ready_for_map_select() -> bool:
+	return not _hole_results.is_empty() or (hud != null and hud.is_showing_results())
+
+
+func _on_timer_expired() -> void:
+	_freeze_unfinished_play()
+
+
+func _freeze_unfinished_play() -> void:
+	hud.stop_timer()
+	if ball != null and is_instance_valid(ball) and not ball.is_holed:
+		ball.freeze = true
+		_hide_ghost_club()
+	if hud.has_method("hide_kickoff"):
+		hud.hide_kickoff()
+
+
+func _on_hole_ended(hole_index: int, last_hole: bool, results: Array, ends_at: float = 0.0) -> void:
+	_clear_powers()
+	_hole_results = results
+	_last_hole = last_hole
+	_results_page = 1
+	_board_ready = true
+	hud.show_spectate(false)
+	_freeze_unfinished_play()
+	_set_phone_rank(
+		_place_from_results(results, "points" if GameSession.is_free_for_all() else "strokes"),
+		"THIS HOLE"
+	)
+	await hud.show_round_results(hole_index, last_hole, results, int(GameSession.get_map().get("par", 3)))
+	if not is_inside_tree() or _leaving_results:
 		return
-	var mat := StandardMaterial3D.new()
-	mat.albedo_color = colour
-	mesh.material_override = mat
+	_phone_powers_key = ""
+	_refresh_power_hud()
+	hud.begin_results_hold(ends_at, GameSession.hosting)
+
+
+func _on_results_next(last_hole: bool, ends_at: float = 0.0) -> void:
+	_last_hole = last_hole
+	_scores_ends_at = ends_at
+	if _leaving_results:
+		return
+	await _show_score_board(ends_at, GameSession.hosting)
+
+
+func _show_score_board(ends_at: float = 0.0, can_skip: bool = false) -> void:
+	if _results_page >= 2 or _leaving_results:
+		return
+	_results_page = 2
+	hud.clear_results_hold()
+	_set_phone_rank(
+		_place_from_results(_hole_results, "total"),
+		"FINAL" if _last_hole else "STANDINGS"
+	)
+	if _last_hole:
+		await hud.show_match_results(_placings_from_hole(_hole_results))
+	else:
+		await hud.show_standings_results(_hole_results)
+	if not is_inside_tree() or _leaving_results:
+		return
+	_phone_powers_key = ""
+	_refresh_power_hud()
+	hud.begin_results_hold(ends_at, can_skip)
+
+
+func _on_results_skip() -> void:
+	if not hud.can_skip_results():
+		return
+	hud.clear_results_hold()
+	if GameSession.online:
+		NetworkClient.send_skip_results()
+		return
+	await _advance_local_results()
+
+
+func _on_results_hold_finished() -> void:
+	if GameSession.online:
+		return
+	await _advance_local_results()
+
+
+func _advance_local_results() -> void:
+	if _leaving_results:
+		return
+	if _results_page < 2:
+		await _show_score_board(0.0, true)
+		return
+	_leaving_results = true
+	_set_phone_rank(0)
+	if is_inside_tree():
+		await hud.fade_out_results(false)
+	if is_inside_tree():
+		GameSession.open_select_faded()
+
+
+func leave_to_map_select() -> void:
+	if _leaving_results:
+		return
+	if _hole_results.is_empty() and not hud.is_showing_results():
+		return
+	_leaving_results = true
+	_set_phone_rank(0)
+	if is_inside_tree():
+		await hud.fade_out_results(false)
+	if is_inside_tree():
+		GameSession.open_select_faded()
+
+
+func present_match_results(_placings: Array) -> void:
+	if _leaving_results:
+		return
+	_leaving_results = true
+	_set_phone_rank(0)
+	if is_inside_tree():
+		await hud.fade_out_results(false)
+	if is_inside_tree():
+		GameSession.return_to_lobby_faded()
+
+
+func _wait_board_ready(limit: float) -> void:
+	var waited := 0.0
+	while not _board_ready and is_inside_tree() and waited < limit:
+		await get_tree().process_frame
+		waited += get_process_delta_time()
+
+
+func _placings_from_hole(results: Array) -> Array:
+	var time_field := _results_time_field("total")
+	var ranked: Array = []
+	for item in results:
+		if item is Dictionary:
+			ranked.append(item)
+	ranked.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
+		return _result_better(a, b, "total", time_field)
+	)
+	var placings: Array = []
+	var place := 1
+	for i in ranked.size():
+		var r: Dictionary = ranked[i]
+		if i > 0 and not _result_tied(ranked[i - 1], r, "total", time_field):
+			place = i + 1
+		placings.append({
+			"playerId": String(r.get("playerId", "")),
+			"name": String(r.get("name", "Player")),
+			"color": r.get("color", "#E23B3B"),
+			"total": int(r.get("total", 0)),
+			"time": _result_clock(r, time_field if not time_field.is_empty() else "time"),
+			"place": place,
+		})
+	return placings
+
+
+func _on_oob() -> void:
+	if _oob_wait or _kickoff or ball == null or not is_instance_valid(ball) or ball.is_holed:
+		return
+	_return_from_oob()
+
+
+func _return_from_oob() -> void:
+	_oob_wait = true
+	hud.set_ball_state(BallStatusIndicator.State.OOB)
+	var back := ball.last_safe_position
+	ball.freeze = true
+	ball.visible = false
+	ball.linear_velocity = Vector3.ZERO
+	ball.angular_velocity = Vector3.ZERO
+	ball.is_moving = false
+	ball.sleeping = true
+	var park := _ground_snap(back)
+	ball.global_position = park
+	PhysicsServer3D.body_set_state(ball.get_rid(), PhysicsServer3D.BODY_STATE_TRANSFORM, ball.global_transform)
+	if GameSession.online:
+		NetworkClient.send_oob()
+	for n in [3, 2, 1]:
+		if hud.has_method("show_kickoff"):
+			hud.show_kickoff(str(n))
+		await get_tree().create_timer(1.0).timeout
+		if not is_inside_tree():
+			return
+	if hud.has_method("hide_kickoff"):
+		hud.hide_kickoff()
+	if ball == null or not is_instance_valid(ball):
+		_oob_wait = false
+		return
+	ball.reset_to(park)
+	ball.visible = true
+	hud.set_ball_state(BallStatusIndicator.State.READY)
+	_oob_wait = false
+	_reset_phone_swing()
+	if aim_controller != null and aim_controller.has_method("clear_aim"):
+		aim_controller.clear_aim()

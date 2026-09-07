@@ -1,0 +1,220 @@
+[gd_scene format=3 uid="uid://bwinmenuputt"]
+
+[ext_resource type="Script" path="res://scripts/win_menu.gd" id="1_win"]
+[ext_resource type="Theme" path="res://ui/hud_theme.tres" id="2_theme"]
+[ext_resource type="FontFile" path="res://ui/fonts/Montserrat-ExtraBold.ttf" id="3_extrabold"]
+[ext_resource type="FontFile" path="res://ui/fonts/Montserrat-Bold.ttf" id="4_bold"]
+
+[sub_resource type="LabelSettings" id="LabelSettings_title"]
+font = ExtResource("3_extrabold")
+font_size = 36
+font_color = Color(0.298, 0.722, 0.69, 1)
+
+[sub_resource type="LabelSettings" id="LabelSettings_sub"]
+font = ExtResource("3_extrabold")
+font_size = 16
+font_color = Color(0.353, 0.322, 0.282, 1)
+
+[sub_resource type="LabelSettings" id="LabelSettings_stat"]
+font = ExtResource("4_bold")
+font_size = 18
+font_color = Color(0.353, 0.322, 0.282, 1)
+
+[sub_resource type="LabelSettings" id="LabelSettings_value"]
+font = ExtResource("3_extrabold")
+font_size = 22
+font_color = Color(0.298, 0.722, 0.69, 1)
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_card"]
+bg_color = Color(0.965, 0.945, 0.902, 1)
+corner_radius_top_left = 36
+corner_radius_top_right = 36
+corner_radius_bottom_right = 36
+corner_radius_bottom_left = 36
+corner_detail = 16
+content_margin_left = 36.0
+content_margin_top = 32.0
+content_margin_right = 36.0
+content_margin_bottom = 28.0
+shadow_color = Color(0.42, 0.33, 0.27, 0.22)
+shadow_size = 18
+shadow_offset = Vector2(0, 6)
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_btn"]
+bg_color = Color(0.298, 0.722, 0.69, 1)
+corner_radius_top_left = 999
+corner_radius_top_right = 999
+corner_radius_bottom_right = 999
+corner_radius_bottom_left = 999
+corner_detail = 16
+content_margin_left = 28.0
+content_margin_top = 12.0
+content_margin_right = 28.0
+content_margin_bottom = 12.0
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_btn_hover"]
+bg_color = Color(0.427, 0.8, 0.776, 1)
+corner_radius_top_left = 999
+corner_radius_top_right = 999
+corner_radius_bottom_right = 999
+corner_radius_bottom_left = 999
+content_margin_left = 28.0
+content_margin_top = 12.0
+content_margin_right = 28.0
+content_margin_bottom = 12.0
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_btn_pressed"]
+bg_color = Color(0.227, 0.604, 0.576, 1)
+corner_radius_top_left = 999
+corner_radius_top_right = 999
+corner_radius_bottom_right = 999
+corner_radius_bottom_left = 999
+content_margin_left = 28.0
+content_margin_top = 12.0
+content_margin_right = 28.0
+content_margin_bottom = 12.0
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_courses"]
+bg_color = Color(0.93, 0.88, 0.76, 1)
+corner_radius_top_left = 999
+corner_radius_top_right = 999
+corner_radius_bottom_right = 999
+corner_radius_bottom_left = 999
+content_margin_left = 28.0
+content_margin_top = 12.0
+content_margin_right = 28.0
+content_margin_bottom = 12.0
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_courses_hover"]
+bg_color = Color(0.96, 0.93, 0.86, 1)
+corner_radius_top_left = 999
+corner_radius_top_right = 999
+corner_radius_bottom_right = 999
+corner_radius_bottom_left = 999
+content_margin_left = 28.0
+content_margin_top = 12.0
+content_margin_right = 28.0
+content_margin_bottom = 12.0
+
+[node name="WinMenu" type="CanvasLayer"]
+layer = 20
+visible = false
+script = ExtResource("1_win")
+
+[node name="Dimmer" type="ColorRect" parent="."]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 0
+color = Color(0.16, 0.12, 0.1, 0.46)
+theme = ExtResource("2_theme")
+
+[node name="Card" type="PanelContainer" parent="Dimmer"]
+layout_mode = 1
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -210.0
+offset_top = -210.0
+offset_right = 210.0
+offset_bottom = 210.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_styles/panel = SubResource("StyleBoxFlat_card")
+
+[node name="Layout" type="VBoxContainer" parent="Dimmer/Card"]
+layout_mode = 2
+theme_override_constants/separation = 14
+alignment = 1
+
+[node name="Title" type="Label" parent="Dimmer/Card/Layout"]
+layout_mode = 2
+text = "HOLE COMPLETE"
+label_settings = SubResource("LabelSettings_title")
+horizontal_alignment = 1
+
+[node name="Subtitle" type="Label" parent="Dimmer/Card/Layout"]
+layout_mode = 2
+text = "HOLE 1 COMPLETE"
+label_settings = SubResource("LabelSettings_sub")
+horizontal_alignment = 1
+
+[node name="Stats" type="VBoxContainer" parent="Dimmer/Card/Layout"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="StrokesRow" type="HBoxContainer" parent="Dimmer/Card/Layout/Stats"]
+layout_mode = 2
+
+[node name="Caption" type="Label" parent="Dimmer/Card/Layout/Stats/StrokesRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "STROKES"
+label_settings = SubResource("LabelSettings_stat")
+
+[node name="Value" type="Label" parent="Dimmer/Card/Layout/Stats/StrokesRow"]
+layout_mode = 2
+text = "0"
+label_settings = SubResource("LabelSettings_value")
+
+[node name="ParRow" type="HBoxContainer" parent="Dimmer/Card/Layout/Stats"]
+layout_mode = 2
+
+[node name="Caption" type="Label" parent="Dimmer/Card/Layout/Stats/ParRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "PAR"
+label_settings = SubResource("LabelSettings_stat")
+
+[node name="Value" type="Label" parent="Dimmer/Card/Layout/Stats/ParRow"]
+layout_mode = 2
+text = "3"
+label_settings = SubResource("LabelSettings_value")
+
+[node name="TimeRow" type="HBoxContainer" parent="Dimmer/Card/Layout/Stats"]
+layout_mode = 2
+
+[node name="Caption" type="Label" parent="Dimmer/Card/Layout/Stats/TimeRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "TIME"
+label_settings = SubResource("LabelSettings_stat")
+
+[node name="Value" type="Label" parent="Dimmer/Card/Layout/Stats/TimeRow"]
+layout_mode = 2
+text = "0:00"
+label_settings = SubResource("LabelSettings_value")
+
+[node name="ReplayButton" type="Button" parent="Dimmer/Card/Layout"]
+custom_minimum_size = Vector2(0, 48)
+layout_mode = 2
+focus_mode = 0
+mouse_default_cursor_shape = 2
+theme_override_fonts/font = ExtResource("3_extrabold")
+theme_override_font_sizes/font_size = 18
+theme_override_styles/normal = SubResource("StyleBoxFlat_btn")
+theme_override_styles/hover = SubResource("StyleBoxFlat_btn_hover")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_btn_pressed")
+text = "PLAY AGAIN"
+
+[node name="CoursesButton" type="Button" parent="Dimmer/Card/Layout"]
+custom_minimum_size = Vector2(0, 48)
+layout_mode = 2
+focus_mode = 0
+mouse_default_cursor_shape = 2
+theme_override_colors/font_color = Color(0.298, 0.722, 0.69, 1)
+theme_override_colors/font_hover_color = Color(0.227, 0.604, 0.576, 1)
+theme_override_colors/font_pressed_color = Color(0.227, 0.604, 0.576, 1)
+theme_override_fonts/font = ExtResource("3_extrabold")
+theme_override_font_sizes/font_size = 18
+theme_override_styles/normal = SubResource("StyleBoxFlat_courses")
+theme_override_styles/hover = SubResource("StyleBoxFlat_courses_hover")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_courses")
+text = "COURSES"
+
+[connection signal="pressed" from="Dimmer/Card/Layout/ReplayButton" to="." method="_on_replay_pressed"]
+[connection signal="pressed" from="Dimmer/Card/Layout/CoursesButton" to="." method="_on_courses_pressed"]

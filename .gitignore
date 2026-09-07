@@ -1,14 +1,17 @@
 # Node
 node_modules/
 dist/
+.tools/
+
+# Local CLI installs at repo root
+/package-lock.json
+/node_modules/
 
 # Godot
 .godot/
 *.import
+# Godot intermediates (client/build is tracked for Docker/Railway)
 *.translation
-
-# Godot web export build
-client/build/
 
 # OS
 .DS_Store
@@ -23,3 +26,11 @@ Thumbs.db
 .env
 .env.local
 .env.*.local
+
+# Local TLS private keys
+**/*key.pem
+**/*.key
+server/certs/
+
+# Duplicate asset copies outside the Godot project
+/assets/

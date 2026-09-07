@@ -1,0 +1,1480 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta http-equiv="Cache-Control" content="no-store" />
+  <title>Putt Party Remote</title>
+  <style>
+    :root {
+      --cream: #f6f1e6;
+      --ink: #3a322c;
+      --teal: #4cb8b0;
+      --teal-press: #3a9a93;
+      --brown: #8a7e72;
+    }
+    * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+    html, body {
+      margin: 0;
+      height: 100%;
+      background: var(--cream);
+      color: var(--ink);
+      font-family: ui-sans-serif, system-ui, sans-serif;
+      touch-action: none;
+      user-select: none;
+      overflow: hidden;
+    }
+    body { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 16px; }
+    h1 { margin: 0 0 6px; font-size: 20px; letter-spacing: 0.04em; }
+    p { margin: 0 0 10px; color: var(--brown); text-align: center; }
+    #play { width: min(420px, 100%); display: flex; flex-direction: column; align-items: center; gap: 10px; }
+    #pad {
+      width: min(68vw, 240px);
+      height: min(68vw, 240px);
+      border-radius: 50%;
+      border: 6px solid #e4dcce;
+      background: #fffbf5;
+      box-shadow: 0 10px 24px rgba(58, 50, 44, 0.14);
+      position: relative;
+      touch-action: none;
+    }
+    #pad.held { border-color: var(--teal); }
+    #meter {
+      position: absolute;
+      inset: 12px;
+      border-radius: 50%;
+      border: 10px solid #e4dcce;
+      pointer-events: none;
+    }
+    #knob {
+      width: 42%;
+      height: 42%;
+      border-radius: 50%;
+      background: var(--teal);
+      color: #fff;
+      font-size: 18px;
+      font-weight: 800;
+      letter-spacing: 0.08em;
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      transform: translate(-50%, -50%);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 8px 18px rgba(58, 50, 44, 0.18);
+      pointer-events: none;
+    }
+    #pad.held #knob { background: var(--teal-press); }
+    #aim-row {
+      position: relative;
+      width: min(68vw, 240px);
+      height: min(68vw, 240px);
+    }
+    #aim-row #pad {
+      width: 100%;
+      height: 100%;
+    }
+    #look {
+      position: absolute;
+      width: 32%;
+      height: 32%;
+      right: -16%;
+      bottom: 8%;
+      z-index: 2;
+      border-radius: 50%;
+      border: 5px solid #e4dcce;
+      background: #fffbf5;
+      box-shadow: 0 8px 16px rgba(58, 50, 44, 0.14);
+      touch-action: none;
+    }
+    #look.held { border-color: var(--teal); }
+    #look-knob {
+      width: 44%;
+      height: 44%;
+      border-radius: 50%;
+      background: var(--teal);
+      color: #fff;
+      font-size: 9px;
+      font-weight: 800;
+      letter-spacing: 0.06em;
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      transform: translate(-50%, -50%);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 6px 12px rgba(58, 50, 44, 0.16);
+      pointer-events: none;
+    }
+    #look.held #look-knob { background: var(--teal-press); }
+    #zoom {
+      position: absolute;
+      width: 22%;
+      right: -26%;
+      bottom: calc(8% + 32% + 10px);
+      z-index: 3;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .zbtn {
+      width: 100%;
+      aspect-ratio: 1;
+      border-radius: 50%;
+      border: 5px solid #e4dcce;
+      background: #fffbf5;
+      color: var(--teal);
+      font-size: 22px;
+      font-weight: 800;
+      line-height: 1;
+      padding: 0;
+      box-shadow: 0 8px 16px rgba(58, 50, 44, 0.14);
+      touch-action: manipulation;
+      appearance: none;
+      -webkit-appearance: none;
+    }
+    .zbtn.held {
+      border-color: var(--teal);
+      background: var(--teal);
+      color: #fff;
+    }
+    #restart {
+      position: fixed;
+      top: calc(12px + env(safe-area-inset-top));
+      left: calc(12px + env(safe-area-inset-left));
+      z-index: 6;
+      border: 5px solid #e4dcce;
+      background: #fffbf5;
+      color: var(--ink);
+      font: inherit;
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: 0.08em;
+      padding: 10px 12px;
+      border-radius: 999px;
+      box-shadow: 0 8px 16px rgba(58, 50, 44, 0.14);
+      touch-action: manipulation;
+      appearance: none;
+      -webkit-appearance: none;
+    }
+    #restart:active, #restart.held {
+      border-color: var(--teal);
+      background: var(--teal);
+      color: #fff;
+    }
+    body:has(#rank-view.show) #restart,
+    body:has(#type-view.show) #restart { display: none; }
+    #status { min-height: 1.4em; }
+    #powers {
+      width: 100%;
+      display: flex;
+      justify-content: center;
+      gap: 28px;
+      padding: 4px 0 2px;
+    }
+    .pslot {
+      width: 68px;
+      height: 68px;
+      border: none;
+      padding: 0;
+      background: transparent;
+      position: relative;
+      appearance: none;
+      -webkit-appearance: none;
+      touch-action: manipulation;
+    }
+    .pslot .ring,
+    .pslot .face {
+      position: absolute;
+      inset: 0;
+      border-radius: 50%;
+      pointer-events: none;
+    }
+    .pslot.empty .ring {
+      border: 3px dotted #8a7e72;
+      background: transparent;
+    }
+    .pslot.charged .face,
+    .pslot.active .face {
+      background: #f6f1e6;
+      box-shadow: 0 6px 14px rgba(58, 50, 44, 0.12);
+    }
+    .pslot.charged.shield .ring { border: 3px solid #5a5248; }
+    .pslot.charged.tiny .ring { border: 3px solid #c9a22a; }
+    .pslot.charged.gust .ring { border: 3px solid #2a8a84; }
+    .pslot.active .ring {
+      border: none;
+      background: conic-gradient(from 0deg, var(--accent) var(--sweep), transparent var(--sweep));
+      -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 3px), #000 calc(100% - 2px));
+      mask: radial-gradient(farthest-side, transparent calc(100% - 3px), #000 calc(100% - 2px));
+    }
+    .pslot.shield { --accent: #5a5248; --sweep: 0deg; }
+    .pslot.tiny { --accent: #c9a22a; --sweep: 0deg; }
+    .pslot.gust { --accent: #2a8a84; --sweep: 0deg; }
+    .pslot .sigil {
+      position: absolute;
+      inset: 16%;
+      width: 68%;
+      height: 68%;
+      pointer-events: none;
+      opacity: 0;
+    }
+    .pslot.charged.shield .sigil-shield,
+    .pslot.active.shield .sigil-shield,
+    .pslot.charged.tiny .sigil-tiny,
+    .pslot.active.tiny .sigil-tiny,
+    .pslot.charged.gust .sigil-gust,
+    .pslot.active.gust .sigil-gust { opacity: 1; }
+    .pslot.charged { cursor: pointer; }
+    #rank-view {
+      display: none;
+      position: fixed;
+      inset: 0;
+      z-index: 8;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      background: var(--cream);
+      pointer-events: none;
+    }
+    #rank-view.show { display: flex; }
+    #type-view {
+      display: none;
+      position: fixed;
+      inset: 0;
+      z-index: 12;
+      align-items: flex-start;
+      justify-content: center;
+      background: rgba(58, 50, 44, 0.35);
+      padding: calc(16px + env(safe-area-inset-top)) 12px 12px;
+      touch-action: manipulation;
+      user-select: text;
+    }
+    #type-view.show { display: flex; }
+    #type-card {
+      width: min(460px, 100%);
+      background: #fffbf5;
+      border: 3px solid #e4dcce;
+      border-radius: 22px;
+      padding: 12px;
+      box-shadow: 0 16px 36px rgba(58, 50, 44, 0.22);
+      position: relative;
+    }
+    #type-hint {
+      display: none;
+      margin: 0 0 8px;
+      text-align: center;
+      font-size: 13px;
+      font-weight: 800;
+      letter-spacing: 0.06em;
+      color: var(--brown);
+    }
+    #type-view.needs-tap #type-hint { display: block; }
+    #type-tap {
+      display: none;
+      position: absolute;
+      inset: 12px;
+      z-index: 2;
+      border: none;
+      border-radius: 16px;
+      background: rgba(255, 251, 245, 0.94);
+      color: var(--ink);
+      font: inherit;
+      font-size: 18px;
+      font-weight: 800;
+      letter-spacing: 0.04em;
+      touch-action: manipulation;
+    }
+    #type-view.needs-tap #type-tap { display: grid; place-items: center; }
+    #type-row {
+      display: flex;
+      align-items: stretch;
+      gap: 8px;
+    }
+    #type-input {
+      flex: 1 1 auto;
+      min-width: 0;
+      width: auto;
+      border: 2px solid #e4dcce;
+      border-radius: 14px;
+      background: #fff;
+      color: var(--ink);
+      font: inherit;
+      font-size: 20px;
+      font-weight: 700;
+      padding: 12px 14px;
+      outline: none;
+      touch-action: manipulation;
+      user-select: text;
+      -webkit-user-select: text;
+    }
+    #type-input:focus { border-color: var(--teal); }
+    #type-go {
+      flex: 0 0 56px;
+      min-height: 48px;
+      border: none;
+      border-radius: 14px;
+      background: var(--teal);
+      color: #fff;
+      display: grid;
+      place-items: center;
+      padding: 0;
+      touch-action: manipulation;
+    }
+    #type-go svg { display: block; }
+    #rank-place {
+      font-size: min(28vw, 140px);
+      font-weight: 800;
+      letter-spacing: 0.02em;
+      line-height: 0.95;
+      color: var(--ink);
+    }
+    #rank-cap {
+      margin-top: 12px;
+      font-size: 15px;
+      font-weight: 800;
+      letter-spacing: 0.16em;
+      color: var(--brown);
+    }
+    #sensors {
+      width: 100%;
+      background: #fffbf5;
+      border: 2px solid #e4dcce;
+      border-radius: 16px;
+      padding: 10px 12px;
+      font-size: 12px;
+      line-height: 1.45;
+      color: var(--ink);
+    }
+    #sensors.live { border-color: var(--teal); }
+    #sensors .row { display: flex; justify-content: space-between; gap: 8px; }
+    #sensors .dim { color: var(--brown); }
+    #bar {
+      height: 12px;
+      margin-top: 8px;
+      border-radius: 999px;
+      background: #e4dcce;
+      overflow: hidden;
+    }
+    #bar > i {
+      display: block;
+      height: 100%;
+      width: 0%;
+      background: var(--teal);
+    }
+    #bar.hot > i { background: #e23b3b; }
+    #tune {
+      width: 100%;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      align-items: stretch;
+    }
+    #calibrate {
+      border: none;
+      border-radius: 999px;
+      background: var(--teal);
+      color: #fff;
+      font-family: inherit;
+      font-size: 15px;
+      font-weight: 800;
+      letter-spacing: 0.08em;
+      padding: 12px 18px;
+      touch-action: manipulation;
+    }
+    #calibrate:disabled { background: var(--brown-soft, #8a7e72); }
+    #tune label { font-size: 12px; color: var(--brown); text-align: center; }
+    #sens { width: 100%; }
+  </style>
+</head>
+<body>
+  <div id="rank-view">
+    <div id="rank-place">1st</div>
+    <div id="rank-cap">YOUR PLACE</div>
+  </div>
+  <div id="type-view">
+    <div id="type-card">
+      <p id="type-hint">TAP TO OPEN KEYBOARD</p>
+      <div id="type-row">
+        <input id="type-input" type="text" inputmode="text" enterkeyhint="send" autocomplete="nickname" autocapitalize="words" autocorrect="off" spellcheck="false" />
+        <button type="button" id="type-go" aria-label="Send">
+          <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" focusable="false">
+            <path fill="currentColor" d="M3.4 20.6 21 12 3.4 3.4 3 10.1 14.2 12 3 13.9z"/>
+          </svg>
+        </button>
+      </div>
+      <button type="button" id="type-tap">TAP TO TYPE</button>
+    </div>
+  </div>
+  <button type="button" id="restart" aria-label="Restart ball">RESTART</button>
+  <div id="play">
+    <h1>PHONE REMOTE</h1>
+    <p id="status">Drag AIM for power and direction. Then swing the phone up and down.</p>
+    <div id="aim-row">
+      <div id="pad"><div id="meter"></div><div id="knob">AIM</div></div>
+      <div id="look" aria-label="Look">
+        <div id="look-knob">LOOK</div>
+      </div>
+      <div id="zoom">
+        <button type="button" class="zbtn" id="zoom-in" aria-label="Zoom in">+</button>
+        <button type="button" class="zbtn" id="zoom-out" aria-label="Zoom out">-</button>
+      </div>
+    </div>
+    <div id="powers">
+      <button type="button" class="pslot empty" id="p-left" data-kind="" aria-label="Power slot">
+        <span class="face"></span>
+        <span class="ring"></span>
+        <svg class="sigil sigil-shield" viewBox="0 0 48 48" aria-hidden="true">
+          <path d="M24 6 L38 14 L36 28 L24 42 L12 28 L10 14 Z" fill="#8e8a84" stroke="#5a5248" stroke-width="1.8" stroke-linejoin="round"/>
+          <path d="M24 12 L24 34" stroke="#f6f1e6" stroke-width="1.6"/>
+        </svg>
+        <svg class="sigil sigil-tiny" viewBox="0 0 48 48" aria-hidden="true">
+          <circle cx="24" cy="24" r="14" fill="none" stroke="#c9a22a" stroke-width="2.2"/>
+          <circle cx="24" cy="24" r="7" fill="#f2d04b"/>
+          <circle cx="21.5" cy="21.5" r="1.8" fill="#fff4c2"/>
+        </svg>
+        <svg class="sigil sigil-gust" viewBox="0 0 48 48" aria-hidden="true">
+          <path d="M8 16 C18 10, 28 10, 40 16" fill="none" stroke="#4cb8b0" stroke-width="3" stroke-linecap="round"/>
+          <path d="M8 24 C20 18, 30 18, 40 24" fill="none" stroke="#2a8a84" stroke-width="3" stroke-linecap="round"/>
+          <path d="M8 32 C18 26, 28 26, 40 32" fill="none" stroke="#4cb8b0" stroke-width="3" stroke-linecap="round"/>
+        </svg>
+      </button>
+      <button type="button" class="pslot empty" id="p-right" data-kind="" aria-label="Power slot">
+        <span class="face"></span>
+        <span class="ring"></span>
+        <svg class="sigil sigil-shield" viewBox="0 0 48 48" aria-hidden="true">
+          <path d="M24 6 L38 14 L36 28 L24 42 L12 28 L10 14 Z" fill="#8e8a84" stroke="#5a5248" stroke-width="1.8" stroke-linejoin="round"/>
+          <path d="M24 12 L24 34" stroke="#f6f1e6" stroke-width="1.6"/>
+        </svg>
+        <svg class="sigil sigil-tiny" viewBox="0 0 48 48" aria-hidden="true">
+          <circle cx="24" cy="24" r="14" fill="none" stroke="#c9a22a" stroke-width="2.2"/>
+          <circle cx="24" cy="24" r="7" fill="#f2d04b"/>
+          <circle cx="21.5" cy="21.5" r="1.8" fill="#fff4c2"/>
+        </svg>
+        <svg class="sigil sigil-gust" viewBox="0 0 48 48" aria-hidden="true">
+          <path d="M8 16 C18 10, 28 10, 40 16" fill="none" stroke="#4cb8b0" stroke-width="3" stroke-linecap="round"/>
+          <path d="M8 24 C20 18, 30 18, 40 24" fill="none" stroke="#2a8a84" stroke-width="3" stroke-linecap="round"/>
+          <path d="M8 32 C18 26, 28 26, 40 32" fill="none" stroke="#4cb8b0" stroke-width="3" stroke-linecap="round"/>
+        </svg>
+      </button>
+    </div>
+    <div id="tune">
+      <button id="calibrate" type="button">CALIBRATE</button>
+      <label for="sens">Swing effort <span id="sens-val">1</span></label>
+      <input id="sens" type="range" min="1" max="10" step="1" value="1" />
+    </div>
+    <div id="sensors">
+      <div class="row"><span class="dim">Link</span><span id="s-state">connecting...</span></div>
+      <div class="row"><span class="dim">Page</span><span id="s-origin">-</span></div>
+      <div class="row"><span class="dim">Motion</span><span id="s-motion">waiting</span></div>
+      <div class="row"><span class="dim">Up / down</span><span id="s-acc">0.00 g</span></div>
+      <div class="row"><span class="dim">Swing</span><span id="s-phase">idle</span></div>
+      <div class="row"><span class="dim">Needs</span><span id="s-peak">-</span></div>
+      <div id="bar"><i id="s-fill"></i></div>
+    </div>
+  </div>
+  <script>
+    const status = document.getElementById("status");
+    const pad = document.getElementById("pad");
+    const knob = document.getElementById("knob");
+    const lookPad = document.getElementById("look");
+    const lookKnob = document.getElementById("look-knob");
+    const meter = document.getElementById("meter");
+    const sensors = document.getElementById("sensors");
+    const sState = document.getElementById("s-state");
+    const sOrigin = document.getElementById("s-origin");
+    const sMotion = document.getElementById("s-motion");
+    const sAcc = document.getElementById("s-acc");
+    const sPhase = document.getElementById("s-phase");
+    const sPeak = document.getElementById("s-peak");
+    const sFill = document.getElementById("s-fill");
+    const rankView = document.getElementById("rank-view");
+    const rankPlace = document.getElementById("rank-place");
+    const typeView = document.getElementById("type-view");
+    const typeCard = document.getElementById("type-card");
+    const typeInput = document.getElementById("type-input");
+    const typeGo = document.getElementById("type-go");
+    const typeTap = document.getElementById("type-tap");
+    let typingOpen = false;
+    let typeSendAt = 0;
+    let typeClosing = false;
+    let typeArmed = false;
+    const calibrateBtn = document.getElementById("calibrate");
+    const sensInput = document.getElementById("sens");
+    const sensVal = document.getElementById("sens-val");
+    const SETTLE_MS = 300;
+    // Thresholds are fractions of gravity, so they hold whether the browser
+    // reports m/s^2 or g, and whichever way up the phone is held.
+    const BACK_G = 0.30;
+    const TOP_G = 0.14;
+    const DOWN_G = 0.34;
+    const MIN_BACK_MS = 90;
+    const MIN_TOP_MS = 40;
+    const BACK_MAX_MS = 1500;
+    const DOWN_MAX_MS = 700;
+    const CAL_MS = 1100;
+    let holding = false;
+    let fired = false;
+    let sx = 0;
+    let sy = 0;
+    let lx = 0;
+    let ly = 0;
+    let zoom = 0;
+    let looking = false;
+    let power = 0;
+    let beta = 75;
+    let gamma = 0;
+    let alpha = 0;
+    let lift = 0;
+    let motionNow = 0;
+    let recenter = false;
+    let poseBusy = false;
+    let poseQueued = false;
+    let poseTimer = null;
+    let holdAt = 0;
+    let peakAccel = 0;
+    let phase = "hold";
+    let backAt = 0;
+    let backSince = 0;
+    let topSince = 0;
+    let topAt = 0;
+    let vertical = 0;
+    let gravMag = 0;
+    let calibrating = false;
+    let calStart = 0;
+    let calSamples = 0;
+    let calX = 0;
+    let calY = 0;
+    let calZ = 0;
+    let calibrated = false;
+    let sensitivity = 1;
+    let motionHits = 0;
+    let poseOk = false;
+    let poseFails = 0;
+    let poseSentAt = 0;
+    let lastTouchAt = 0;
+    let firedAt = 0;
+    let displayPeak = 0;
+    let motionWarned = false;
+    let hasLinear = false;
+    let gravReady = false;
+    let gravX = 0;
+    let gravY = 0;
+    let gravZ = 0;
+    const POSE_TIMEOUT_MS = 600;
+    const REARM_MS = 1400;
+    const pairCode = (new URLSearchParams(location.search).get("c") || "").replace(/\s+/g, "").toUpperCase();
+    let pairWs = null;
+    let pairLinked = false;
+    const slotLeft = document.getElementById("p-left");
+    const slotRight = document.getElementById("p-right");
+
+    function applyPowers(data) {
+      if (!data || typeof data !== "object") return;
+      if (data.leftKind != null || data.rightKind != null) {
+        paintSlot(slotLeft, data.leftKind, data.leftLeft);
+        paintSlot(slotRight, data.rightKind, data.rightLeft);
+      } else {
+        paintSlot(slotLeft, data.shield ? "shield" : "", data.shieldLeft);
+        paintSlot(slotRight, data.shrink ? "shrink" : "", data.shrinkLeft);
+      }
+      applyRank(data);
+      applyType(data);
+    }
+
+    function ordinal(place) {
+      const n = Math.max(0, Math.floor(Number(place) || 0));
+      if (n < 1) return "";
+      const tens = n % 100;
+      const ones = n % 10;
+      if (tens >= 11 && tens <= 13) return n + "th";
+      if (ones === 1) return n + "st";
+      if (ones === 2) return n + "nd";
+      if (ones === 3) return n + "rd";
+      return n + "th";
+    }
+
+    function applyRank(data) {
+      if (!data || !rankView || !rankPlace) return;
+      if (data.rank == null && !data.rankText) return;
+      const place = Math.max(0, Math.floor(Number(data.rank) || 0));
+      const text = String(data.rankText || "").trim() || ordinal(place);
+      const cap = String(data.rankCaption || "").trim();
+      const rankCap = document.getElementById("rank-cap");
+      if (place > 0 && text) {
+        rankPlace.textContent = text;
+        if (rankCap) rankCap.textContent = cap || "YOUR PLACE";
+        rankView.classList.add("show");
+      } else {
+        rankView.classList.remove("show");
+      }
+    }
+
+    function applyType(data) {
+      if (!data || data.typeOn == null || !typeView || !typeInput) return;
+      if (data.typeOn) {
+        if (typeClosing) return;
+        const limit = Math.max(1, Number(data.typeMax) || 32);
+        typeInput.maxLength = limit;
+        if (!typingOpen) {
+          typeInput.value = String(data.typeText || "");
+        }
+        showType(true);
+      } else {
+        typeClosing = false;
+        if (typingOpen) showType(false);
+      }
+    }
+
+    function showType(on) {
+      typingOpen = !!on;
+      typeView.classList.toggle("show", typingOpen);
+      if (typingOpen) {
+        resetSwing();
+        holding = false;
+        pad.classList.remove("held");
+        // Mobile browsers only open the soft keyboard after a real tap.
+        typeArmed = false;
+        typeView.classList.add("needs-tap");
+        typeInput.blur();
+      } else {
+        typeArmed = false;
+        typeView.classList.remove("needs-tap");
+        typeInput.blur();
+      }
+    }
+
+    function armTypeKeyboard() {
+      typeArmed = true;
+      typeView.classList.remove("needs-tap");
+      focusType();
+    }
+
+    function focusType() {
+      const kick = () => {
+        try {
+          typeInput.focus({ preventScroll: false });
+          const end = typeInput.value.length;
+          typeInput.setSelectionRange(end, end);
+        } catch (_) {}
+      };
+      kick();
+      requestAnimationFrame(kick);
+      setTimeout(kick, 40);
+      setTimeout(kick, 160);
+    }
+
+    function sendType(done, closing) {
+      const payload = { text: typeInput.value || "", done: done ? 1 : 0, close: closing ? 1 : 0 };
+      const now = performance.now();
+      if (!done && !closing && now - typeSendAt < 80) return;
+      typeSendAt = now;
+      if (done || closing) typeClosing = true;
+      if (pairCode && pairWs && pairWs.readyState === 1) {
+        try {
+          pairWs.send(JSON.stringify(Object.assign({ t: "type" }, payload)));
+        } catch (_) {}
+        return;
+      }
+      fetch("/type", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+        keepalive: true,
+      }).catch(() => {});
+    }
+
+    function paintSlot(el, kind, left) {
+      if (!el) return;
+      const next = kind === "shield" || kind === "shrink" || kind === "gust" ? kind : "";
+      const remaining = next ? Math.max(0, Number(left) || 0) : 0;
+      const maxTime = next === "shield" ? 5 : next === "shrink" ? 10 : 1;
+      el.setAttribute("data-kind", next);
+      el.classList.toggle("empty", !next);
+      el.classList.toggle("charged", !!next && remaining <= 0.001);
+      el.classList.toggle("active", remaining > 0.001);
+      el.classList.toggle("shield", next === "shield");
+      el.classList.toggle("tiny", next === "shrink");
+      el.classList.toggle("gust", next === "gust");
+      el.style.setProperty("--sweep", (Math.max(0, Math.min(1, remaining / maxTime)) * 360) + "deg");
+    }
+
+    function usePower(kind, slot) {
+      const el = slot === 1 ? slotRight : slotLeft;
+      if (!el || el.getAttribute("data-kind") !== kind || !el.classList.contains("charged")) return;
+      if (pairCode && pairWs && pairWs.readyState === 1) {
+        try {
+          pairWs.send(JSON.stringify({ t: "power", kind: kind, slot: slot }));
+        } catch (_) {}
+        return;
+      }
+      fetch("/power", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ kind: kind, slot: slot }),
+        keepalive: true,
+      }).catch(() => {});
+    }
+
+    function poseBody() {
+      return {
+        b: beta,
+        g: gamma,
+        h: holding ? 1 : 0,
+        sx: sx,
+        sy: sy,
+        p: power,
+        u: lift,
+        a: motionNow,
+        al: alpha,
+        c: recenter ? 1 : 0,
+        lx: lx,
+        ly: ly,
+        z: zoom,
+      };
+    }
+
+    function connectPair() {
+      if (!pairCode || (pairWs && (pairWs.readyState === 0 || pairWs.readyState === 1))) {
+        return;
+      }
+      const proto = location.protocol === "https:" ? "wss:" : "ws:";
+      pairWs = new WebSocket(proto + "//" + location.host);
+      pairWs.onopen = function () {
+        pairWs.send(JSON.stringify({ t: "phone_link", code: pairCode }));
+      };
+      pairWs.onmessage = function (ev) {
+        try {
+          const msg = JSON.parse(ev.data);
+          if (msg.t === "phone_ok") {
+            pairLinked = true;
+            poseOk = true;
+            poseFails = 0;
+          }
+          if (msg.t === "phone_powers") {
+            applyPowers(msg);
+          }
+          if (msg.t === "phone_type") {
+            applyType(msg);
+          }
+          if (msg.t === "buzz") {
+            buzzHit(msg.power);
+          }
+        } catch (_) {}
+      };
+      pairWs.onclose = function () {
+        pairLinked = false;
+        pairWs = null;
+        setTimeout(connectPair, 150);
+      };
+      pairWs.onerror = function () {
+        poseFails += 1;
+      };
+    }
+
+    function sendPose() {
+      if (poseBusy) {
+        if (performance.now() - poseSentAt > POSE_TIMEOUT_MS) {
+          poseBusy = false;
+          poseFails += 1;
+        } else {
+          poseQueued = true;
+          return;
+        }
+      }
+      poseBusy = true;
+      poseSentAt = performance.now();
+      if (pairCode && pairWs && pairWs.readyState === 1) {
+        try {
+          pairWs.send(JSON.stringify(Object.assign({ t: "pose" }, poseBody())));
+          poseOk = pairLinked;
+          poseFails = pairLinked ? 0 : poseFails;
+        } catch (_) {
+          poseFails += 1;
+        }
+        recenter = false;
+        poseBusy = false;
+        if (poseQueued) {
+          poseQueued = false;
+          sendPose();
+        }
+        return;
+      }
+      const ctrl = new AbortController();
+      const bail = setTimeout(() => ctrl.abort(), POSE_TIMEOUT_MS);
+      fetch("/pose", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        cache: "no-store",
+        signal: ctrl.signal,
+        body: JSON.stringify(poseBody()),
+      }).then((res) => {
+        if (res.ok) {
+          poseOk = true;
+          poseFails = 0;
+          return res.json().then((data) => applyPowers(data)).catch(() => {});
+        }
+        poseFails += 1;
+      }).catch(() => {
+        poseFails += 1;
+      }).finally(() => {
+        clearTimeout(bail);
+        recenter = false;
+        poseBusy = false;
+        if (poseQueued) {
+          poseQueued = false;
+          sendPose();
+        }
+      });
+    }
+
+    function startPoseStream() {
+      if (poseTimer) return;
+      poseTimer = setInterval(sendPose, 50);
+    }
+
+    function stopPoseStream() {
+      if (poseTimer) {
+        clearInterval(poseTimer);
+        poseTimer = null;
+      }
+      sendPose();
+    }
+
+    function powerColor(value) {
+      if (value < 0.45) return "#4cb8b0";
+      if (value < 0.75) return "#f2d04b";
+      return "#e23b3b";
+    }
+
+    function stickFromEvent(ev) {
+      const box = pad.getBoundingClientRect();
+      const cx = box.left + box.width * 0.5;
+      const cy = box.top + box.height * 0.5;
+      const max = box.width * 0.38;
+      let dx = ev.clientX - cx;
+      let dy = ev.clientY - cy;
+      const mag = Math.hypot(dx, dy);
+      const dead = max * 0.12;
+      const t = mag < dead ? 0 : Math.min(1, (mag - dead) / (max - dead));
+      const nx = mag > 0.001 ? dx / mag : 0;
+      const ny = mag > 0.001 ? dy / mag : 0;
+      dx = nx * t * max;
+      dy = ny * t * max;
+      lastTouchAt = performance.now();
+      knob.style.transform = "translate(calc(-50% + " + dx + "px), calc(-50% + " + dy + "px))";
+      sx = nx * t;
+      sy = -ny * t;
+      power = t;
+      meter.style.borderColor = powerColor(power);
+      if (!fired) showAimStatus();
+    }
+
+    function lookFromEvent(ev) {
+      const box = lookPad.getBoundingClientRect();
+      const cx = box.left + box.width * 0.5;
+      const cy = box.top + box.height * 0.5;
+      const max = box.width * 0.36;
+      let dx = ev.clientX - cx;
+      let dy = ev.clientY - cy;
+      const mag = Math.hypot(dx, dy);
+      const dead = max * 0.1;
+      const t = mag < dead ? 0 : Math.min(1, (mag - dead) / (max - dead));
+      const nx = mag > 0.001 ? dx / mag : 0;
+      const ny = mag > 0.001 ? dy / mag : 0;
+      dx = nx * t * max;
+      dy = ny * t * max;
+      lookKnob.style.transform = "translate(calc(-50% + " + dx + "px), calc(-50% + " + dy + "px))";
+      lx = nx * t;
+      ly = -ny * t;
+    }
+
+    function lookStart(ev) {
+      if (typingOpen) return;
+      ev.preventDefault();
+      ev.stopPropagation();
+      if (ev.pointerId != null && lookPad.setPointerCapture) {
+        try { lookPad.setPointerCapture(ev.pointerId); } catch (_) {}
+      }
+      looking = true;
+      lookPad.classList.add("held");
+      lookFromEvent(ev);
+      sendPose();
+    }
+
+    function lookMove(ev) {
+      if (!looking) return;
+      ev.preventDefault();
+      lookFromEvent(ev);
+      sendPose();
+    }
+
+    function lookEnd(ev) {
+      if (ev) ev.preventDefault();
+      if (!looking) return;
+      looking = false;
+      lookPad.classList.remove("held");
+      lookKnob.style.transform = "translate(-50%, -50%)";
+      lx = 0;
+      ly = 0;
+      sendPose();
+    }
+
+    function resetSwing() {
+      peakAccel = 0;
+      phase = "hold";
+      backAt = 0;
+      backSince = 0;
+      topSince = 0;
+      topAt = 0;
+    }
+
+    function phaseLabel() {
+      if (motionHits === 0) return "no motion yet";
+      if (calibrating) return "calibrating";
+      if (!calibrated) return "tap CALIBRATE";
+      if (phase === "back") return "backswing";
+      if (phase === "top") return "top, swing down!";
+      return "ready, swing up";
+    }
+
+    function showAimStatus() {
+      if (fired) return;
+      status.textContent = "Power " + Math.round(power * 100) + "%. " + phaseLabel() + ".";
+    }
+
+    function buzz(pattern) {
+      try {
+        if (navigator.vibrate) navigator.vibrate(pattern);
+      } catch (_) {}
+    }
+
+    function armHaptics() {
+      buzz(1);
+    }
+
+    function buzzHit(amount) {
+      const p = Math.max(0, Math.min(1, Number(amount) || 0.5));
+      const strike = Math.round(22 + p * 48);
+      if (p >= 0.75) {
+        buzz([strike, 28, Math.round(strike * 0.45)]);
+      } else {
+        buzz(strike);
+      }
+    }
+
+    async function sendHit(speed) {
+      let shotX = sx;
+      let shotY = sy;
+      let shotPower = Math.max(0.18, power);
+      if (Math.hypot(shotX, shotY) < 0.06) {
+        shotX = 0;
+        shotY = 1;
+        shotPower = speed > 0 ? Math.min(1, 0.25 + speed * 0.25) : Math.max(shotPower, 0.28);
+      }
+      buzzHit(shotPower);
+      if (pairCode && pairWs && pairWs.readyState === 1) {
+        try {
+          pairWs.send(JSON.stringify({ t: "swing", power: shotPower, sx: shotX, sy: shotY }));
+          status.textContent = "Hit! " + Math.round(shotPower * 100) + "%";
+        } catch (_) {
+          status.textContent = "Lost the game server. Keep this page open.";
+          fired = false;
+        }
+        return;
+      }
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), 2500);
+      try {
+        const res = await fetch("/hit", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ power: shotPower, sx: shotX, sy: shotY }),
+          signal: ctrl.signal,
+          keepalive: true,
+        });
+        if (!res.ok) throw new Error("bad");
+        status.textContent = "Hit! " + Math.round(shotPower * 100) + "%";
+      } catch (_) {
+        status.textContent = "Cannot reach the PC. Keep this hole open.";
+        fired = false;
+      } finally {
+        clearTimeout(timer);
+      }
+    }
+
+    function fireShot() {
+      if (fired) return;
+      fired = true;
+      firedAt = performance.now();
+      knob.textContent = "HIT";
+      sendHit(0);
+    }
+
+    function motionReason() {
+      if (motionHits > 0) {
+        return hasLinear ? "on (linear)" : "on (gravity)";
+      }
+      if (typeof DeviceMotionEvent === "undefined") return "unsupported browser";
+      if (!window.isSecureContext) return "blocked: page is http";
+      return "no events yet";
+    }
+
+    // Returns acceleration along the "up" axis in units of gravity: positive
+    // while the phone accelerates upward, negative on the way down. Direction is
+    // what makes a golf swing distinguishable from a random shake, and dividing
+    // by gravity keeps it honest whether the browser reports m/s^2 or g.
+    function motionScore(event) {
+      motionHits += 1;
+      const g = event.accelerationIncludingGravity;
+      if (!g || (g.x == null && g.y == null && g.z == null)) {
+        // Only linear acceleration available: gravity is already removed, so
+        // there is nothing to calibrate. Take the device's own vertical axis,
+        // which is up whenever the phone is held upright.
+        const a = event.acceleration;
+        if (a) {
+          hasLinear = true;
+          calibrated = true;
+          vertical = (a.y || 0) / 9.81;
+          lift = a.y || 0;
+          motionNow = Math.abs(vertical);
+        }
+        return vertical;
+      }
+      const gx = g.x || 0;
+      const gy = g.y || 0;
+      const gz = g.z || 0;
+      if (calibrating) {
+        collectCalibration(gx, gy, gz);
+        return 0;
+      }
+      if (!gravReady) {
+        gravX = gx;
+        gravY = gy;
+        gravZ = gz;
+        gravReady = true;
+      } else {
+        // While idle, track which way is up so the phone can be re-oriented.
+        // Mid-swing, crawl instead: a fast filter would absorb the swing itself
+        // and drag the reading back toward zero before it crosses a threshold.
+        const follow = phase === "hold" ? 0.08 : 0.02;
+        gravX += (gx - gravX) * follow;
+        gravY += (gy - gravY) * follow;
+        gravZ += (gz - gravZ) * follow;
+      }
+      const mag = Math.hypot(gravX, gravY, gravZ) || 1;
+      const scale = gravMag > 0.2 ? gravMag : mag;
+      // At rest an accelerometer reads +1g along up, so the resting vector is
+      // the up axis. Subtracting its length leaves signed proper acceleration.
+      vertical = ((gx * gravX + gy * gravY + gz * gravZ) / mag - mag) / scale;
+      lift = vertical * 9.81;
+      motionNow = Math.abs(vertical);
+      return vertical;
+    }
+
+
+    function collectCalibration(gx, gy, gz) {
+      calSamples += 1;
+      calX += gx;
+      calY += gy;
+      calZ += gz;
+      if (performance.now() - calStart < CAL_MS) return;
+      calibrating = false;
+      calibrateBtn.disabled = false;
+      calibrateBtn.textContent = "CALIBRATE";
+      if (calSamples < 5) {
+        status.textContent = "No sensor readings during calibration. Hold still and retry.";
+        return;
+      }
+      gravX = calX / calSamples;
+      gravY = calY / calSamples;
+      gravZ = calZ / calSamples;
+      gravMag = Math.hypot(gravX, gravY, gravZ);
+      gravReady = true;
+      calibrated = gravMag > 0.2;
+      if (!calibrated) {
+        status.textContent = "Calibration read no gravity. Hold the phone still and retry.";
+        return;
+      }
+      saveTuning();
+      resetSwing();
+      status.textContent = "Calibrated. Swing the phone up, pause, then down through the ball.";
+    }
+
+
+    function startCalibration() {
+      if (calibrating) return;
+      calibrating = true;
+      calStart = performance.now();
+      calSamples = 0;
+      calX = 0;
+      calY = 0;
+      calZ = 0;
+      calibrateBtn.disabled = true;
+      calibrateBtn.textContent = "HOLD STILL...";
+      status.textContent = "Hold the phone still in your stance...";
+    }
+
+
+    function threshold(base) {
+      // Level 1 is the old level 7. Each step above that asks for a harder swing.
+      return base * (0.55 + (sensitivity + 6) * 0.09);
+    }
+
+
+    function saveTuning() {
+      try {
+        localStorage.setItem("puttTune", JSON.stringify({
+          gx: gravX, gy: gravY, gz: gravZ, mag: gravMag, sens: sensitivity, ver: 2,
+        }));
+      } catch (_) {}
+    }
+
+
+    function loadTuning() {
+      let saved = null;
+      try {
+        saved = JSON.parse(localStorage.getItem("puttTune") || "null");
+      } catch (_) {}
+      if (saved && typeof saved.mag === "number" && saved.mag > 0.2) {
+        gravX = saved.gx;
+        gravY = saved.gy;
+        gravZ = saved.gz;
+        gravMag = saved.mag;
+        gravReady = true;
+        calibrated = true;
+      }
+      if (saved && saved.ver === 2 && typeof saved.sens === "number") {
+        sensitivity = Math.min(10, Math.max(1, Math.round(saved.sens)));
+      } else {
+        sensitivity = 1;
+      }
+      sensInput.value = String(sensitivity);
+      sensVal.textContent = String(sensitivity);
+    }
+
+    function updateSensors() {
+      if (poseTimer === null && !document.hidden) {
+        startPoseStream();
+      }
+      if (poseFails > 2) {
+        sensors.classList.remove("live");
+        sState.textContent = "Lost the PC. Keep Play open on the same Wi-Fi.";
+      } else if (poseOk) {
+        sensors.classList.add("live");
+        sState.textContent = motionHits > 0 ? "linked, motion on" : "linked, no motion";
+      } else {
+        sState.textContent = "connecting...";
+      }
+      if (calibrating && performance.now() - calStart > CAL_MS + 700) {
+        // No gravity samples arrived, so calibration can never complete here.
+        calibrating = false;
+        calibrateBtn.disabled = false;
+        calibrateBtn.textContent = "CALIBRATE";
+        if (!calibrated) {
+          status.textContent = "This phone reports no gravity reading. Open the secure page and retry calibrate.";
+        }
+      }
+      sOrigin.textContent = location.origin + (window.isSecureContext ? " (secure)" : " (NOT secure)");
+      sMotion.textContent = motionReason();
+      if (motionHits === 0 && performance.now() > 2500 && !motionWarned) {
+        motionWarned = true;
+        status.textContent = window.isSecureContext
+          ? "No motion events. Check Chrome site settings > Motion sensors."
+          : "This is the plain http page, so Chrome blocks the motion sensor. Re-scan the QR in the game to open the secure https page, then swinging works.";
+      }
+      const arrow = vertical > 0.03 ? "up " : (vertical < -0.03 ? "down " : "");
+      sAcc.textContent = arrow + Math.abs(vertical).toFixed(2) + " g";
+      sPhase.textContent = fired ? "hit" : phaseLabel();
+      const need = phase === "top" ? -threshold(DOWN_G) : threshold(BACK_G);
+      sPeak.textContent = (need < 0 ? "down " : "up ") + Math.abs(need).toFixed(2) + " g";
+      const target = phase === "top" ? threshold(DOWN_G) : threshold(BACK_G);
+      const towards = phase === "top" ? Math.max(0, -vertical) : Math.max(0, vertical);
+      if (towards > displayPeak) displayPeak = towards;
+      else displayPeak *= 0.9;
+      const pct = Math.min(100, Math.round((displayPeak / target) * 100));
+      sFill.style.width = pct + "%";
+      document.getElementById("bar").classList.toggle("hot", pct >= 100);
+    }
+
+    // A real golf stroke, in order: accelerate up (backswing), settle briefly at
+    // the top, then accelerate down (downswing) to strike. Requiring all three in
+    // sequence, each with a minimum duration, is what stops a random shake from
+    // registering, since a shake never holds a direction long enough.
+    function maybeSwing(score) {
+      if (typingOpen) return;
+      const now = performance.now();
+      if (fired) {
+        if (now - firedAt > REARM_MS) {
+          fired = false;
+          resetSwing();
+          knob.textContent = "AIM";
+        }
+        return;
+      }
+      if (!calibrated || now - lastTouchAt < SETTLE_MS) {
+        resetSwing();
+        return;
+      }
+      const backNeed = threshold(BACK_G);
+      const topNeed = threshold(TOP_G);
+      const downNeed = threshold(DOWN_G);
+      if (score > peakAccel) peakAccel = score;
+
+      if (phase === "hold") {
+        if (score >= backNeed) {
+          if (backSince === 0) backSince = now;
+          if (now - backSince >= MIN_BACK_MS) {
+            phase = "back";
+            backAt = now;
+          }
+        } else {
+          backSince = 0;
+        }
+        showAimStatus();
+        return;
+      }
+      if (phase === "back") {
+        // A brisk stroke goes straight from backswing into the downswing, so
+        // strike as soon as the reading turns hard negative.
+        if (score <= -downNeed) {
+          fireShot();
+          return;
+        }
+        if (Math.abs(score) <= topNeed) {
+          if (topSince === 0) topSince = now;
+          if (now - topSince >= MIN_TOP_MS) {
+            phase = "top";
+            topAt = now;
+          }
+        } else {
+          topSince = 0;
+        }
+        if (now - backAt > BACK_MAX_MS) resetSwing();
+        showAimStatus();
+        return;
+      }
+      if (phase === "top") {
+        if (score <= -downNeed) {
+          fireShot();
+          return;
+        }
+        if (score >= backNeed) {
+          // Went back up again, treat this as a fresh backswing.
+          phase = "back";
+          backAt = now;
+          topSince = 0;
+        }
+        if (now - topAt > DOWN_MAX_MS) resetSwing();
+        showAimStatus();
+      }
+    }
+
+    function askSensors() {
+      try {
+        if (typeof DeviceMotionEvent !== "undefined" && typeof DeviceMotionEvent.requestPermission === "function") {
+          DeviceMotionEvent.requestPermission().catch(() => {});
+        }
+        if (typeof DeviceOrientationEvent !== "undefined" && typeof DeviceOrientationEvent.requestPermission === "function") {
+          DeviceOrientationEvent.requestPermission().catch(() => {});
+        }
+      } catch (_) {}
+    }
+
+    function holdStart(ev) {
+      if (typingOpen) return;
+      ev.preventDefault();
+      if (ev.pointerId != null && pad.setPointerCapture) {
+        try { pad.setPointerCapture(ev.pointerId); } catch (_) {}
+      }
+      askSensors();
+      armHaptics();
+      holding = true;
+      fired = false;
+      holdAt = performance.now();
+      resetSwing();
+      pad.classList.add("held");
+      knob.textContent = "AIM";
+      stickFromEvent(ev);
+      status.textContent = "Drag to aim, then swing the phone up and down.";
+      sendPose();
+      startPoseStream();
+    }
+
+    function holdMove(ev) {
+      if (!holding || fired) return;
+      ev.preventDefault();
+      stickFromEvent(ev);
+      sendPose();
+    }
+
+    function holdEnd(ev) {
+      if (ev) ev.preventDefault();
+      if (!holding) return;
+      holding = false;
+      lastTouchAt = performance.now();
+      pad.classList.remove("held");
+      if (!fired) {
+        status.textContent = "Aim held at " + Math.round(power * 100) + "%. Now swing the phone up, then down.";
+      }
+      sendPose();
+    }
+
+    window.addEventListener("deviceorientation", (event) => {
+      if (event.alpha != null) alpha = event.alpha;
+      if (event.beta != null) beta = event.beta;
+      if (event.gamma != null) gamma = event.gamma;
+    }, true);
+
+    window.addEventListener("devicemotion", (event) => {
+      const score = motionScore(event);
+      maybeSwing(score);
+    }, { passive: true, capture: true });
+
+    typeInput.addEventListener("input", () => sendType(false));
+    typeInput.addEventListener("keydown", (ev) => {
+      if (ev.key === "Enter") {
+        ev.preventDefault();
+        sendType(true);
+      }
+    });
+    typeGo.addEventListener("click", (ev) => {
+      ev.preventDefault();
+      if (!typeArmed) {
+        armTypeKeyboard();
+        return;
+      }
+      sendType(true);
+    });
+    if (typeTap) {
+      typeTap.addEventListener("pointerdown", (ev) => {
+        ev.preventDefault();
+        ev.stopPropagation();
+        armTypeKeyboard();
+      });
+      typeTap.addEventListener("click", (ev) => {
+        ev.preventDefault();
+        armTypeKeyboard();
+      });
+    }
+    typeInput.addEventListener("pointerdown", () => {
+      if (!typeArmed) armTypeKeyboard();
+    });
+    typeCard.addEventListener("pointerdown", (ev) => {
+      if (ev.target === typeInput || ev.target === typeGo || (typeGo && typeGo.contains(ev.target)) || ev.target === typeTap) {
+        return;
+      }
+      if (!typeArmed) armTypeKeyboard();
+    });
+    typeView.addEventListener("pointerdown", (ev) => {
+      ev.stopPropagation();
+      if (ev.target === typeView) {
+        sendType(false, true);
+        showType(false);
+      }
+    });
+    pad.addEventListener("pointerdown", holdStart);
+    pad.addEventListener("pointermove", holdMove);
+    pad.addEventListener("pointerup", holdEnd);
+    pad.addEventListener("pointercancel", holdEnd);
+    lookPad.addEventListener("pointerdown", lookStart);
+    lookPad.addEventListener("pointermove", lookMove);
+    lookPad.addEventListener("pointerup", lookEnd);
+    lookPad.addEventListener("pointercancel", lookEnd);
+    function bindZoom(btn, dir) {
+      const start = (ev) => {
+        ev.preventDefault();
+        ev.stopPropagation();
+        zoom = dir;
+        btn.classList.add("held");
+        sendPose();
+        startPoseStream();
+      };
+      const end = (ev) => {
+        ev.preventDefault();
+        ev.stopPropagation();
+        if (zoom === dir) zoom = 0;
+        btn.classList.remove("held");
+        sendPose();
+      };
+      btn.addEventListener("pointerdown", start);
+      btn.addEventListener("pointerup", end);
+      btn.addEventListener("pointercancel", end);
+      btn.addEventListener("pointerleave", end);
+    }
+    bindZoom(document.getElementById("zoom-in"), -1);
+    bindZoom(document.getElementById("zoom-out"), 1);
+    document.addEventListener("visibilitychange", () => {
+      if (document.hidden) {
+        holding = false;
+        pad.classList.remove("held");
+        looking = false;
+        lookPad.classList.remove("held");
+        lookKnob.style.transform = "translate(-50%, -50%)";
+        lx = 0;
+        ly = 0;
+        zoom = 0;
+        document.getElementById("zoom-in").classList.remove("held");
+        document.getElementById("zoom-out").classList.remove("held");
+        stopPoseStream();
+      } else {
+        startPoseStream();
+      }
+    });
+    function onPowerTap(ev) {
+      ev.preventDefault();
+      ev.stopPropagation();
+      const el = ev.currentTarget;
+      usePower(el.getAttribute("data-kind"), el === slotRight ? 1 : 0);
+    }
+    function sendRestart() {
+      if (pairCode && pairWs && pairWs.readyState === 1) {
+        try {
+          pairWs.send(JSON.stringify({ t: "restart" }));
+        } catch (_) {}
+        return;
+      }
+      fetch("/restart", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: "{}",
+        keepalive: true,
+      }).catch(() => {});
+    }
+    slotLeft.addEventListener("click", onPowerTap);
+    slotRight.addEventListener("click", onPowerTap);
+    document.getElementById("restart").addEventListener("click", (ev) => {
+      ev.preventDefault();
+      ev.stopPropagation();
+      sendRestart();
+    });
+    calibrateBtn.addEventListener("click", () => {
+      askSensors();
+      armHaptics();
+      startCalibration();
+    });
+    sensInput.addEventListener("input", () => {
+      sensitivity = Math.min(10, Math.max(1, Number(sensInput.value) || 5));
+      sensVal.textContent = String(sensitivity);
+      saveTuning();
+    });
+    loadTuning();
+    if (pairCode) {
+      connectPair();
+    } else {
+      fetch("/hello", { cache: "no-store", keepalive: true }).catch(() => {});
+    }
+    askSensors();
+    sendPose();
+    startPoseStream();
+    setTimeout(() => {
+      if (!calibrated && !calibrating && motionHits > 0) startCalibration();
+    }, 250);
+    setInterval(updateSensors, 80);
+  </script>
+</body>
+</html>

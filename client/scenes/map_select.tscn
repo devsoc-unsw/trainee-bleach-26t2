@@ -1,0 +1,173 @@
+[gd_scene load_steps=11 format=3 uid="uid://cmapselect"]
+
+[ext_resource type="Script" path="res://scripts/map_select.gd" id="1_select"]
+[ext_resource type="Theme" path="res://ui/hud_theme.tres" id="2_theme"]
+[ext_resource type="FontFile" path="res://ui/fonts/Montserrat-ExtraBold.ttf" id="3_extra"]
+[ext_resource type="Script" path="res://scripts/fancy_button.gd" id="5_fancy"]
+
+[sub_resource type="ProceduralSkyMaterial" id="ProceduralSkyMaterial_sky"]
+sky_top_color = Color(0.45, 0.74, 0.98, 1)
+sky_horizon_color = Color(0.82, 0.92, 0.98, 1)
+ground_bottom_color = Color(0.7, 0.86, 0.96, 1)
+ground_horizon_color = Color(0.82, 0.92, 0.98, 1)
+sun_angle_max = 40.0
+
+[sub_resource type="Sky" id="Sky_select"]
+sky_material = SubResource("ProceduralSkyMaterial_sky")
+
+[sub_resource type="Environment" id="Environment_select"]
+background_mode = 2
+sky = SubResource("Sky_select")
+ambient_light_source = 2
+ambient_light_sky_contribution = 0.78
+tonemap_mode = 2
+fog_enabled = true
+fog_light_color = Color(0.75, 0.86, 0.95, 1)
+fog_density = 0.004
+fog_sky_affect = 0.45
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_shell"]
+bg_color = Color(0.14, 0.38, 0.36, 0.78)
+border_width_left = 3
+border_width_top = 3
+border_width_right = 3
+border_width_bottom = 3
+border_color = Color(0.55, 0.88, 0.82, 0.92)
+corner_radius_top_left = 18
+corner_radius_top_right = 18
+corner_radius_bottom_right = 18
+corner_radius_bottom_left = 18
+corner_detail = 12
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_ghost"]
+bg_color = Color(0.965, 0.945, 0.902, 1)
+corner_radius_top_left = 999
+corner_radius_top_right = 999
+corner_radius_bottom_right = 999
+corner_radius_bottom_left = 999
+content_margin_left = 22.0
+content_margin_top = 12.0
+content_margin_right = 22.0
+content_margin_bottom = 12.0
+
+[node name="MapSelect" type="Node3D"]
+script = ExtResource("1_select")
+
+[node name="World" type="Node3D" parent="."]
+
+[node name="Camera3D" type="Camera3D" parent="."]
+transform = Transform3D(0.94, -0.12, 0.32, 0, 0.936, 0.352, -0.342, -0.331, 0.88, -1.6, 5.4, 13.5)
+fov = 28.0
+current = true
+
+[node name="DirectionalLight3D" type="DirectionalLight3D" parent="."]
+transform = Transform3D(0.866, -0.354, 0.353, 0, 0.707, 0.707, -0.5, -0.612, 0.612, 8, 14, 6)
+light_color = Color(1, 0.96, 0.84, 1)
+light_energy = 1.15
+shadow_enabled = false
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="."]
+environment = SubResource("Environment_select")
+
+[node name="UI" type="CanvasLayer" parent="."]
+
+[node name="Root" type="Control" parent="UI"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+theme = ExtResource("2_theme")
+
+[node name="Margin" type="MarginContainer" parent="UI/Root"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+theme_override_constants/margin_left = 56
+theme_override_constants/margin_top = 28
+theme_override_constants/margin_right = 56
+theme_override_constants/margin_bottom = 28
+
+[node name="Layout" type="VBoxContainer" parent="UI/Root/Margin"]
+layout_mode = 2
+theme_override_constants/separation = 18
+
+[node name="Header" type="HBoxContainer" parent="UI/Root/Margin/Layout"]
+layout_mode = 2
+theme_override_constants/separation = 16
+
+[node name="Back" type="Button" parent="UI/Root/Margin/Layout/Header"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(120, 44)
+layout_mode = 2
+focus_mode = 0
+mouse_default_cursor_shape = 2
+theme_override_colors/font_color = Color(0.353, 0.322, 0.282, 1)
+theme_override_colors/font_hover_color = Color(0.298, 0.722, 0.69, 1)
+theme_override_colors/font_pressed_color = Color(0.298, 0.722, 0.69, 1)
+theme_override_colors/font_hover_pressed_color = Color(0.298, 0.722, 0.69, 1)
+theme_override_colors/font_focus_color = Color(0.353, 0.322, 0.282, 1)
+theme_override_fonts/font = ExtResource("3_extra")
+theme_override_font_sizes/font_size = 16
+theme_override_styles/normal = SubResource("StyleBoxFlat_ghost")
+theme_override_styles/hover = SubResource("StyleBoxFlat_ghost")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_ghost")
+theme_override_styles/hover_pressed = SubResource("StyleBoxFlat_ghost")
+theme_override_styles/focus = SubResource("StyleBoxFlat_ghost")
+theme_override_styles/disabled = SubResource("StyleBoxFlat_ghost")
+text = "BACK"
+script = ExtResource("5_fancy")
+
+[node name="Title" type="Label" parent="UI/Root/Margin/Layout/Header"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_fonts/font = ExtResource("3_extra")
+theme_override_font_sizes/font_size = 28
+theme_override_colors/font_color = Color(1, 1, 1, 1)
+theme_override_colors/font_outline_color = Color(0.18, 0.28, 0.22, 0.85)
+theme_override_constants/outline_size = 8
+text = "COURSE SELECTION"
+horizontal_alignment = 1
+
+[node name="Spacer" type="Control" parent="UI/Root/Margin/Layout/Header"]
+custom_minimum_size = Vector2(120, 0)
+layout_mode = 2
+mouse_filter = 2
+
+[node name="Shell" type="PanelContainer" parent="UI/Root/Margin/Layout"]
+layout_mode = 2
+size_flags_vertical = 3
+clip_contents = true
+theme_override_styles/panel = SubResource("StyleBoxFlat_shell")
+
+[node name="Body" type="MarginContainer" parent="UI/Root/Margin/Layout/Shell"]
+layout_mode = 2
+theme_override_constants/margin_left = 28
+theme_override_constants/margin_top = 18
+theme_override_constants/margin_right = 28
+theme_override_constants/margin_bottom = 22
+
+[node name="BodyLayout" type="VBoxContainer" parent="UI/Root/Margin/Layout/Shell/Body"]
+layout_mode = 2
+theme_override_constants/separation = 16
+
+[node name="Section" type="Label" parent="UI/Root/Margin/Layout/Shell/Body/BodyLayout"]
+layout_mode = 2
+text = "OFFICIAL COURSES"
+theme_override_fonts/font = ExtResource("3_extra")
+theme_override_font_sizes/font_size = 18
+theme_override_colors/font_color = Color(0.957, 0.816, 0.247, 1)
+
+[node name="Grid" type="GridContainer" parent="UI/Root/Margin/Layout/Shell/Body/BodyLayout"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_vertical = 3
+theme_override_constants/h_separation = 22
+theme_override_constants/v_separation = 22
+columns = 3

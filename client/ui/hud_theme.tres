@@ -1,0 +1,58 @@
+[gd_resource type="Theme" load_steps=5 format=3 uid="uid://bp86d4hwomvla"]
+
+[ext_resource type="FontFile" uid="uid://dbbb2tdsn2i6d" path="res://ui/fonts/Montserrat-Bold.ttf" id="1_font"]
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_btn"]
+bg_color = Color(0.298, 0.722, 0.69, 1)
+corner_radius_top_left = 999
+corner_radius_top_right = 999
+corner_radius_bottom_right = 999
+corner_radius_bottom_left = 999
+content_margin_left = 18.0
+content_margin_top = 10.0
+content_margin_right = 18.0
+content_margin_bottom = 10.0
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_btn_hover"]
+bg_color = Color(0.427, 0.8, 0.776, 1)
+corner_radius_top_left = 999
+corner_radius_top_right = 999
+corner_radius_bottom_right = 999
+corner_radius_bottom_left = 999
+content_margin_left = 18.0
+content_margin_top = 10.0
+content_margin_right = 18.0
+content_margin_bottom = 10.0
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_btn_press"]
+bg_color = Color(0.227, 0.604, 0.576, 1)
+corner_radius_top_left = 999
+corner_radius_top_right = 999
+corner_radius_bottom_right = 999
+corner_radius_bottom_left = 999
+content_margin_left = 18.0
+content_margin_top = 10.0
+content_margin_right = 18.0
+content_margin_bottom = 10.0
+
+[resource]
+default_font = ExtResource("1_font")
+default_font_size = 16
+Button/colors/font_color = Color(1, 1, 1, 1)
+Button/colors/font_hover_color = Color(1, 1, 1, 1)
+Button/colors/font_pressed_color = Color(1, 1, 1, 1)
+Button/colors/icon_hover_color = Color(0.965, 0.945, 0.9, 1)
+Button/colors/icon_normal_color = Color(1, 1, 1, 1)
+Button/colors/icon_pressed_color = Color(0.965, 0.945, 0.9, 1)
+Button/styles/normal = SubResource("StyleBoxFlat_btn")
+Button/styles/hover = SubResource("StyleBoxFlat_btn_hover")
+Button/styles/pressed = SubResource("StyleBoxFlat_btn_press")
+Button/styles/hover_pressed = SubResource("StyleBoxFlat_btn_press")
+Button/styles/focus = SubResource("StyleBoxFlat_btn")
+Button/styles/disabled = SubResource("StyleBoxFlat_btn")
+Label/colors/font_color = Color(0.227, 0.196, 0.173, 1)
+LineEdit/colors/caret_color = Color(0.227, 0.196, 0.173, 1)
+LineEdit/colors/font_color = Color(0.227, 0.196, 0.173, 1)
+LineEdit/colors/font_placeholder_color = Color(0.54, 0.494, 0.447, 1)
+LineEdit/colors/font_selected_color = Color(1, 1, 1, 1)
+LineEdit/colors/selection_color = Color(0.298, 0.722, 0.69, 0.45)

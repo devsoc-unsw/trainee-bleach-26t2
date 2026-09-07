@@ -1,145 +1,73 @@
-[gd_scene format=3 uid="uid://dkfscurwwv2q8"]
+[gd_scene format=3 uid="uid://ccourseputt"]
 
-[ext_resource type="Script" uid="uid://c8e36dwcqqq7y" path="res://scripts/course.gd" id="1_07v2j"]
-[ext_resource type="PackedScene" uid="uid://bdsbp3ln6bo13" path="res://scenes/ball.tscn" id="1_r5a4e"]
-[ext_resource type="PackedScene" uid="uid://bcd2w7jktuhxj" path="res://scenes/camera.tscn" id="2_07v2j"]
-[ext_resource type="Script" uid="uid://dufdd7dpr65w3" path="res://scripts/shot_input.gd" id="3_43ab4"]
-[ext_resource type="Script" uid="uid://dlluwip2c8qu2" path="res://scripts/cup.gd" id="4_giilg"]
-[ext_resource type="Script" uid="uid://d2qtmaorjsqpl" path="res://scripts/out_of_bounds.gd" id="5_4urdw"]
+[ext_resource type="PackedScene" uid="uid://cbum0re6a8yc4" path="res://scenes/Ball.tscn" id="1_ball"]
+[ext_resource type="PackedScene" uid="uid://bcd2w7jktuhxj" path="res://scenes/camera_rig.tscn" id="2_cam"]
+[ext_resource type="Script" uid="uid://dufdd7dpr65w3" path="res://scripts/aim_controller.gd" id="3_aim"]
+[ext_resource type="PackedScene" uid="uid://bholeputtparty" path="res://scenes/hole.tscn" id="4_hole"]
+[ext_resource type="Script" uid="uid://d2qtmaorjsqpl" path="res://scripts/OutOfBounds.gd" id="5_oob"]
+[ext_resource type="PackedScene" uid="uid://brwkov7j3tvxy" path="res://scenes/hud.tscn" id="6_hud"]
+[ext_resource type="Script" path="res://scripts/course.gd" id="7_course"]
 
-[sub_resource type="PhysicsMaterial" id="PhysicsMaterial_2venv"]
-friction = 0.4
+[sub_resource type="ProceduralSkyMaterial" id="ProceduralSkyMaterial_ac"]
+sky_top_color = Color(0.48, 0.78, 0.98, 1)
+sky_horizon_color = Color(0.72, 0.82, 0.92, 1)
+ground_bottom_color = Color(0.55, 0.72, 0.88, 1)
+ground_horizon_color = Color(0.68, 0.78, 0.88, 1)
+sun_angle_max = 40.0
 
-[sub_resource type="BoxMesh" id="BoxMesh_ujow2"]
-size = Vector3(6, 0.2, 67)
+[sub_resource type="Sky" id="Sky_ac"]
+sky_material = SubResource("ProceduralSkyMaterial_ac")
 
-[sub_resource type="BoxShape3D" id="BoxShape3D_ihn87"]
-size = Vector3(6, 0.2, 67)
+[sub_resource type="Environment" id="Environment_course"]
+background_mode = 2
+sky = SubResource("Sky_ac")
+ambient_light_source = 2
+ambient_light_sky_contribution = 0.48
+tonemap_mode = 2
+fog_enabled = true
+fog_light_color = Color(0.72, 0.82, 0.92, 1)
+fog_sun_scatter = 0.08
+fog_density = 0.0016
+fog_sky_affect = 0.22
+fog_height = -2.0
+fog_height_density = 0.04
 
-[sub_resource type="Environment" id="Environment_8iasl"]
-
-[sub_resource type="SphereShape3D" id="SphereShape3D_ujow2"]
-radius = 0.3
-
-[sub_resource type="BoxShape3D" id="BoxShape3D_ujow2"]
+[sub_resource type="BoxShape3D" id="BoxShape3D_oob"]
 size = Vector3(1000, 0.2, 1000)
 
-[sub_resource type="RibbonTrailMesh" id="RibbonTrailMesh_ujow2"]
+[node name="Course" type="Node3D"]
+script = ExtResource("7_course")
 
-[node name="Course" type="Node3D" unique_id=1636690890 node_paths=PackedStringArray("ball", "cup")]
-script = ExtResource("1_07v2j")
-ball = NodePath("Ball")
-cup = NodePath("Cup")
+[node name="DirectionalLight3D" type="DirectionalLight3D" parent="."]
+transform = Transform3D(0.866, -0.354, 0.353, 0, 0.707, 0.707, -0.5, -0.612, 0.612, 4, 10, 6)
+light_color = Color(1, 0.94, 0.78, 1)
+light_energy = 1.0
+light_indirect_energy = 0.4
+shadow_enabled = false
 
-[node name="Ground" type="StaticBody3D" parent="." unique_id=1801611665]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.1, -33)
-physics_material_override = SubResource("PhysicsMaterial_2venv")
+[node name="WorldEnvironment" type="WorldEnvironment" parent="."]
+environment = SubResource("Environment_course")
 
-[node name="MeshInstance3D" type="MeshInstance3D" parent="Ground" unique_id=2133051677]
-mesh = SubResource("BoxMesh_ujow2")
-
-[node name="CollisionShape3D" type="CollisionShape3D" parent="Ground" unique_id=2132929693]
-shape = SubResource("BoxShape3D_ihn87")
-
-[node name="DirectionalLight3D" type="DirectionalLight3D" parent="." unique_id=960930001]
-
-[node name="WorldEnvironment" type="WorldEnvironment" parent="." unique_id=2141276519]
-environment = SubResource("Environment_8iasl")
-
-[node name="Ball" parent="." unique_id=922067448 instance=ExtResource("1_r5a4e")]
+[node name="Ball" parent="." instance=ExtResource("1_ball")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1, 0)
+freeze = true
 can_sleep = false
 
-[node name="CameraRig" parent="." unique_id=1100201651 node_paths=PackedStringArray("target") instance=ExtResource("2_07v2j")]
+[node name="CameraRig" parent="." node_paths=PackedStringArray("target") instance=ExtResource("2_cam")]
 target = NodePath("../Ball")
 
-[node name="AimController" type="Node3D" parent="." unique_id=648704331 node_paths=PackedStringArray("ball", "camera_rig")]
-script = ExtResource("3_43ab4")
+[node name="AimController" type="Node3D" parent="." node_paths=PackedStringArray("ball", "camera_rig")]
+script = ExtResource("3_aim")
 ball = NodePath("../Ball")
 camera_rig = NodePath("../CameraRig")
 
-[node name="Cup" type="Area3D" parent="." unique_id=729051319]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.1, -63)
-script = ExtResource("4_giilg")
+[node name="Hole" parent="." instance=ExtResource("4_hole")]
 
-[node name="CollisionShape3D" type="CollisionShape3D" parent="Cup" unique_id=940950085]
-shape = SubResource("SphereShape3D_ujow2")
+[node name="OutOfBounds" type="Area3D" parent="."]
+script = ExtResource("5_oob")
 
-[node name="OutOfBounds" type="Area3D" parent="." unique_id=1166695559]
-script = ExtResource("5_4urdw")
-
-[node name="CollisionShape3D" type="CollisionShape3D" parent="OutOfBounds" unique_id=2081052111]
+[node name="CollisionShape3D" type="CollisionShape3D" parent="OutOfBounds"]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -10, 0)
-shape = SubResource("BoxShape3D_ujow2")
+shape = SubResource("BoxShape3D_oob")
 
-[node name="MeshInstance3D" type="MeshInstance3D" parent="." unique_id=1815304359]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.1, -63)
-mesh = SubResource("RibbonTrailMesh_ujow2")
-
-[node name="UILayer" type="CanvasLayer" parent="." unique_id=247094582]
-
-[node name="HoleSummaryPanel" type="Control" parent="UILayer" unique_id=1497905543]
-layout_mode = 3
-anchors_preset = 15
-anchor_right = 1.0
-anchor_bottom = 1.0
-grow_horizontal = 2
-grow_vertical = 2
-
-[node name="Panel" type="Panel" parent="UILayer/HoleSummaryPanel" unique_id=1200000002]
-layout_mode = 1
-anchors_preset = 8
-anchor_left = 0.5
-anchor_top = 0.5
-anchor_right = 0.5
-anchor_bottom = 0.5
-offset_left = -200.0
-offset_top = -180.0
-offset_right = 200.0
-offset_bottom = 180.0
-grow_horizontal = 2
-grow_vertical = 2
-
-[node name="TitleLabel" type="Label" parent="UILayer/HoleSummaryPanel/Panel" unique_id=507170082]
-layout_mode = 1
-anchors_preset = 10
-anchor_right = 1.0
-offset_top = 16.0
-offset_bottom = 50.0
-grow_horizontal = 2
-theme_override_font_sizes/font_size = 24
-text = "Hole Complete"
-horizontal_alignment = 1
-
-[node name="ResultsContainer" type="VBoxContainer" parent="UILayer/HoleSummaryPanel/Panel" unique_id=938229685]
-layout_mode = 1
-anchors_preset = 15
-anchor_right = 1.0
-anchor_bottom = 1.0
-offset_left = 20.0
-offset_top = 60.0
-offset_right = -20.0
-offset_bottom = -20.0
-grow_horizontal = 2
-grow_vertical = 2
-theme_override_constants/separation = 10
-
-[node name="SpectatePanel" type="Control" parent="UILayer" unique_id=247094583]
-visible = false
-layout_mode = 3
-anchors_preset = 10
-anchor_right = 1.0
-offset_bottom = 56.0
-grow_horizontal = 2
-mouse_filter = 2
-
-[node name="SpectateLabel" type="Label" parent="UILayer/SpectatePanel" unique_id=247094584]
-layout_mode = 1
-anchors_preset = 10
-anchor_right = 1.0
-offset_top = 12.0
-offset_bottom = 48.0
-grow_horizontal = 2
-theme_override_font_sizes/font_size = 20
-text = "Spectating"
-horizontal_alignment = 1
+[node name="HUD" parent="." instance=ExtResource("6_hud")]

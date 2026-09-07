@@ -1,16 +1,36 @@
 import http from 'node:http';
+import net from 'node:net';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { WebSocketServer, WebSocket } from 'ws';
-import { clientMessageSchema } from './schema.js';
-import type { ErrorResponse, JoinMessage } from './schema.js';
-import { addPlayer, broadcast, checkLobbyReady, createRoom, getRoom, lobbySnapshot, removePlayer, sendTo, togglePlayerReady, updateRoomLastModified } from './rooms.js';
-import { GameState, Player, Room, Vec3 } from './interface.js';
-import { COURSE, COURSE_ID, getHole } from './course.js';
-import { canShoot, markHoled, recordStroke, updateBallState } from './player.js';
-import { checkAllHoled, distance, sendSnapshots, startCountdown } from './hole.js';
+import { envelopeSchema } from './schema.js';
+import type { ErrorResponse } from './schema.js';
+import * as rooms from './rooms.js';
+import * as phone from './phone.js';
+import * as remoteHttps from './remote_https.js';
 
 const PORT = parseInt(process.env['PORT'] ?? '8080', 10);
 const IS_PRODUCTION = process.env['NODE_ENV'] === 'production';
-const HOST = IS_PRODUCTION ? '0.0.0.0' : '127.0.0.1';
+const HOST = IS_PRODUCTION ? '0.0.0.0' : '0.0.0.0';
+const HERE = path.dirname(fileURLToPath(import.meta.url));
+const WEB_ROOT = process.env['WEB_ROOT'] ?? path.resolve(HERE, '../../client/build');
+const PUBLIC_DIR = path.resolve(HERE, '../public');
+const PHONE_PAGE = path.join(PUBLIC_DIR, 'phone.html');
+const REMOTE_PAGE = path.resolve(HERE, '../../client/ui/phone_remote.html');
+
+const MIME: Record<string, string> = {
+  '.html': 'text/html; charset=utf-8',
+  '.js': 'text/javascript; charset=utf-8',
+  '.wasm': 'application/wasm',
+  '.pck': 'application/octet-stream',
+  '.png': 'image/png',
+  '.svg': 'image/svg+xml',
+  '.json': 'application/json',
+  '.css': 'text/css; charset=utf-8',
+  '.ico': 'image/x-icon',
+  '.wasm.map': 'application/json',
+};
 
 interface LogEntry {
   ts: string;
@@ -24,11 +44,120 @@ function log(entry: LogEntry): void {
 
 const startTime = Date.now();
 
-const server = http.createServer((_req, res) => {
+function setSecurityHeaders(res: http.ServerResponse, embed = true): void {
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('X-Frame-Options', 'DENY');
+  if (embed) {
+    res.setHeader('Cross-Origin-Opener-Policy', 'same-origin');
+    res.setHeader('Cross-Origin-Embedder-Policy', 'require-corp');
+    res.setHeader('Cross-Origin-Resource-Policy', 'same-origin');
+  }
+}
 
-  if (_req.method === 'GET' && _req.url === '/health') {
+function servePhone(req: http.IncomingMessage, res: http.ServerResponse): boolean {
+  const url = new URL(req.url ?? '/', 'http://localhost');
+  if (req.method !== 'GET' && req.method !== 'HEAD') {
+    return false;
+  }
+  const remote = url.pathname === '/remote' || url.pathname === '/remote/';
+  if (url.pathname !== '/phone' && url.pathname !== '/phone/' && !remote) {
+    return false;
+  }
+  setSecurityHeaders(res, false);
+  const page = remote ? REMOTE_PAGE : PHONE_PAGE;
+  if (!fs.existsSync(page)) {
+    res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
+    res.end('Phone remote page missing');
+    return true;
+  }
+  res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+  if (req.method === 'HEAD') {
+    res.end();
+    return true;
+  }
+  fs.createReadStream(page).pipe(res);
+  return true;
+}
+
+function tryServePhoneRemote(req: http.IncomingMessage, res: http.ServerResponse): boolean {
+  const url = new URL(req.url ?? '/', 'http://localhost');
+  if (url.pathname !== '/phone/remote') {
+    return false;
+  }
+  if (req.method !== 'GET' && req.method !== 'HEAD') {
+    res.writeHead(405, { 'Content-Type': 'text/plain; charset=utf-8' });
+    res.end('method not allowed');
+    return true;
+  }
+  setSecurityHeaders(res, false);
+  const body = JSON.stringify(remoteHttps.remoteInfo(remoteHttps.httpsPort(PORT)));
+  res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
+  if (req.method === 'HEAD') {
+    res.end();
+    return true;
+  }
+  res.end(body);
+  return true;
+}
+
+function tryServePhoneQr(req: http.IncomingMessage, res: http.ServerResponse): boolean {
+  const url = new URL(req.url ?? '/', 'http://localhost');
+  if (url.pathname !== '/phone/qr') {
+    return false;
+  }
+  if (req.method !== 'GET' && req.method !== 'HEAD') {
+    res.writeHead(405, { 'Content-Type': 'text/plain; charset=utf-8' });
+    res.end('method not allowed');
+    return true;
+  }
+  setSecurityHeaders(res, false);
+  const target = phone.qrTarget(url.searchParams.get('u'));
+  if (!target) {
+    res.writeHead(400, { 'Content-Type': 'text/plain; charset=utf-8' });
+    res.end('missing url');
+    return true;
+  }
+  void phone
+    .pngForUrl(target)
+    .then((png) => {
+      if (res.writableEnded) {
+        return;
+      }
+      res.writeHead(200, {
+        'Content-Type': 'image/png',
+        'Cache-Control': 'no-store',
+      });
+      if (req.method === 'HEAD') {
+        res.end();
+        return;
+      }
+      res.end(png);
+    })
+    .catch(() => {
+      if (!res.writableEnded) {
+        res.writeHead(500, { 'Content-Type': 'text/plain; charset=utf-8' });
+        res.end('qr failed');
+      }
+    });
+  return true;
+}
+
+function serveFile(req: http.IncomingMessage, res: http.ServerResponse): void {
+  if (remoteHttps.tryPhoneApi(req, res)) {
+    return;
+  }
+  if (tryServePhoneRemote(req, res)) {
+    return;
+  }
+  if (tryServePhoneQr(req, res)) {
+    return;
+  }
+  if (servePhone(req, res)) {
+    return;
+  }
+  setSecurityHeaders(res);
+  const url = new URL(req.url ?? '/', 'http://localhost');
+  if (req.method === 'GET' && url.pathname === '/health') {
     const body = JSON.stringify({
       status: 'ok',
       uptime: Math.floor((Date.now() - startTime) / 1000),
@@ -37,12 +166,38 @@ const server = http.createServer((_req, res) => {
     res.end(body);
     return;
   }
+  if (req.method !== 'GET' && req.method !== 'HEAD') {
+    res.writeHead(405, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ error: 'method_not_allowed' }));
+    return;
+  }
 
-  res.writeHead(404, { 'Content-Type': 'application/json' });
-  res.end(JSON.stringify({ error: 'not_found' }));
-});
+  let rel = decodeURIComponent(url.pathname);
+  if (rel === '/') {
+    rel = '/index.html';
+  }
+  const target = path.normalize(path.join(WEB_ROOT, rel));
+  if (!target.startsWith(WEB_ROOT)) {
+    res.writeHead(403, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ error: 'forbidden' }));
+    return;
+  }
+  if (!fs.existsSync(target) || fs.statSync(target).isDirectory()) {
+    res.writeHead(404, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ error: 'not_found', hint: 'Export the Godot Web build to client/build' }));
+    return;
+  }
+  const ext = path.extname(target);
+  res.writeHead(200, { 'Content-Type': MIME[ext] ?? 'application/octet-stream' });
+  if (req.method === 'HEAD') {
+    res.end();
+    return;
+  }
+  fs.createReadStream(target).pipe(res);
+}
 
-// TODO(security): restrict verifyClient to known client origins before production
+const server = http.createServer(serveFile);
+
 const wss = new WebSocketServer({
   server,
   verifyClient: (info, callback) => {
@@ -55,31 +210,13 @@ const wss = new WebSocketServer({
   },
 });
 
-// IN_PROGRESS: room management
-//   - rooms: Map<string, Room> stored in memory
-//   - generate 4-letter room codes (no vowels, no ambiguous chars)
-//   - destroy room when last player disconnects
-//   - idle room timeout
-//
-// TODO: Room type needs:
-//   - players map, host tracking [done]
-//   - game state machine: LOBBY -> COUNTDOWN -> HOLE_ACTIVE -> HOLE_SUMMARY -> MATCH_END [done]
-//   - per-hole timer (90s)
-//   - stroke counts (server-authoritative) [done; per player]
-//   - hole config (par, spawn position, cup position) [done]
-
 let connectionCounter = 0;
 
 wss.on('connection', (ws: WebSocket) => {
   const connectionId = ++connectionCounter;
-  let currentPlayer: Player | null = null;
-  let currentRoom: Room | null = null;
-
-  log({
-    ts: new Date().toISOString(),
-    event: 'ws_open',
-    connectionId,
-  });
+  log({ ts: new Date().toISOString(), event: 'ws_open', connectionId });
+  rooms.send(ws, { t: 'welcome', playerId: rooms.register(ws) });
+  rooms.send(ws, rooms.lobbyList());
 
   ws.on('message', (raw: Buffer | ArrayBuffer | Buffer[]) => {
     let text: string;
@@ -93,11 +230,6 @@ wss.on('connection', (ws: WebSocket) => {
       }
     } catch {
       sendError(ws, 'PARSE_ERROR', 'Could not decode message as UTF-8');
-      log({
-        ts: new Date().toISOString(),
-        event: 'ws_decode_error',
-        connectionId,
-      });
       return;
     }
 
@@ -106,323 +238,452 @@ wss.on('connection', (ws: WebSocket) => {
       parsed = JSON.parse(text);
     } catch {
       sendError(ws, 'PARSE_ERROR', 'Invalid JSON');
-      log({
-        ts: new Date().toISOString(),
-        event: 'ws_json_error',
-        connectionId,
-        raw: text.slice(0, 200),
-      });
       return;
     }
 
-    const result = clientMessageSchema.safeParse(parsed);
-
+    const result = envelopeSchema.safeParse(parsed);
     if (!result.success) {
-      const issues = result.error.issues.map((i) => i.message).join('; ');
-      sendError(ws, 'INVALID_MESSAGE', issues);
-      log({
-        ts: new Date().toISOString(),
-        event: 'ws_validation_failure',
-        connectionId,
-        issues,
-      });
+      sendError(ws, 'INVALID_MESSAGE', result.error.issues.map((i) => i.message).join('; '));
       return;
     }
 
-    log({
-      ts: new Date().toISOString(),
-      event: 'ws_message',
-      connectionId,
-      type: result.data.t,
-    });
-
-
-    // TODO: server validation:
-    //   - shot rate limit (min 250ms between shots per player)
-    //   - shot only accepted if client reported atRest and during HOLE_ACTIVE
-    //   - holed position must be within tolerance of cup position
-    //   - positions outside per-hole bounding box get ignored
-    //   - par+3 cap: end hole for player at par+3 strokes
-
-    switch (result.data.t) {
-      case 'join': {
-        const joinResult = doJoin(ws, result.data);
-        if (joinResult) {
-          currentPlayer = joinResult.player;
-          currentRoom = joinResult.room;
-        }
-        break;
-      }
-
-      case 'ready': {
-        const joined = requireJoined(ws, currentPlayer, currentRoom);
-        if (!joined) break;
-        doReady(joined.player, joined.room);
-        break;
-      }
-
-      case 'start_match': {
-        const joined = requireJoined(ws, currentPlayer, currentRoom);
-        if (!joined) break;
-        doStartMatch(joined.player, joined.room);
-        break;
-      }
-
-      case 'set_mode': {
-        const joined = requireJoined(ws, currentPlayer, currentRoom);
-        if (!joined) break;
-        doSetMode(joined.player, joined.room, result.data.mode);
-        break;
-      }
-      
-      case 'ball_state': {
-        const joined = requireJoined(ws, currentPlayer, currentRoom);
-        if (!joined) break;
-        const res = result.data;
-        doUpdateBallState(joined.room, joined.player, res.pos, res.vel, res.atRest);
-        break;
-      }
-      
-      case 'shot': {
-        const joined = requireJoined(ws, currentPlayer, currentRoom);
-        if (!joined) break;
-        // shot and direction are unused
-        doShot(ws, joined.player, joined.room);
-        break;
-      }
-
-      case 'holed': {
-        const joined = requireJoined(ws, currentPlayer, currentRoom);
-        if (!joined) break;
-        const res = result.data;
-        doHoled(ws, joined.player, joined.room, res.pos);
-        break;
-      }
-
-      case 'ping': {
-        sendRaw(ws, {
-          t: 'pong',
-          ts: result.data.ts
-        });
-        break;
-      }
-
-    }
+    const msg = result.data as Record<string, unknown>;
+    const type = String(msg['t']);
+    log({ ts: new Date().toISOString(), event: 'ws_message', connectionId, type });
+    void route(ws, type, msg);
   });
 
-  ws.on('close', (code: number, reason: Buffer) => {
-    if (currentPlayer && currentRoom) {
-      removePlayer(currentRoom, currentPlayer.id);
-      if (currentRoom.state == GameState.HOLE_ACTIVE) checkAllHoled(currentRoom);
-      broadcast(currentRoom, {
-        t: 'player_left',
-        playerId: currentPlayer.id
-      });
+  ws.on('close', () => {
+    phone.detach(ws);
+    const notice = rooms.departureNotice(ws);
+    if (notice) {
+      rooms.broadcast(notice.room, notice.payload, ws);
     }
-    
-    log({
-      ts: new Date().toISOString(),
-      event: 'ws_close',
-      connectionId,
-      code,
-      reason: reason.toString('utf-8'),
-    });
+    const room = rooms.leave(ws);
+    if (room) {
+      rooms.broadcast(room, rooms.lobbyState(room));
+      if (room.phase === 'selecting') {
+        rooms.broadcast(room, rooms.voteState(room));
+      }
+      const finished = rooms.tryFinishHole(room);
+      if (finished === 'summary') {
+        rooms.broadcast(room, rooms.holeEndPayload(room));
+        rooms.scheduleHoleAdvance(room, onHoleAdvance);
+      }
+    }
+    broadcastLobbyList();
+    log({ ts: new Date().toISOString(), event: 'ws_close', connectionId });
   });
 
   ws.on('error', (err: Error) => {
-    log({
-      ts: new Date().toISOString(),
-      event: 'ws_error',
-      connectionId,
-      error: err.message,
+    log({ ts: new Date().toISOString(), event: 'ws_error', connectionId, error: err.message });
+  });
+});
+
+async function route(ws: WebSocket, type: string, msg: Record<string, unknown>): Promise<void> {
+  if (phone.isPhoneSocket(ws) && type !== 'swing' && type !== 'pose' && type !== 'ping' && type !== 'phone_link' && type !== 'power' && type !== 'type' && type !== 'restart') {
+    return;
+  }
+  switch (type) {
+    case 'phone_open': {
+      try {
+        const pair = await phone.openPair(ws, PORT);
+        rooms.send(ws, { t: 'phone_ready', code: pair.code, urls: pair.urls, qr: pair.qr });
+      } catch (err) {
+        log({
+          ts: new Date().toISOString(),
+          event: 'phone_open_failed',
+          error: err instanceof Error ? err.message : String(err),
+        });
+        sendError(ws, 'PHONE_FAILED', 'Could not start phone remote');
+      }
+      break;
+    }
+    case 'phone_link': {
+      const linked = phone.linkPhone(ws, String(msg['code'] ?? ''));
+      if (typeof linked === 'string') {
+        sendError(ws, 'PHONE_FAILED', linked);
+      }
+      break;
+    }
+    case 'swing': {
+      const swung = phone.swingFrom(ws, msg['power'], msg);
+      if (typeof swung === 'string') {
+        sendError(ws, 'PHONE_FAILED', swung);
+      }
+      break;
+    }
+    case 'pose': {
+      const posed = phone.poseFrom(ws, msg);
+      if (typeof posed === 'string') {
+        sendError(ws, 'PHONE_FAILED', posed);
+      }
+      break;
+    }
+    case 'power': {
+      const used = phone.powerFrom(ws, msg['kind'], msg['slot']);
+      if (typeof used === 'string') {
+        sendError(ws, 'PHONE_FAILED', used);
+      }
+      break;
+    }
+    case 'restart': {
+      const reset = phone.restartFrom(ws);
+      if (typeof reset === 'string') {
+        sendError(ws, 'PHONE_FAILED', reset);
+      }
+      break;
+    }
+    case 'phone_powers': {
+      phone.forwardPowers(ws, msg);
+      break;
+    }
+    case 'phone_type': {
+      phone.forwardType(ws, msg);
+      break;
+    }
+    case 'type': {
+      const typed = phone.typeFrom(ws, msg);
+      if (typeof typed === 'string') {
+        sendError(ws, 'PHONE_FAILED', typed);
+      }
+      break;
+    }
+    case 'list':
+      rooms.send(ws, rooms.lobbyList());
+      break;
+    case 'create': {
+      const room = rooms.createRoom(
+        ws,
+        String(msg['name'] ?? 'Putt Party'),
+        Boolean(msg['isPublic'] ?? true),
+        String(msg['playerName'] ?? 'Player'),
+        Number(msg['rounds'] ?? 1),
+        String(msg['gameMode'] ?? 'turn_by_turn')
+      );
+      rooms.send(ws, rooms.lobbyState(room));
+      broadcastLobbyList();
+      break;
+    }
+    case 'join': {
+      const joined = rooms.joinRoom(ws, String(msg['code'] ?? ''), String(msg['playerName'] ?? 'Player'));
+      if (typeof joined === 'string') {
+        sendError(ws, 'JOIN_FAILED', joined);
+        return;
+      }
+      rooms.broadcast(joined, rooms.lobbyState(joined));
+      broadcastLobbyList();
+      break;
+    }
+    case 'leave': {
+      const notice = rooms.departureNotice(ws);
+      if (notice) {
+        rooms.broadcast(notice.room, notice.payload, ws);
+      }
+      const left = rooms.leave(ws);
+      if (left) {
+        rooms.broadcast(left, rooms.lobbyState(left));
+        if (left.phase === 'selecting') {
+          rooms.broadcast(left, rooms.voteState(left));
+        }
+        const finished = rooms.tryFinishHole(left);
+        if (finished === 'summary') {
+          rooms.broadcast(left, rooms.holeEndPayload(left));
+          rooms.scheduleHoleAdvance(left, onHoleAdvance);
+        }
+      }
+      rooms.send(ws, rooms.lobbyList());
+      broadcastLobbyList();
+      break;
+    }
+    case 'chat': {
+      const posted = rooms.chatFrom(ws, String(msg['text'] ?? ''));
+      if (typeof posted === 'string') {
+        sendError(ws, 'CHAT_FAILED', posted);
+        return;
+      }
+      rooms.broadcast(posted.room, posted.payload);
+      break;
+    }
+    case 'select': {
+      const picking = rooms.beginSelect(ws);
+      if (typeof picking === 'string') {
+        sendError(ws, 'START_FAILED', picking);
+        return;
+      }
+      rooms.broadcast(picking, rooms.voteState(picking));
+      broadcastLobbyList();
+      break;
+    }
+    case 'vote': {
+      const voted = rooms.castVote(ws, String(msg['mapId'] ?? ''));
+      if (typeof voted === 'string') {
+        sendError(ws, 'VOTE_FAILED', voted);
+        return;
+      }
+      rooms.broadcast(voted, rooms.voteState(voted));
+      break;
+    }
+    case 'quick_start': {
+      const started = rooms.quickStart(ws);
+      if (typeof started === 'string') {
+        sendError(ws, 'START_FAILED', started);
+        return;
+      }
+      rooms.broadcast(started, rooms.matchStartPayload(started));
+      broadcastLobbyList();
+      break;
+    }
+    case 'start': {
+      const started = rooms.startMatch(ws, String(msg['mapId'] ?? 'rainbow_stairs'));
+      if (typeof started === 'string') {
+        sendError(ws, 'START_FAILED', started);
+        return;
+      }
+      rooms.broadcast(started, rooms.matchStartPayload(started));
+      broadcastLobbyList();
+      break;
+    }
+    case 'shot': {
+      const player = rooms.playerFor(ws);
+      const room = rooms.roomFor(ws);
+      if (!player || !room || room.phase !== 'playing' || room.summaryPending) {
+        return;
+      }
+      player.strokes += 1;
+      rooms.broadcast(room, { t: 'stroke_update', playerId: player.id, strokes: player.strokes });
+      break;
+    }
+    case 'power_use': {
+      const used = rooms.usePower(ws, String(msg['kind'] ?? ''));
+      if (typeof used === 'string') {
+        return;
+      }
+      break;
+    }
+    case 'pickup': {
+      const claimed = rooms.claimPickup(ws, String(msg['pickupId'] ?? ''), String(msg['kind'] ?? ''));
+      if (typeof claimed === 'string') {
+        sendError(ws, 'PICKUP_TAKEN', claimed);
+        return;
+      }
+      break;
+    }
+    case 'bump': {
+      const bumped = rooms.forwardBump(
+        ws,
+        String(msg['targetId'] ?? ''),
+        num(msg['vx']),
+        num(msg['vy']),
+        num(msg['vz'])
+      );
+      if (typeof bumped === 'string') {
+        return;
+      }
+      break;
+    }
+    case 'ball_state': {
+      const player = rooms.playerFor(ws);
+      const room = rooms.roomFor(ws);
+      if (!player || !room || room.phase !== 'playing' || room.summaryPending) {
+        return;
+      }
+      player.ball = {
+        id: player.id,
+        x: num(msg['x']),
+        y: num(msg['y']),
+        z: num(msg['z']),
+        vx: num(msg['vx']),
+        vy: num(msg['vy']),
+        vz: num(msg['vz']),
+        atRest: Boolean(msg['atRest']),
+      };
+      rooms.broadcast(room, rooms.snapshot(room), ws);
+      break;
+    }
+    case 'skip_results': {
+      const skipped = rooms.skipHoleSummary(ws);
+      if (typeof skipped === 'string') {
+        sendError(ws, 'SKIP_FAILED', skipped);
+        return;
+      }
+      if (skipped.result === 'standings') {
+        rooms.scheduleHoleAdvance(skipped.room, onHoleAdvance);
+      }
+      onHoleAdvance(skipped.room, skipped.result, skipped.endsAt);
+      break;
+    }
+    case 'holed': {
+      const player = rooms.playerFor(ws);
+      const marked = rooms.markHoled(ws);
+      if (typeof marked === 'string' || !player) {
+        return;
+      }
+      rooms.broadcast(marked.room, { t: 'player_holed', playerId: player.id, strokes: player.strokes });
+      rooms.broadcast(marked.room, rooms.holeNotice(player));
+      if (marked.result === 'summary') {
+        rooms.broadcast(marked.room, rooms.holeEndPayload(marked.room));
+        rooms.scheduleHoleAdvance(marked.room, onHoleAdvance);
+      }
+      break;
+    }
+    case 'set_mode': {
+      const changed = rooms.setGameMode(ws, String(msg['mode'] ?? ''));
+      if (typeof changed === 'string') {
+        sendError(ws, 'MODE_FAILED', changed);
+        return;
+      }
+      rooms.broadcast(changed, rooms.lobbyState(changed));
+      break;
+    }
+    case 'set_profile': {
+      const name = typeof msg['name'] === 'string' ? String(msg['name']) : undefined;
+      const color = typeof msg['color'] === 'string' ? String(msg['color']) : undefined;
+      const updated = rooms.setProfile(ws, name, color);
+      if (typeof updated === 'string') {
+        sendError(ws, 'PROFILE_FAILED', updated);
+        return;
+      }
+      rooms.broadcast(updated, rooms.lobbyState(updated));
+      break;
+    }
+    case 'oob': {
+      const player = rooms.playerFor(ws);
+      const room = rooms.roomFor(ws);
+      if (!player || !room || room.phase !== 'playing' || room.summaryPending) {
+        return;
+      }
+      player.strokes += 1;
+      rooms.broadcast(room, { t: 'stroke_update', playerId: player.id, strokes: player.strokes });
+      break;
+    }
+    case 'cursor': {
+      const player = rooms.playerFor(ws);
+      const room = rooms.roomFor(ws);
+      if (!player || !room) {
+        return;
+      }
+      rooms.broadcast(
+        room,
+        {
+          t: 'cursor',
+          playerId: player.id,
+          x: Math.min(1, Math.max(0, num(msg['x']))),
+          y: Math.min(1, Math.max(0, num(msg['y']))),
+          on: Boolean(msg['on']),
+        },
+        ws
+      );
+      break;
+    }
+    case 'ping':
+      rooms.send(ws, { t: 'pong' });
+      break;
+    default:
+      break;
+  }
+}
+
+function num(value: unknown): number {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : 0;
+}
+
+function broadcastLobbyList(): void {
+  const list = rooms.lobbyList();
+  for (const client of wss.clients) {
+    if (rooms.roomFor(client)) {
+      continue;
+    }
+    rooms.send(client, list);
+  }
+}
+
+function sendError(ws: WebSocket, code: string, message: string): void {
+  const response: ErrorResponse = { t: 'error', code, message };
+  rooms.send(ws, response);
+}
+
+function onHoleAdvance(room: rooms.Room, result: rooms.SummaryAdvance, endsAt?: number): void {
+  if (result === 'standings') {
+    rooms.broadcast(room, {
+      t: 'results_next',
+      lastHole: room.roundIndex + 1 >= room.rounds,
+      endsAt: endsAt ?? Date.now() + rooms.HOLE_SUMMARY_MS,
+    });
+    return;
+  }
+  if (result === 'vote') {
+    rooms.broadcast(room, rooms.voteState(room));
+    broadcastLobbyList();
+    return;
+  }
+  rooms.broadcast(room, { t: 'match_over', placings: rooms.matchPlacings(room) });
+  rooms.broadcast(room, rooms.lobbyState(room));
+  broadcastLobbyList();
+}
+
+rooms.setVoteEndedHandler((room) => {
+  rooms.broadcast(room, rooms.matchStartPayload(room));
+  broadcastLobbyList();
+});
+
+rooms.setHoleExpiredHandler((room) => {
+  rooms.broadcast(room, rooms.holeEndPayload(room));
+  rooms.scheduleHoleAdvance(room, onHoleAdvance);
+});
+
+const secureServer = remoteHttps.createHttpsServer();
+const mux = net.createServer((socket) => {
+  socket.once('data', (data) => {
+    socket.pause();
+    socket.unshift(data);
+    if (data[0] === 0x16 && secureServer) {
+      secureServer.emit('connection', socket);
+    } else {
+      server.emit('connection', socket);
+    }
+    process.nextTick(() => {
+      socket.resume();
     });
   });
 });
 
-export function sendError(ws: WebSocket, code: string, message: string): void {
-  const response: ErrorResponse = { t: 'error', code, message };
-  if (ws.readyState === WebSocket.OPEN) {
-    ws.send(JSON.stringify(response));
+mux.listen(PORT, HOST, () => {
+  const securePort = remoteHttps.httpsPort(PORT);
+  const publicUrl = (process.env['PUTT_PUBLIC_URL'] ?? '').trim()
+    || (process.env['RAILWAY_PUBLIC_DOMAIN'] ? `https://${process.env['RAILWAY_PUBLIC_DOMAIN']}` : '')
+    || (process.env['FLY_APP_NAME'] ? `https://${process.env['FLY_APP_NAME']}.fly.dev` : '');
+  if (publicUrl && !process.env['PUTT_PUBLIC_URL']) {
+    process.env['PUTT_PUBLIC_URL'] = publicUrl;
   }
-}
-
-server.listen(PORT, HOST, () => {
   log({
     ts: new Date().toISOString(),
     event: 'server_start',
+    phone: phone.phonePageUrls(PORT),
+    remote: remoteHttps.remotePageUrls(securePort),
+    httpsPort: securePort,
+    https: secureServer != null,
     host: HOST,
     port: PORT,
+    publicUrl: publicUrl || 'none',
     env: IS_PRODUCTION ? 'production' : 'development',
+    webRoot: WEB_ROOT,
+  });
+  if (IS_PRODUCTION || process.env['PUTT_SKIP_HOST_PROBE'] === '1') {
+    return;
+  }
+  setImmediate(() => {
+    const hosts = phone.discoverPhoneHosts();
+    phone.setPreferredHosts(hosts);
+    const shared = phone.trySharePortOnWindows(PORT);
+    log({
+      ts: new Date().toISOString(),
+      event: 'phone_lan',
+      hosts,
+      phone: phone.phonePageUrls(PORT),
+      remote: remoteHttps.remotePageUrls(remoteHttps.httpsPort(PORT)),
+      lanShare: shared || 'none',
+    });
   });
 });
-
-// Helper functions:
-
-function sendRaw(ws: WebSocket, msg: unknown): void {
-  if (ws.readyState === ws.OPEN) ws.send(JSON.stringify(msg));
-}
-
-function requireJoined(
-  ws: WebSocket,
-  player: Player | null,
-  room: Room | null
-): { player: Player; room: Room } | null {
-  if (!player || !room) {
-    sendError(ws, 'NOT_JOINED', 'Must join a room before sending this message');
-    return null;
-  }
-  return { player, room };
-}
-
-// Wrapper functions:
-
-function doJoin(ws: WebSocket, data: JoinMessage): { player: Player, room: Room } | null {
-  const room = data.code ? getRoom(data.code) : createRoom();
-  if (!room) {
-    sendError(ws, 'ROOM_NOT_FOUND', "No room with that code");
-    return null;
-  }
-  const player = addPlayer(room, ws, data.name);
-  if (!player) {
-    sendError(ws, 'ROOM_FULL', 'This room already has the maximum number of players');
-    return null;
-  }
-  sendTo(player, {
-      t: 'joined',
-      playerId: player.id,
-      code: room.code,
-      players: lobbySnapshot(room),
-      gameMode: room.gameMode,
-  });
-  broadcast(room, {
-    t: 'lobby_state',
-    players: lobbySnapshot(room),
-    gameMode: room.gameMode,
-  });
-
-  return {
-    player,
-    room
-  };
-}
-
-function doReady(player: Player, room: Room): void {
-  if (!player.isHost && room.state !== GameState.LOBBY) {
-    sendError(player.ws, 'NOT_IN_LOBBY', 'Cannot change ready state after the match has started');
-    return;
-  }
-
-  togglePlayerReady(room, player.id);
-  broadcast(room, {
-    t: 'lobby_state',
-    players: lobbySnapshot(room),
-    gameMode: room.gameMode,
-  });
-  
-}
-
-function doStartMatch(player: Player, room: Room): void {
-  if (!player.isHost) {
-    sendError(player.ws, 'NOT_HOST', 'Only the host can start the match');
-    return;
-  }
-
-  if (room.state !== GameState.LOBBY) {
-    sendError(player.ws, 'ALREADY_STARTED', 'Match has already started');
-    return;
-  }
-
-  if (!checkLobbyReady(room)) {
-    sendError(player.ws, 'NOT_READY', 'All players must be ready');
-    return;
-  }
-
-  broadcast(room, {
-    t: 'match_start',
-    courseId: COURSE_ID,
-    holes: COURSE.map((h) => ({ index: h.index, par: h.par, name: h.name })),
-    gameMode: room.gameMode,
-  });
-  
-  startCountdown(room, 0);
-}
-
-function doUpdateBallState(room: Room, player: Player, pos: Vec3, vel: Vec3, atRest: boolean): void {
-  if (room.state === GameState.HOLE_ACTIVE) {
-    updateBallState(player, pos, vel, atRest);
-    updateRoomLastModified(room);
-  };
-}
-
-function doShot(ws: WebSocket, player: Player, room: Room): void {
-  // check shot rate limit
-  const check = canShoot(player, room);
-    if (!check.ok) {
-      sendError(ws, check.code, check.message);
-      return;
-    }
-
-  const strokes = recordStroke(player);
-  updateRoomLastModified(room);
-  broadcast(room, {
-    t: 'stroke_update',
-    playerId: player.id,
-    holeIndex: room.currentHoleIndex,
-    strokes: strokes,
-  });
-}
-
-function doHoled(ws: WebSocket, player: Player, room: Room, position: Vec3): void {
-  if (room.state !== GameState.HOLE_ACTIVE) {
-    sendError(ws, 'NOT_ACTIVE', 'Hole is not active');
-    return;
-  }
-  if (player.holedThisHole) {
-    return;
-  }
-  
-  const hole = getHole(room.currentHoleIndex);
-  if (!hole) {
-    sendError(ws, 'NO_HOLE', 'No active hole config');
-    return;
-  }
-
-  const dist = distance(position, hole.cup);
-  if (dist > hole.cupTolerance) {
-    sendError(ws, 'NOT_IN_CUP', 'Reported position is outside cup tolerance');
-    return;
-  }
-
-  updateBallState(player, position, [0, 0, 0], true);
-  markHoled(player);
-  updateRoomLastModified(room);
-  broadcast(room, {
-    t: 'stroke_update',
-    playerId: player.id,
-    holeIndex: room.currentHoleIndex,
-    strokes: player.strokes,
-  });
-
-  sendSnapshots(room);
-  checkAllHoled(room);
-}
-
-function doSetMode(player: Player, room: Room, mode: Room['gameMode']): void {
-  if (!player.isHost) {
-    sendError(player.ws, 'NOT_HOST', 'Only the host can change the game mode');
-    return;
-  }
-
-  if (room.state !== GameState.LOBBY) {
-    sendError(player.ws, 'NOT_IN_LOBBY', 'Cannot change mode after the match has started');
-    return;
-  }
-
-  room.gameMode = mode;
-  updateRoomLastModified(room);
-  broadcast(room, {
-    t: 'lobby_state',
-    players: lobbySnapshot(room),
-    gameMode: room.gameMode,
-  });
-}

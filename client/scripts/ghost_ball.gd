@@ -1,46 +1,119 @@
-extends Node3D
-class_name GhostBall
+extends RigidBody3D
 
-var player_id: String = ""
-var display_name: String = ""
-var target_pos: Vector3 = Vector3.ZERO
-var holed: bool = false
-var _snapped: bool = false
+const BALL_HIT_LAYER := 4
 
-func setup(id: String, p_name: String, colour: Color) -> void:
+var player_id := ""
+var display_name := ""
+var target := Vector3.ZERO
+var color := Color.WHITE
+var solid := false
+var knock := Vector3.ZERO
+var _hold_net := 0
+var _shield := false
+var _shrink := false
+
+
+func setup(id: String, tint: Color, pos: Vector3, player_name: String = "") -> void:
 	player_id = id
-	display_name = p_name
+	display_name = player_name
+	color = tint
+	target = pos
+	global_position = pos
+	freeze = true
+	freeze_mode = RigidBody3D.FREEZE_MODE_KINEMATIC
+	gravity_scale = 0.0
+	sleeping = true
+	set_solid(false)
+	if has_node("Shadow"):
+		$Shadow.visible = true
+	_tint()
+	if not player_name.is_empty() and get_node_or_null("NameTag") == null:
+		var tag := Label3D.new()
+		tag.name = "NameTag"
+		tag.text = player_name
+		tag.position = Vector3(0, 0.32, 0)
+		tag.font_size = 28
+		tag.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+		tag.modulate = tint
+		add_child(tag)
+	_write_transform()
 
-	var mesh := MeshInstance3D.new()
-	var sphere := SphereMesh.new()
-	sphere.radius = 0.06
-	sphere.height = 0.12
-	mesh.mesh = sphere
 
-	var mat := StandardMaterial3D.new()
-	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	var faded := colour
-	faded.a = 0.7
-	mat.albedo_color = faded
+func set_solid(on: bool) -> void:
+	solid = on
+	var shape := get_node_or_null("CollisionShape3D") as CollisionShape3D
+	if shape:
+		shape.disabled = not on
+	collision_layer = BALL_HIT_LAYER if on else 0
+	collision_mask = BALL_HIT_LAYER if on else 0
+	freeze = true
+	freeze_mode = RigidBody3D.FREEZE_MODE_KINEMATIC
+
+
+func place_at(pos: Vector3) -> void:
+	target = pos
+	global_position = pos
+	knock = Vector3.ZERO
+	_write_transform()
+
+
+func set_powers(shield: bool, shrink: bool) -> void:
+	_shield = shield
+	_shrink = shrink
+	PuttBall.apply_visual_size(self, PuttBall.SHRINK_SCALE if shrink else 1.0)
+	_tint()
+	var tag := get_node_or_null("NameTag") as Label3D
+	if tag:
+		tag.position.y = 0.32 * (PuttBall.SHRINK_SCALE if shrink else 1.0)
+
+
+func has_shield() -> bool:
+	return _shield
+
+
+func has_shrink() -> bool:
+	return _shrink
+
+
+func apply_knock(velocity: Vector3) -> void:
+	if _shield:
+		return
+	knock = velocity
+	target = global_position
+	_hold_net = Time.get_ticks_msec() + 320
+
+
+func take_network_pos(pos: Vector3) -> void:
+	if Time.get_ticks_msec() < _hold_net:
+		return
+	target = pos
+
+
+func _tint() -> void:
+	var mesh := get_node_or_null("MeshInstance3D") as MeshInstance3D
+	if mesh == null or mesh.material_override == null:
+		return
+	var mat := mesh.material_override.duplicate() as ShaderMaterial
+	if mat == null:
+		return
+	var tint: Color = PuttBall.SHIELD_GREY if _shield else color
+	mat.set_shader_parameter("color_lit", tint.lerp(Color.WHITE, 0.12))
+	mat.set_shader_parameter("color_shade", tint.darkened(0.28))
+	mat.set_shader_parameter("dimple_color", tint.darkened(0.14))
+	mat.set_shader_parameter("stripe_color", tint)
+	mat.set_shader_parameter("stripe_width", 0.0)
 	mesh.material_override = mat
-	add_child(mesh)
 
-	var label := Label3D.new()
-	label.text = p_name
-	label.position = Vector3(0, 0.28, 0)
-	label.font_size = 28
-	label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
-	label.modulate = colour
-	add_child(label)
-
-func apply_state(pos: Vector3, is_holed: bool) -> void:
-	target_pos = pos
-	holed = is_holed
-	if not _snapped:
-		global_position = pos
-		_snapped = true
 
 func _process(delta: float) -> void:
-	if not _snapped:
+	if knock.length_squared() > 0.01:
+		target += knock * delta
+		knock = knock.lerp(Vector3.ZERO, 1.0 - exp(-delta * 5.0))
+	global_position = global_position.lerp(target, 1.0 - exp(-delta * 16.0))
+	_write_transform()
+
+
+func _write_transform() -> void:
+	if not solid:
 		return
-	global_position = global_position.lerp(target_pos, clampf(12.0 * delta, 0.0, 1.0))
+	PhysicsServer3D.body_set_state(get_rid(), PhysicsServer3D.BODY_STATE_TRANSFORM, global_transform)

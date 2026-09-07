@@ -1,220 +1,389 @@
 extends Node
 
 signal connection_status_changed(status: String)
-signal message_received(data: Dictionary)
-signal state_changed(new_state: GameState)
-signal player_joined(player: Dictionary)
-signal player_left(player_id: String)
-signal lobby_updated(players: Array)
-signal match_started(course_id: String, holes: Array)
-signal hole_started(hole_index: int, par: int, timer_ms: float, spawn: Vector3)
-signal snapshot_received(tick: int, balls: Array)
-signal stroke_updated(player_id: String, hole_index: int, strokes: int)
-signal hole_ended(hole_index: int, results: Array)
-signal match_ended(placings: Array)
-signal server_error(code: String, message: String)
-signal game_mode_changed(mode: String)
+signal connected
+signal lobby_list_received(rooms: Array)
+signal lobby_state_received(lobby: Dictionary)
+signal match_started(map_id: String, hole_ends_at: float)
+signal vote_state_received(deadline: float, votes: Dictionary, counts: Dictionary)
+signal snapshot_received(balls: Array)
+signal stroke_updated(player_id: String, strokes: int)
+signal player_holed(player_id: String, strokes: int)
+signal match_over(placings: Array)
+signal hole_ended(hole_index: int, last_hole: bool, results: Array, ends_at: float)
+signal results_next(last_hole: bool, ends_at: float)
+signal chat_received(payload: Dictionary)
+signal error_received(code: String, message: String)
+signal phone_ready(code: String, urls: PackedStringArray, qr: String)
+signal phone_linked
+signal phone_gone
+signal phone_hit(power: float, stick_x: float, stick_y: float)
+signal phone_pose(beta: float, gamma: float, holding: bool, stick_x: float, stick_y: float, lift: float, power: float, accel: float, yaw: float, recenter: bool, look_x: float, look_y: float, zoom: float)
+signal phone_power(kind: String, slot: int)
+signal phone_restart
+signal phone_typed(text: String, done: bool, closing: bool)
+signal cursor_received(player_id: String, uv: Vector2, on: bool)
+signal bump_received(from_id: String, velocity: Vector3)
+signal pickup_taken(pickup_id: String, player_id: String, kind: String)
+signal power_used(player_id: String, kind: String)
 
+var player_id := ""
+var socket_open := false
 
-
-# Change this to your deployed server URL before exporting.
-# Uses ws:// for localhost, wss:// for everything else.
-const SERVER_HOST: String = "localhost:8080"
-
-enum GameState {
-	LOBBY,
-	COUNTDOWN,
-	HOLE_ACTIVE,
-	HOLE_SUMMARY,
-	MATCH_END,
-}
-
-var _socket: WebSocketPeer = WebSocketPeer.new()
-var _connected: bool = false
-var _was_connected: bool = false
-const MODE_TURN_BY_TURN := "turn_by_turn"
-const MODE_FREE_FOR_ALL := "free_for_all"
-
-var current_state: GameState = GameState.LOBBY
-var my_player_id: String = ""
-var game_mode: String = MODE_TURN_BY_TURN
-var players: Dictionary = {}
-var local_holed: bool = false
-
-
-func _get_server_url() -> String:
-	if SERVER_HOST.begins_with("localhost") or SERVER_HOST.begins_with("127.0.0.1"):
-		return "ws://" + SERVER_HOST
-	else:
-		return "wss://" + SERVER_HOST
+var _socket := WebSocketPeer.new()
+var _want_connect := false
+var _was_connected := false
+var _reconnect_in := 0.0
+var _pending: Array[Dictionary] = []
 
 
 func _ready() -> void:
-	connection_status_changed.connect(func(status): print("[NetworkClient] ", status))
-	message_received.connect(func(data):
-		if data.get("t") != "snapshot":
-			print("[NetworkClient] received: ", data)
-	)
-	var url := _get_server_url()
-	_emit_status("Connecting to " + url + "...")
+	set_process(true)
 
+
+func ensure_connected() -> void:
+	_want_connect = true
+	if socket_open:
+		return
+	var state := _socket.get_ready_state()
+	if state == WebSocketPeer.STATE_CONNECTING or state == WebSocketPeer.STATE_OPEN:
+		return
+	_connect_now()
+
+
+func disconnect_from_server() -> void:
+	_want_connect = false
+	socket_open = false
+	_was_connected = false
+	_pending.clear()
+	_socket.close()
+	player_id = ""
+
+
+func _connect_now() -> void:
+	var state := _socket.get_ready_state()
+	if state != WebSocketPeer.STATE_CLOSED and state != WebSocketPeer.STATE_CLOSING:
+		return
+	if state == WebSocketPeer.STATE_CLOSING:
+		_socket = WebSocketPeer.new()
+	var url := _server_url()
+	_emit_status("Connecting to %s..." % url)
 	var err := _socket.connect_to_url(url)
 	if err != OK:
-		_emit_status("Connection failed (error " + str(err) + ")")
+		_emit_status("Connection failed")
+		_reconnect_in = 2.0
+
+
+func _server_url() -> String:
+	if OS.has_feature("web"):
+		var host := str(JavaScriptBridge.eval("window.location.host"))
+		var https := str(JavaScriptBridge.eval("window.location.protocol")).begins_with("https")
+		if host.is_empty() or host == "null":
+			host = "127.0.0.1:8080"
+		return ("wss://" if https else "ws://") + host
+	var override := OS.get_environment("PUTT_SERVER")
+	if not override.is_empty():
+		return override
+	return "ws://127.0.0.1:8080"
+
+
+func _process(delta: float) -> void:
+	if _reconnect_in > 0.0 and _want_connect and not socket_open:
+		_reconnect_in -= delta
+		if _reconnect_in <= 0.0:
+			_socket = WebSocketPeer.new()
+			_connect_now()
+	if not _want_connect and not socket_open:
 		return
-
-
-func _process(_delta: float) -> void:
 	_socket.poll()
 	var state := _socket.get_ready_state()
 	match state:
 		WebSocketPeer.STATE_OPEN:
-			if not _connected:
-				_connected = true
+			if not socket_open:
+				socket_open = true
 				_was_connected = true
 				_emit_status("Connected")
-				# _send_test_message()
-
+				connected.emit()
 			while _socket.get_available_packet_count() > 0:
-				var packet := _socket.get_packet()
-				var text := packet.get_string_from_utf8()
-				var parsed: Variant = JSON.parse_string(text)
-				if parsed is Dictionary:
-					_route_message(parsed as Dictionary)
-				else:
-					push_warning("NetworkClient: received non-dictionary message")
-
-		WebSocketPeer.STATE_CLOSING:
-			pass
-
+				_handle_packet(_socket.get_packet())
+			_flush_pending()
 		WebSocketPeer.STATE_CLOSED:
-			if _was_connected:
-				var code := _socket.get_close_code()
-				var reason := _socket.get_close_reason()
-				_emit_status("Disconnected (code " + str(code) + ": " + reason + ")")
-				_connected = false
-				_was_connected = false
-				set_process(false)
-
-		WebSocketPeer.STATE_CONNECTING:
-			pass
+			if _was_connected or socket_open:
+				_emit_status("Disconnected")
+			socket_open = false
+			_was_connected = false
+			if _want_connect and _reconnect_in <= 0.0:
+				_reconnect_in = 2.0
 
 
-#func _send_test_message() -> void:
-	#var msg := JSON.stringify({ "t": "hello", "from": "godot" })
-	#_socket.send_text(msg)
-	
-func _route_message(data: Dictionary) -> void:
-	message_received.emit(data)
-	match data.get("t"):
-		"joined":
-			my_player_id = data["playerId"]
-			_apply_lobby_payload(data)
-			player_joined.emit(data)
+func _handle_packet(packet: PackedByteArray) -> void:
+	var parsed: Variant = JSON.parse_string(packet.get_string_from_utf8())
+	if not parsed is Dictionary:
+		return
+	var data: Dictionary = parsed
+	var kind := str(data.get("t", ""))
+	match kind:
+		"welcome":
+			player_id = str(data.get("playerId", player_id))
+		"lobby_list":
+			lobby_list_received.emit(data.get("rooms", []))
 		"lobby_state":
-			_apply_lobby_payload(data)
-			lobby_updated.emit(data["players"])
+			lobby_state_received.emit(data)
 		"match_start":
-			_apply_game_mode(data)
-			_set_state(GameState.COUNTDOWN)
-			match_started.emit(data["courseId"], data["holes"])
-		"hole_start":
-			_apply_game_mode(data)
-			local_holed = false
-			_set_state(GameState.HOLE_ACTIVE)
-			var spawn_arr: Array = data["spawn"]
-			var spawn := Vector3(spawn_arr[0], spawn_arr[1], spawn_arr[2])
-			hole_started.emit(data["holeIndex"], data["par"], data["timerMs"], spawn)
+			match_started.emit(str(data.get("mapId", "rainbow_stairs")), float(data.get("holeEndsAt", 0)))
+		"vote_state":
+			vote_state_received.emit(
+				float(data.get("deadline", 0.0)),
+				data.get("votes", {}) if data.get("votes", {}) is Dictionary else {},
+				data.get("counts", {}) if data.get("counts", {}) is Dictionary else {}
+			)
 		"snapshot":
-			snapshot_received.emit(data["tick"], data["balls"])
+			snapshot_received.emit(data.get("balls", []))
+		"bump":
+			bump_received.emit(
+				str(data.get("fromId", "")),
+				Vector3(float(data.get("vx", 0.0)), float(data.get("vy", 0.0)), float(data.get("vz", 0.0)))
+			)
+		"pickup_taken":
+			pickup_taken.emit(str(data.get("pickupId", "")), str(data.get("playerId", "")), str(data.get("kind", "")))
+		"power_use":
+			power_used.emit(str(data.get("playerId", "")), str(data.get("kind", "")))
 		"stroke_update":
-			stroke_updated.emit(data["playerId"], data["holeIndex"], data["strokes"])
+			stroke_updated.emit(str(data.get("playerId", "")), int(data.get("strokes", 0)))
+		"player_holed":
+			player_holed.emit(str(data.get("playerId", "")), int(data.get("strokes", 0)))
 		"hole_end":
-			_set_state(GameState.HOLE_SUMMARY)
-			hole_ended.emit(data["holeIndex"], data["results"])
-		"match_end":
-			_set_state(GameState.MATCH_END)
-			match_ended.emit(data["placings"])
-		"player_left":
-			players.erase(data["playerId"])
-			player_left.emit(data["playerId"])
+			hole_ended.emit(
+				int(data.get("holeIndex", 0)),
+				bool(data.get("lastHole", false)),
+				data.get("results", []) if data.get("results", []) is Array else [],
+				float(data.get("endsAt", 0))
+			)
+		"results_next":
+			results_next.emit(bool(data.get("lastHole", false)), float(data.get("endsAt", 0)))
+		"match_over":
+			var raw: Variant = data.get("placings", [])
+			match_over.emit(raw if raw is Array else [])
+		"chat":
+			chat_received.emit(data)
 		"error":
-			server_error.emit(data["code"], data["message"])
+			error_received.emit(str(data.get("code", "")), str(data.get("message", "Something went wrong")))
+		"phone_ready":
+			phone_ready.emit(_phone_code(data), _phone_urls(data), str(data.get("qr", "")))
+		"phone_linked":
+			phone_linked.emit()
+		"phone_gone":
+			phone_gone.emit()
+		"phone_hit":
+			phone_hit.emit(
+				clampf(float(data.get("power", 0.0)), 0.0, 1.0),
+				clampf(float(data.get("sx", 0.0)), -1.0, 1.0),
+				clampf(float(data.get("sy", 0.0)), -1.0, 1.0)
+			)
+		"cursor":
+			cursor_received.emit(
+				str(data.get("playerId", "")),
+				Vector2(clampf(float(data.get("x", 0.5)), 0.0, 1.0), clampf(float(data.get("y", 0.5)), 0.0, 1.0)),
+				bool(data.get("on", false))
+			)
+		"phone_pose":
+			phone_pose.emit(
+				float(data.get("b", 75.0)),
+				float(data.get("g", 0.0)),
+				bool(data.get("h", 0)),
+				clampf(float(data.get("sx", 0.0)), -1.0, 1.0),
+				clampf(float(data.get("sy", 0.0)), -1.0, 1.0),
+				float(data.get("u", 0.0)),
+				clampf(float(data.get("p", 0.0)), 0.0, 1.0),
+				float(data.get("a", 0.0)),
+				float(data.get("al", 0.0)),
+				bool(data.get("c", 0)),
+				clampf(float(data.get("lx", 0.0)), -1.0, 1.0),
+				clampf(float(data.get("ly", 0.0)), -1.0, 1.0),
+				clampf(float(data.get("z", 0.0)), -1.0, 1.0)
+			)
+		"phone_power":
+			phone_power.emit(str(data.get("kind", "")), int(data.get("slot", -1)))
+		"phone_restart":
+			phone_restart.emit()
+		"phone_type":
+			phone_typed.emit(str(data.get("text", "")), bool(data.get("done", false)), bool(data.get("close", false)))
 		_:
 			pass
 
 
-func _set_state(new_state: GameState) -> void:
-	if new_state == current_state:
-		return
-	current_state = new_state
-	state_changed.emit(new_state)
+func send_list() -> void:
+	_send({ "t": "list" })
 
 
-func _send(msg: Dictionary) -> void:
-	if _socket.get_ready_state() != WebSocketPeer.STATE_OPEN:
-		return
-	_socket.send_text(JSON.stringify(msg))
+func send_create(lobby_name: String, is_public: bool, player_name: String, rounds: int = 1, game_mode: String = "turn_by_turn") -> void:
+	_send({
+		"t": "create",
+		"name": lobby_name,
+		"isPublic": is_public,
+		"playerName": player_name,
+		"rounds": rounds,
+		"gameMode": game_mode,
+	})
 
-
-#   send_join(name: String, code: String) -> join or create room
-func send_join(player_name: String, code: String = "") -> void:
-	var msg:= { "t": "join", "name": player_name }
-	if code != "":
-		msg["code"] = code
-	_send(msg)
-
-#   send_ready()
-func send_ready() -> void:
-	var msg:= { "t": "ready" }
-	_send(msg)
-
-#   send_start_match() -> host only
-func send_start_match() -> void:
-	var msg:= { "t": "start_match" }
-	_send(msg)
 
 func send_set_mode(mode: String) -> void:
 	_send({ "t": "set_mode", "mode": mode })
 
-func is_ffa() -> bool:
-	return game_mode == MODE_FREE_FOR_ALL
 
-func _apply_lobby_payload(data: Dictionary) -> void:
-	_apply_game_mode(data)
-	if data.has("players"):
-		players.clear()
-		for p in data["players"]:
-			players[p["id"]] = p
-
-func _apply_game_mode(data: Dictionary) -> void:
-	if not data.has("gameMode"):
-		return
-	var mode: String = data["gameMode"]
-	if mode == game_mode:
-		return
-	game_mode = mode
-	game_mode_changed.emit(game_mode)
-
-#   send_shot(dir: Vector2, power: float)
-func send_shot(dir: Vector2, power: float) -> void:
-	var msg:= { "t": "shot", "dir": [dir.x, dir.y], "power": power }
+func send_set_profile(player_name: String = "", color: String = "") -> void:
+	var msg := { "t": "set_profile" }
+	if not player_name.is_empty():
+		msg["name"] = player_name
+	if not color.is_empty():
+		msg["color"] = color
 	_send(msg)
 
-#   send_ball_state(pos: Vector3, vel: Vector3, at_rest: bool) -> call at 15Hz while moving
+
+func send_join(code: String, player_name: String) -> void:
+	_send({ "t": "join", "code": code, "playerName": player_name })
+
+
+func send_leave() -> void:
+	_send({ "t": "leave" })
+
+
+func send_chat(text: String) -> void:
+	_send({ "t": "chat", "text": text })
+
+
+func send_select() -> void:
+	_send({ "t": "select" })
+
+
+func send_vote(map_id: String) -> void:
+	_send({ "t": "vote", "mapId": map_id })
+
+
+func send_quick_start() -> void:
+	_send({ "t": "quick_start" })
+
+
+func send_skip_results() -> void:
+	_send({ "t": "skip_results" })
+
+
+func send_shot() -> void:
+	_send({ "t": "shot" })
+
+
+func send_pickup(pickup_id: String, kind: String) -> void:
+	_send({ "t": "pickup", "pickupId": pickup_id, "kind": kind })
+
+
+func send_power_use(kind: String) -> void:
+	_send({ "t": "power_use", "kind": kind })
+
+
+func send_bump(target_id: String, velocity: Vector3) -> void:
+	_send({
+		"t": "bump",
+		"targetId": target_id,
+		"vx": velocity.x,
+		"vy": velocity.y,
+		"vz": velocity.z,
+	})
+
+
 func send_ball_state(pos: Vector3, vel: Vector3, at_rest: bool) -> void:
-	var msg:= {
+	_send({
 		"t": "ball_state",
-		"pos": [pos.x, pos.y, pos.z],
-		"vel": [vel.x, vel.y, vel.z],
-		"atRest": at_rest
-	}
-	_send(msg)
+		"x": pos.x, "y": pos.y, "z": pos.z,
+		"vx": vel.x, "vy": vel.y, "vz": vel.z,
+		"atRest": at_rest,
+	})
 
-#   send_holed(pos: Vector3)
-func send_holed(pos: Vector3) -> void:
-	var msg:= { "t": "holed", "pos": [pos.x, pos.y, pos.z] }
-	_send(msg)
+
+func send_holed() -> void:
+	_send({ "t": "holed" })
+
+
+func send_oob() -> void:
+	_send({ "t": "oob" })
+
+
+func send_phone_open() -> void:
+	_send({ "t": "phone_open" })
+
+
+func send_phone_powers(
+	left_kind: String,
+	left_left: float,
+	right_kind: String,
+	right_left: float,
+	rank: int = 0,
+	rank_text: String = "",
+	rank_caption: String = ""
+) -> void:
+	_send({
+		"t": "phone_powers",
+		"leftKind": left_kind,
+		"leftLeft": left_left,
+		"rightKind": right_kind,
+		"rightLeft": right_left,
+		"rank": rank,
+		"rankText": rank_text,
+		"rankCaption": rank_caption,
+	})
+
+
+func send_phone_type(on: bool, text: String = "", hint: String = "", max_len: int = 32) -> void:
+	_send({
+		"t": "phone_type",
+		"typeOn": on,
+		"typeText": text,
+		"typeHint": hint,
+		"typeMax": max_len,
+	})
+
+
+func send_cursor(uv: Vector2, on: bool) -> void:
+	_send({ "t": "cursor", "x": uv.x, "y": uv.y, "on": on })
+
+
+func http_base() -> String:
+	var ws := _server_url()
+	if ws.begins_with("wss://"):
+		return "https://" + ws.substr(6)
+	if ws.begins_with("ws://"):
+		return "http://" + ws.substr(5)
+	return "http://127.0.0.1:8080"
+
+
+func _phone_code(data: Dictionary) -> String:
+	return str(data.get("code", ""))
+
+
+func _phone_urls(data: Dictionary) -> PackedStringArray:
+	var urls := PackedStringArray()
+	var raw: Variant = data.get("urls", [])
+	if raw is Array:
+		for item in raw:
+			urls.append(str(item))
+	return urls
+
+
+func _send(payload: Dictionary) -> void:
+	if not socket_open:
+		_pending.append(payload)
+		ensure_connected()
+		return
+	_socket.send_text(JSON.stringify(payload))
+
+
+func _flush_pending() -> void:
+	if not socket_open or _pending.is_empty():
+		return
+	var queued := _pending.duplicate()
+	_pending.clear()
+	for payload in queued:
+		_socket.send_text(JSON.stringify(payload))
+
 
 func _emit_status(status: String) -> void:
 	connection_status_changed.emit(status)

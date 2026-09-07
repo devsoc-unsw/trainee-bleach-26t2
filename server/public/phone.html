@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <title>Putt Party Remote</title>
+  <style>
+    :root {
+      --cream: #f6f1e6;
+      --ink: #3a322c;
+      --teal: #4cb8b0;
+      --teal-press: #3a9a93;
+      --brown: #8a7e72;
+    }
+    * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+    html, body {
+      margin: 0;
+      height: 100%;
+      background: var(--cream);
+      color: var(--ink);
+      font-family: ui-sans-serif, system-ui, sans-serif;
+      touch-action: none;
+      user-select: none;
+      overflow: hidden;
+    }
+    body { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 24px; }
+    h1 { margin: 0 0 8px; font-size: 22px; letter-spacing: 0.04em; }
+    p { margin: 0 0 16px; color: var(--brown); text-align: center; }
+    #gate, #play { width: min(420px, 100%); display: flex; flex-direction: column; align-items: center; gap: 14px; }
+    #play { display: none; }
+    input {
+      width: 100%;
+      text-align: center;
+      font-size: 28px;
+      letter-spacing: 0.24em;
+      text-transform: uppercase;
+      padding: 14px;
+      border: 2px solid #e4dcce;
+      border-radius: 16px;
+      background: #fffbf5;
+      color: var(--ink);
+    }
+    .pill {
+      width: 100%;
+      border: 0;
+      border-radius: 999px;
+      padding: 16px;
+      font-size: 18px;
+      font-weight: 700;
+      color: #fff;
+      background: var(--teal);
+    }
+    .pill:active { background: var(--teal-press); }
+    #hit {
+      width: min(72vw, 280px);
+      height: min(72vw, 280px);
+      border-radius: 50%;
+      border: 0;
+      background: var(--teal);
+      color: #fff;
+      font-size: 32px;
+      font-weight: 800;
+      letter-spacing: 0.08em;
+      box-shadow: 0 10px 24px rgba(58, 50, 44, 0.18);
+      position: relative;
+      overflow: hidden;
+    }
+    #hit.held { background: var(--teal-press); transform: scale(0.96); }
+    #fill {
+      position: absolute;
+      left: 0; right: 0; bottom: 0;
+      height: 0%;
+      background: rgba(255, 255, 255, 0.28);
+      pointer-events: none;
+    }
+    #hit span { position: relative; }
+    #status { min-height: 1.4em; }
+  </style>
+</head>
+<body>
+  <div id="gate">
+    <h1>PHONE REMOTE</h1>
+    <p>Scan the QR on the PC, or type the code.</p>
+    <input id="code" maxlength="4" autocapitalize="characters" autocomplete="off" inputmode="text" />
+    <button class="pill" id="connect" type="button">CONNECT</button>
+    <p id="gateErr"></p>
+  </div>
+  <div id="play">
+    <p id="status">Hold HIT and swing</p>
+    <button id="hit" type="button"><div id="fill"></div><span>HIT</span></button>
+  </div>
+  <script>
+    const proto = location.protocol === "https:" ? "wss" : "ws";
+    const ws = new WebSocket(proto + "://" + location.host);
+    const codeInput = document.getElementById("code");
+    const preset = new URLSearchParams(location.search).get("c") || "";
+    if (preset) codeInput.value = preset.toUpperCase();
+    const gateErr = document.getElementById("gateErr");
+    const status = document.getElementById("status");
+    const fill = document.getElementById("fill");
+    const hit = document.getElementById("hit");
+    let linked = false;
+    let holding = false;
+    let fired = false;
+    let peak = 0;
+    let motionOn = false;
+    let opened = false;
+
+    setTimeout(() => {
+      if (!opened) {
+        gateErr.textContent = "Cannot reach the game. Same Wi-Fi as the PC? If you use WSL, type the PC Wi-Fi address shown on the LINK PHONE panel.";
+      }
+    }, 4000);
+
+    ws.onmessage = (ev) => {
+      let msg;
+      try { msg = JSON.parse(ev.data); } catch { return; }
+      if (msg.t === "phone_ok") {
+        linked = true;
+        document.getElementById("gate").style.display = "none";
+        document.getElementById("play").style.display = "flex";
+        status.textContent = "Hold HIT and swing";
+      }
+      if (msg.t === "buzz") {
+        buzzHit(msg.power);
+      }
+      if (msg.t === "phone_gone") {
+        linked = false;
+        status.textContent = "Disconnected. Reconnect with the code.";
+      }
+      if (msg.t === "error") {
+        gateErr.textContent = msg.message || "Could not link";
+      }
+    };
+    ws.onclose = () => {
+      linked = false;
+      gateErr.textContent = "Lost the server. Refresh and try again.";
+    };
+
+    function send(payload) {
+      if (ws.readyState === 1) ws.send(JSON.stringify(payload));
+    }
+
+    function connect() {
+      gateErr.textContent = "";
+      send({ t: "phone_link", code: codeInput.value });
+    }
+
+    function tryAutoLink() {
+      if (preset && ws.readyState === 1) connect();
+    }
+    ws.onopen = () => {
+      opened = true;
+      tryAutoLink();
+    };
+    tryAutoLink();
+
+    document.getElementById("connect").onclick = connect;
+    codeInput.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") document.getElementById("connect").click();
+    });
+
+    async function askMotion() {
+      try {
+        if (typeof DeviceMotionEvent !== "undefined" && typeof DeviceMotionEvent.requestPermission === "function") {
+          const result = await DeviceMotionEvent.requestPermission();
+          return result === "granted";
+        }
+      } catch (_) {}
+      return true;
+    }
+
+    function mag(event) {
+      const a = event.acceleration;
+      if (a && a.x != null) return Math.hypot(a.x || 0, a.y || 0, a.z || 0);
+      const g = event.accelerationIncludingGravity;
+      if (!g) return 0;
+      return Math.max(0, Math.hypot(g.x || 0, g.y || 0, g.z || 0) - 9.6);
+    }
+
+    function powerFromPeak(value) {
+      return Math.min(1, Math.max(0, (value - 3.2) / 20));
+    }
+
+    function buzz(pattern) {
+      try {
+        if (navigator.vibrate) navigator.vibrate(pattern);
+      } catch (_) {}
+    }
+
+    function buzzHit(amount) {
+      const p = Math.max(0, Math.min(1, Number(amount) || 0.5));
+      const strike = Math.round(22 + p * 48);
+      if (p >= 0.75) {
+        buzz([strike, 28, Math.round(strike * 0.45)]);
+      } else {
+        buzz(strike);
+      }
+    }
+
+    function fire() {
+      if (fired || !linked) return;
+      const power = powerFromPeak(peak);
+      if (power < 0.08) {
+        status.textContent = "Too soft. Hold and swing through.";
+        return;
+      }
+      fired = true;
+      send({ t: "swing", power: power });
+      buzzHit(power);
+      status.textContent = "Hit!";
+      fill.style.height = Math.round(power * 100) + "%";
+    }
+
+    window.addEventListener("devicemotion", (event) => {
+      if (!holding || fired) return;
+      motionOn = true;
+      const m = mag(event);
+      if (m > peak) peak = m;
+      fill.style.height = Math.round(powerFromPeak(peak) * 100) + "%";
+      if (peak >= 5.5 && m < peak * 0.62) fire();
+    }, { passive: true });
+
+    async function holdStart(ev) {
+      ev.preventDefault();
+      if (!linked) return;
+      await askMotion();
+      buzz(1);
+      holding = true;
+      fired = false;
+      peak = 0;
+      motionOn = false;
+      hit.classList.add("held");
+      fill.style.height = "0%";
+      status.textContent = "Swing...";
+    }
+
+    function holdEnd(ev) {
+      ev.preventDefault();
+      if (!holding) return;
+      holding = false;
+      hit.classList.remove("held");
+      if (!fired) fire();
+      if (!fired) fill.style.height = "0%";
+    }
+
+    hit.addEventListener("pointerdown", holdStart);
+    hit.addEventListener("pointerup", holdEnd);
+    hit.addEventListener("pointercancel", holdEnd);
+    hit.addEventListener("pointerleave", (ev) => {
+      if (ev.pointerType === "mouse") holdEnd(ev);
+    });
+  </script>
+</body>
+</html>

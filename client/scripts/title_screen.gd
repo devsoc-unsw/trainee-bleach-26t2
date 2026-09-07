@@ -1,0 +1,480 @@
+extends Node3D
+
+const BALL_SCENE := preload("res://scenes/Ball.tscn")
+const ITEM_SCRIPT := preload("res://scripts/title_menu_item.gd")
+
+@onready var ui: CanvasLayer = $UI
+@onready var camera: Camera3D = $Camera3D
+@onready var world: Node3D = $World
+@onready var logo: Control = $UI/Root/Left/Logo
+@onready var menu_panel: VBoxContainer = $UI/Root/Left/Menu
+@onready var menu_list: VBoxContainer = $UI/Root/Left/Menu
+@onready var player_name_edit: LineEdit = $UI/Root/PlayerBar/Row/Name
+@onready var settings_dimmer: ColorRect = $UI/SettingsDimmer
+
+var _index := -1
+var _items: Array[Button] = []
+var _actions: Array[Callable] = []
+var _settings_open := false
+var _cam_base: Transform3D
+var _t := 0.0
+var _phone_qr: TextureRect
+var _phone_hint: Label
+var _vol_fill: StyleBox
+var _vol_empty := StyleBoxEmpty.new()
+var _name_js_cb: JavaScriptObject
+var _web_name_open := false
+
+
+func _ready() -> void:
+	_build_course()
+	_cam_base = MapKit.frame_menu_camera(camera)
+	_build_menu()
+	_setup_settings()
+	_setup_name_field()
+	_apply_name(GameSession.player_name, true)
+	get_viewport().size_changed.connect(_apply_responsive)
+	_apply_responsive()
+	_play_intro()
+	GameSession.play_music("play_title")
+	if not NetworkClient.phone_ready.is_connected(_on_cloud_phone_ready):
+		NetworkClient.phone_ready.connect(_on_cloud_phone_ready)
+
+
+func _setup_name_field() -> void:
+	player_name_edit.virtual_keyboard_enabled = true
+	player_name_edit.select_all_on_focus = true
+	player_name_edit.text_changed.connect(_on_name_typed)
+	player_name_edit.focus_exited.connect(_commit_name)
+	player_name_edit.text_submitted.connect(func(_v: String) -> void: _commit_name())
+	player_name_edit.focus_entered.connect(_show_name_keyboard)
+	player_name_edit.gui_input.connect(_on_name_gui)
+	if OS.has_feature("web"):
+		# Godot's canvas VK is unreliable on phones; use an HTML input overlay instead.
+		player_name_edit.focus_mode = Control.FOCUS_NONE
+		player_name_edit.editable = false
+		player_name_edit.mouse_default_cursor_shape = Control.CURSOR_IBEAM
+
+
+func _show_name_keyboard() -> void:
+	if OS.has_feature("web"):
+		_open_web_name_prompt()
+		return
+	if not DisplayServer.has_feature(DisplayServer.FEATURE_VIRTUAL_KEYBOARD):
+		return
+	DisplayServer.virtual_keyboard_show(
+		player_name_edit.text,
+		player_name_edit.get_global_rect(),
+		DisplayServer.KEYBOARD_TYPE_DEFAULT,
+		player_name_edit.max_length,
+	)
+
+
+func _on_name_gui(event: InputEvent) -> void:
+	var tap := false
+	if event is InputEventMouseButton:
+		var mouse := event as InputEventMouseButton
+		tap = mouse.pressed and mouse.button_index == MOUSE_BUTTON_LEFT
+	elif event is InputEventScreenTouch:
+		tap = (event as InputEventScreenTouch).pressed
+	if not tap:
+		return
+	get_viewport().set_input_as_handled()
+	if OS.has_feature("web"):
+		_open_web_name_prompt()
+	else:
+		player_name_edit.grab_focus()
+		call_deferred("_show_name_keyboard")
+
+
+func _open_web_name_prompt() -> void:
+	if not OS.has_feature("web") or _web_name_open:
+		return
+	_web_name_open = true
+	if _name_js_cb == null:
+		_name_js_cb = JavaScriptBridge.create_callback(_on_web_name_result)
+	var window_obj: Variant = JavaScriptBridge.get_interface("window")
+	if window_obj == null:
+		_web_name_open = false
+		return
+	window_obj._puttNameDone = _name_js_cb
+	var name_json := JSON.stringify(player_name_edit.text)
+	var js := """
+(function(){
+  var cb = window._puttNameDone;
+  var old = document.getElementById('putt-name-overlay');
+  if (old) old.remove();
+  var wrap = document.createElement('div');
+  wrap.id = 'putt-name-overlay';
+  wrap.setAttribute('style', 'position:fixed;inset:0;z-index:2147483646;background:rgba(16,12,10,0.55);display:flex;align-items:flex-start;justify-content:center;padding:max(18px,env(safe-area-inset-top)) 14px 14px;touch-action:manipulation;');
+  var card = document.createElement('div');
+  card.setAttribute('style', 'width:min(420px,100%);background:#fffbf5;border-radius:18px;padding:14px;box-shadow:0 18px 40px rgba(0,0,0,0.28);display:flex;flex-direction:column;gap:10px;');
+  var label = document.createElement('div');
+  label.textContent = 'YOUR NAME';
+  label.setAttribute('style', 'font:800 12px system-ui,sans-serif;letter-spacing:0.08em;color:#3a322c;');
+  var row = document.createElement('div');
+  row.setAttribute('style', 'display:flex;gap:8px;align-items:stretch;');
+  var input = document.createElement('input');
+  input.type = 'text';
+  input.inputMode = 'text';
+  input.enterKeyHint = 'done';
+  input.autocomplete = 'nickname';
+  input.maxLength = 16;
+  input.value = %s;
+  input.setAttribute('style', 'flex:1;min-width:0;font:700 18px system-ui,sans-serif;padding:12px 14px;border-radius:14px;border:2px solid #e4dcce;color:#3a322c;outline:none;');
+  var go = document.createElement('button');
+  go.type = 'button';
+  go.setAttribute('aria-label', 'Save');
+  go.innerHTML = '<svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path fill="currentColor" d="M3.4 20.6 21 12 3.4 3.4 3 10.1 14.2 12 3 13.9z"/></svg>';
+  go.setAttribute('style', 'flex:0 0 54px;border:none;border-radius:14px;background:#4cb8b0;color:#fff;display:grid;place-items:center;');
+  var finish = function(save){
+    var value = save ? String(input.value || '') : '__cancel__';
+    wrap.remove();
+    try { cb([value]); } catch (e) {}
+  };
+  go.addEventListener('click', function(ev){ ev.preventDefault(); finish(true); });
+  input.addEventListener('keydown', function(ev){
+    if (ev.key === 'Enter') { ev.preventDefault(); finish(true); }
+    if (ev.key === 'Escape') { ev.preventDefault(); finish(false); }
+  });
+  wrap.addEventListener('pointerdown', function(ev){
+    if (ev.target === wrap) finish(false);
+  });
+  row.appendChild(input);
+  row.appendChild(go);
+  card.appendChild(label);
+  card.appendChild(row);
+  wrap.appendChild(card);
+  document.body.appendChild(wrap);
+  setTimeout(function(){
+    input.focus({ preventScroll: false });
+    try { input.setSelectionRange(0, input.value.length); } catch (e) {}
+  }, 30);
+})();
+""" % name_json
+	JavaScriptBridge.eval(js)
+
+
+func _on_web_name_result(args: Array) -> void:
+	_web_name_open = false
+	if args.is_empty():
+		return
+	var value := str(args[0])
+	if value == "__cancel__":
+		return
+	_apply_name(value, true)
+
+
+func _process(delta: float) -> void:
+	_t += delta
+	camera.global_position = _cam_base.origin + MapKit.menu_camera_orbit(_t)
+	camera.look_at(MapKit.MENU_CAM_LOOK, Vector3.UP)
+	_sync_phone_selection()
+
+
+func _build_course() -> void:
+	MapKit.menu_backdrop(world)
+	var ball: RigidBody3D = BALL_SCENE.instantiate()
+	ball.freeze = true
+	ball.gravity_scale = 0.0
+	ball.sleeping = true
+	ball.position = Vector3(2.55, 0.32, -0.55)
+	if ball.has_node("Shadow"):
+		ball.get_node("Shadow").visible = false
+	world.add_child(ball)
+
+
+func _build_menu() -> void:
+	for child in menu_list.get_children():
+		child.queue_free()
+	_items.clear()
+	_actions = [_on_solo, _on_multiplayer, _on_settings]
+	menu_list.mouse_filter = Control.MOUSE_FILTER_STOP
+	var labels := ["Solo Play", "Multiplayer", "Settings"]
+	for i in labels.size():
+		var btn := Button.new()
+		btn.set_script(ITEM_SCRIPT)
+		btn.text = labels[i]
+		btn.custom_minimum_size = Vector2(0, 48)
+		var font_var := FontVariation.new()
+		font_var.base_font = UiStyle.FONT_EXTRA
+		font_var.spacing_glyph = 1
+		btn.add_theme_font_override("font", font_var)
+		btn.add_theme_font_size_override("font_size", 28)
+		var idx := i
+		btn.hovered.connect(func() -> void:
+			if PhoneLink.pointer_live():
+				return
+			_select(idx)
+		)
+		btn.unhovered.connect(func() -> void:
+			if PhoneLink.pointer_live():
+				return
+			if _index == idx:
+				_select(-1)
+		)
+		btn.pressed.connect(func() -> void: _activate(idx))
+		menu_list.add_child(btn)
+		_items.append(btn)
+
+
+func _sync_phone_selection() -> void:
+	if _settings_open or not PhoneLink.pointer_live():
+		return
+	var idx := _index_of_hovered()
+	if idx != _index:
+		_select(idx)
+
+
+func _index_of_hovered() -> int:
+	var hit := PhoneLink.hovered_control()
+	if hit == null:
+		return -1
+	var node: Node = hit
+	while node != null:
+		for i in _items.size():
+			if _items[i] == node:
+				return i
+		node = node.get_parent()
+	return -1
+
+
+func _select(index: int) -> void:
+	if index < 0 or _items.is_empty():
+		_index = -1
+		for item in _items:
+			if item.has_method("set_selected"):
+				item.set_selected(false)
+		return
+	var next := clampi(index, 0, _items.size() - 1)
+	if next != _index:
+		GameSession.play_sfx("hover")
+	_index = next
+	for i in _items.size():
+		if _items[i].has_method("set_selected"):
+			_items[i].set_selected(i == _index)
+
+
+func _activate(index: int) -> void:
+	if index < 0 or index >= _actions.size():
+		return
+	_select(index)
+	_actions[index].call()
+
+
+func _unhandled_input(event: InputEvent) -> void:
+	if player_name_edit.has_focus():
+		return
+	if _settings_open:
+		if event.is_action_pressed("ui_cancel"):
+			_close_settings()
+			get_viewport().set_input_as_handled()
+		return
+	if event.is_action_pressed("ui_down"):
+		_select(0 if _index < 0 else _index + 1)
+		get_viewport().set_input_as_handled()
+	elif event.is_action_pressed("ui_up"):
+		_select(_items.size() - 1 if _index < 0 else _index - 1)
+		get_viewport().set_input_as_handled()
+	elif event.is_action_pressed("ui_accept"):
+		if _index >= 0:
+			_activate(_index)
+		get_viewport().set_input_as_handled()
+
+
+func _play_intro() -> void:
+	logo.modulate.a = 0.0
+	menu_panel.modulate.a = 0.0
+	var tw := create_tween()
+	tw.set_ease(Tween.EASE_OUT).set_trans(Tween.TRANS_CUBIC)
+	tw.tween_property(logo, "modulate:a", 1.0, 0.4)
+	tw.parallel().tween_property(menu_panel, "modulate:a", 1.0, 0.4).set_delay(0.12)
+
+
+func _apply_responsive() -> void:
+	var size := get_viewport().get_visible_rect().size
+	var wide := size.x >= 900.0
+	var pad := 28.0 if wide else 16.0
+	var col_w := 312.0 if wide else minf(size.x - pad * 2.0, 360.0)
+	$UI/Root/Left.offset_left = pad
+	$UI/Root/Left.offset_top = 22 if wide else 14
+	$UI/Root/Left.offset_right = pad + col_w
+	$UI/Root/Left/Logo/Unsw.add_theme_font_size_override("font_size", 22 if wide else 16)
+	$UI/Root/Left/Logo/Title.add_theme_font_size_override("font_size", 42 if wide else 28)
+
+
+func _setup_settings() -> void:
+	settings_dimmer.visible = false
+	settings_dimmer.modulate.a = 0.0
+	settings_dimmer.gui_input.connect(_on_dimmer_gui)
+	$UI/SettingsDimmer/Shell/Center/Card/Layout/Back.pressed.connect(_close_settings)
+	# Name field wiring lives in _setup_name_field().
+	var layout: VBoxContainer = $UI/SettingsDimmer/Shell/Center/Card/Layout
+	var old_row := layout.get_node_or_null("VolumeRow") as Control
+	var old_slider := layout.get_node_or_null("Volume") as Control
+	if old_row:
+		old_row.visible = false
+	if old_slider:
+		old_slider.visible = false
+	var title := layout.get_node_or_null("Title") as Control
+	if title:
+		title.visible = false
+	var spacer: Control = layout.get_node("Spacer")
+	UiStyle.add_audio_sliders(layout, spacer.get_index(), true)
+	var phone_label := Label.new()
+	phone_label.text = "PHONE REMOTE"
+	phone_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	UiStyle.apply_font(phone_label, true, 11, UiStyle.INK)
+	layout.add_child(phone_label)
+	layout.move_child(phone_label, spacer.get_index())
+	_phone_qr = TextureRect.new()
+	_phone_qr.custom_minimum_size = Vector2(108, 108)
+	_phone_qr.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	_phone_qr.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	_phone_qr.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	_phone_qr.visible = false
+	layout.add_child(_phone_qr)
+	layout.move_child(_phone_qr, spacer.get_index())
+	_phone_hint = Label.new()
+	_phone_hint.text = "Scan to open the remote on any Wi-Fi. CALIBRATE, AIM, then swing."
+	_phone_hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_phone_hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_phone_hint.custom_minimum_size = Vector2(300, 0)
+	UiStyle.apply_font(_phone_hint, false, 11, UiStyle.INK)
+	layout.add_child(_phone_hint)
+	layout.move_child(_phone_hint, spacer.get_index())
+	if not PhoneLink.qr_ready.is_connected(_on_settings_qr):
+		PhoneLink.qr_ready.connect(_on_settings_qr)
+	if not PhoneLink.urls_changed.is_connected(_on_phone_urls):
+		PhoneLink.urls_changed.connect(_on_phone_urls)
+	_refresh_phone_settings()
+	_fit_settings_card()
+	if not get_viewport().size_changed.is_connected(_fit_settings_card):
+		get_viewport().size_changed.connect(_fit_settings_card)
+
+
+func _fit_settings_card() -> void:
+	var shell := $UI/SettingsDimmer/Shell as MarginContainer
+	var card := $UI/SettingsDimmer/Shell/Center/Card as PanelContainer
+	if shell == null or card == null:
+		return
+	var view := get_viewport().get_visible_rect().size
+	var wide := view.x >= 900.0
+	var side := 24 if wide else 14
+	var vertical := 24 if wide else 16
+	shell.add_theme_constant_override("margin_left", side)
+	shell.add_theme_constant_override("margin_right", side)
+	shell.add_theme_constant_override("margin_top", vertical)
+	shell.add_theme_constant_override("margin_bottom", vertical)
+	card.custom_minimum_size.x = 400.0 if wide else minf(360.0, view.x - float(side * 2))
+
+
+func _refresh_phone_settings() -> void:
+	if OS.has_feature("web"):
+		NetworkClient.ensure_connected()
+		NetworkClient.send_phone_open()
+		if _phone_hint:
+			_phone_hint.text = "Scan to open the remote on any Wi-Fi. CALIBRATE, AIM, then swing."
+		return
+	PhoneLink.ensure_listening()
+	PhoneLink.fetch_qr()
+
+
+func _on_phone_urls() -> void:
+	if OS.has_feature("web"):
+		return
+	# The secure URL arrives a moment after boot, so refresh the QR.
+	PhoneLink.fetch_qr()
+
+
+func _on_cloud_phone_ready(_code: String, _urls: PackedStringArray, qr: String) -> void:
+	if not OS.has_feature("web") or _phone_qr == null or qr.is_empty():
+		return
+	var marker := "base64,"
+	var at := qr.find(marker)
+	if at < 0:
+		return
+	var bytes := Marshalls.base64_to_raw(qr.substr(at + marker.length()))
+	var img := Image.new()
+	if img.load_png_from_buffer(bytes) != OK:
+		return
+	_phone_qr.texture = ImageTexture.create_from_image(img)
+	_phone_qr.visible = true
+
+
+func _on_name_typed(value: String) -> void:
+	_sync_name_fields(value)
+
+
+func _commit_name() -> void:
+	_apply_name(player_name_edit.text, true)
+	if DisplayServer.has_feature(DisplayServer.FEATURE_VIRTUAL_KEYBOARD):
+		DisplayServer.virtual_keyboard_hide()
+
+
+func _apply_name(value: String, commit: bool) -> void:
+	var shown := value if not commit else value.strip_edges()
+	if commit and shown.is_empty():
+		shown = "Player"
+	if commit and GameSession.player_name != shown:
+		GameSession.player_name = shown
+	_sync_name_fields(shown)
+
+
+func _sync_name_fields(value: String) -> void:
+	if player_name_edit.text != value:
+		player_name_edit.text = value
+
+
+func _on_settings_qr(bytes: PackedByteArray) -> void:
+	if _phone_qr == null or bytes.is_empty():
+		return
+	var img := Image.new()
+	if img.load_png_from_buffer(bytes) != OK:
+		return
+	_phone_qr.texture = ImageTexture.create_from_image(img)
+	_phone_qr.visible = true
+
+
+func _set_volume_label(amount: float) -> void:
+	var label: Label = $UI/SettingsDimmer/Shell/Center/Card/Layout/VolumeRow/VolumeValue
+	label.text = "%d%%" % int(round(amount * 100.0))
+
+
+func _apply_volume_slider(slider: HSlider, amount: float) -> void:
+	_set_volume_label(amount)
+	if _vol_fill == null:
+		_vol_fill = slider.get_theme_stylebox("grabber_area")
+	var fill: StyleBox = _vol_empty if amount <= 0.001 else _vol_fill
+	slider.add_theme_stylebox_override("grabber_area", fill)
+	slider.add_theme_stylebox_override("grabber_area_highlight", fill)
+
+
+func _on_solo() -> void:
+	GameSession.open_select()
+
+
+func _on_multiplayer() -> void:
+	GameSession.open_lobbies()
+
+
+func _on_settings() -> void:
+	_settings_open = true
+	settings_dimmer.visible = true
+	_refresh_phone_settings()
+	var tw := create_tween()
+	tw.tween_property(settings_dimmer, "modulate:a", 1.0, 0.2)
+
+
+func _close_settings() -> void:
+	_settings_open = false
+	var tw := create_tween()
+	tw.tween_property(settings_dimmer, "modulate:a", 0.0, 0.16)
+	tw.tween_callback(func() -> void: settings_dimmer.visible = false)
+
+
+func _on_dimmer_gui(event: InputEvent) -> void:
+	if event is InputEventMouseButton:
+		var mouse := event as InputEventMouseButton
+		if mouse.pressed and mouse.button_index == MOUSE_BUTTON_LEFT:
+			_close_settings()
