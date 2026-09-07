@@ -2,6 +2,8 @@
 
 3D mini-golf on the UNSW Kensington campus. Solo play runs locally. Multiplayer uses a WebSocket lobby on the Node server: create or join a room, then putt together with ghost balls for the other players.
 
+**Play online:** [https://unsw-putt-party-production.up.railway.app/](https://unsw-putt-party-production.up.railway.app/)
+
 ## Versions
 
 | Tool   | Version    |
@@ -48,7 +50,9 @@ If the public list stays on "Connecting...", the Node process is not running or 
 
 ## Play in the browser
 
-The server hosts the WebSocket game and serves the Godot web export from `client/build`.
+The public game is already at [https://unsw-putt-party-production.up.railway.app/](https://unsw-putt-party-production.up.railway.app/). Two browser tabs work as two players.
+
+To run the same stack locally, the server hosts the WebSocket game and serves the Godot web export from `client/build`.
 
 1. Install Godot 4.7.1 and the **Web** export templates (`Editor > Manage Export Templates > Download`).
 2. Export the client:
@@ -69,9 +73,13 @@ The server hosts the WebSocket game and serves the Godot web export from `client
 
 ## Deploy (public internet)
 
-The same Node process serves the web game, WebSocket lobby, and HTTPS-friendly phone remote at `/remote`.
+Production is on Railway from **`main`**:
 
-Set `PUTT_PUBLIC_URL` to the public site origin (no trailing slash), for example `https://putt.example.com`. Phone QR codes and pair links use that origin so the remote works on any Wi-Fi. On Railway or Fly, the server also picks up `RAILWAY_PUBLIC_DOMAIN` or `FLY_APP_NAME` when `PUTT_PUBLIC_URL` is unset.
+[https://unsw-putt-party-production.up.railway.app/](https://unsw-putt-party-production.up.railway.app/)
+
+The same Node process serves the web game, WebSocket lobby, and HTTPS-friendly phone remote at `/remote`. Phone QR codes and pair links should use that origin so the remote works on any Wi-Fi.
+
+Set `PUTT_PUBLIC_URL` to the public site origin (no trailing slash) if you host somewhere else. On Railway or Fly, the server also picks up `RAILWAY_PUBLIC_DOMAIN` or `FLY_APP_NAME` when `PUTT_PUBLIC_URL` is unset. For this project that origin is `https://unsw-putt-party-production.up.railway.app`.
 
 ### Build and run with Docker
 
@@ -85,14 +93,14 @@ docker run --rm -p 8080:8080 \
 
 ### Railway
 
-Use branch **`version1.3/map-fixes`** (not `version1.1/phone-remote`). That branch has the Dockerfile, `railway.toml`, and the Godot web export in `client/build`.
+`main` has the Dockerfile, `railway.toml`, and the Godot web export in `client/build`. Point the Railway service at **`main`** so new merges deploy. If the service still tracks `version1.3/map-fixes`, switch it; that branch is now the same tree as `main`, but later `main` commits would not go live.
 
 **From the Railway dashboard (GitHub connected):**
 
 1. New project → Deploy from GitHub → `devsoc-unsw/trainee-bleach-26t2`.
-2. Set the deploy branch to `version1.3/map-fixes`.
+2. Set the deploy branch to `main`.
 3. After the first deploy, open the service → Settings → Networking → **Generate domain**.
-4. Set variable `PUTT_PUBLIC_URL` to that HTTPS origin (for example `https://YOUR_APP.up.railway.app`). Redeploy if phone QR codes still show a LAN address.
+4. Set variable `PUTT_PUBLIC_URL` to `https://unsw-putt-party-production.up.railway.app`. Redeploy if phone QR codes still show a LAN address.
 
 **From the CLI:**
 
@@ -100,7 +108,7 @@ Use branch **`version1.3/map-fixes`** (not `version1.1/phone-remote`). That bran
 railway login
 railway up -y
 railway domain
-railway variable set PUTT_PUBLIC_URL=https://YOUR_APP.up.railway.app
+railway variable set PUTT_PUBLIC_URL=https://unsw-putt-party-production.up.railway.app
 ```
 
 `railway.toml` builds with the repo `Dockerfile`. The server also reads `RAILWAY_PUBLIC_DOMAIN` when `PUTT_PUBLIC_URL` is unset.
@@ -138,7 +146,7 @@ Desktop Godot clients can join with:
 PUTT_SERVER=wss://YOUR-SUBDOMAIN.trycloudflare.com
 ```
 
-Quick tunnels are temporary. Prefer Railway or Fly for a lasting public host.
+Quick tunnels are temporary. Prefer the Railway production URL above.
 
 ## Server scripts
 
@@ -149,7 +157,11 @@ Quick tunnels are temporary. Prefer Railway or Fly for a lasting public host.
 | `build` | `npm run build`   | Compile TypeScript to `dist/`        |
 | `start` | `npm run start`   | Run compiled JS                      |
 
-Desktop Godot clients connect to `ws://127.0.0.1:8080` unless `PUTT_SERVER` is set.
+Desktop Godot clients connect to `ws://127.0.0.1:8080` unless `PUTT_SERVER` is set. To join the public host from the Godot editor:
+
+```bash
+PUTT_SERVER=wss://unsw-putt-party-production.up.railway.app
+```
 
 ## Phone remote
 
@@ -162,7 +174,7 @@ Desktop Godot clients connect to `ws://127.0.0.1:8080` unless `PUTT_SERVER` is s
 
 ### Deployed / browser / any Wi-Fi
 
-Online and web builds open a per-player code on the shared server. Scan the QR to open `https://YOUR_HOST/remote?c=CODE`. Pose and swings go over the same WebSocket host as the game, so the phone does not need your LAN.
+Online and web builds open a per-player code on the shared server. Scan the QR to open `https://unsw-putt-party-production.up.railway.app/remote?c=CODE`. Pose and swings go over the same WebSocket host as the game, so the phone does not need your LAN.
 
 Each player has their own code and their own ball.
 
